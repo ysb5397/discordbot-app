@@ -11,7 +11,7 @@
   "author": "KYEONGMIN CHO <ggingmin@gmail.com>",
   "license": "ISC",
   "dependencies": {
-    "discord.js": "^14.15.2",
+    "discord.js": "^14.0.0",
     "dotenv": "^16.0.1"
   },
   "devDependencies": {
