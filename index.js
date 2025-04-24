@@ -19,7 +19,7 @@ const client = new Client({
 const flowiseEndpoint = process.env.FLOWISE_ENDPOINT;
 const flowiseApiKey = process.env.FLOWISE_API_KEY; // Flowise API 키 (설정했다면)
 
-if (!process.env.TOKEN) {
+if (!process.env.DISCORD_BOT_TOKEN) {
     console.error("Discord 봇 토큰(TOKEN)이 .env 파일에 설정되지 않았습니다.");
     process.exit(1); // 오류 발생 시 종료
 }
@@ -45,7 +45,7 @@ const sleep = (ms) => {
 // --- Discord 봇 로그인 ---
 const discordLogin = async () => {
     try {
-        await client.login(process.env.TOKEN);
+        await client.login(process.env.DISCORD_BOT_TOKEN);
     } catch (error) {
         console.error("Discord 로그인 실패:", error.message);
         if (error.code === 'TOKEN_INVALID') {
