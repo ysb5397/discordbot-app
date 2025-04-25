@@ -24,9 +24,9 @@ if (!process.env.DISCORD_BOT_TOKEN) {
     process.exit(1); // 오류 발생 시 종료
 }
 if (!process.env.PREFIX) {
-    console.warn("명령어 접두사(PREFIX)가 .env 파일에 설정되지 않았습니다. 기본값 '/'를 사용합니다.");
+    console.warn("명령어 접두사(PREFIX)가 .env 파일에 설정되지 않았습니다. 기본값 '!'를 사용합니다.");
 }
-const prefix = process.env.PREFIX || '/'; // PREFIX 환경 변수가 없으면 '/' 사용
+const prefix = process.env.PREFIX || '!'; // PREFIX 환경 변수가 없으면 '!' 사용
 
 if (!flowiseEndpoint) {
     console.error("Flowise 엔드포인트(FLOWISE_ENDPOINT)가 .env 파일에 설정되지 않았습니다.");
