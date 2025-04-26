@@ -1,5 +1,5 @@
 // discord.js v14 이상 필요
-const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder, InteractionType, Events, AttachmentBuilder } = require('discord.js'); // AttachmentBuilder 추가 (필요시)
+const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder, InteractionType, Events, AttachmentBuilder } = require('discord.js');
 // node-fetch v2 설치 필요 (npm install node-fetch@2)
 const fetch = require('node-fetch');
 const dotenv = require('dotenv');
@@ -38,12 +38,11 @@ const commands = [
         .addStringOption(option =>
             option.setName('question')
                 .setDescription('AI에게 할 질문 내용')
-                .setRequired(true)) // 텍스트 질문은 필수로 유지
-        // *** 파일 첨부 옵션 추가 ***
+                .setRequired(true))
         .addAttachmentOption(option =>
-            option.setName('file') // 옵션 이름: file
+            option.setName('file')
                 .setDescription('AI에게 보여줄 파일을 첨부하세요 (이미지, 코드 등).')
-                .setRequired(false)), // 파일 첨부는 선택 사항
+                .setRequired(false)),
     // --- 다른 명령어들 ---
     new SlashCommandBuilder().setName('help').setDescription('봇 도움말을 표시합니다.'),
     new SlashCommandBuilder().setName('avatar').setDescription('당신의 아바타 URL을 보여줍니다.'),
@@ -122,38 +121,40 @@ client.on(Events.InteractionCreate, async interaction => {
 
         const userQuestion = interaction.options.getString('question');
         const sessionId = interaction.user.id;
-        // *** 첨부 파일 정보 가져오기 ***
-        const attachment = interaction.options.getAttachment('file'); // 'file' 옵션으로 첨부된 파일 가져오기
+        const attachment = interaction.options.getAttachment('file');
+
+        // *** 사용자 이름 가져오기 ***
+        // globalName (표시 이름) 우선 사용, 없으면 username 사용
+        const userName = interaction.user.globalName || interaction.user.username;
+        console.log(`User Name: ${userName}`); // 사용자 이름 로그 추가
 
         // Flowise API 요청 본문 기본 구조
         const requestBody = {
             question: userQuestion,
             overrideConfig: {
-                sessionId: sessionId
+                sessionId: sessionId,
+                // *** vars 객체에 사용자 이름 추가 ***
+                vars: {
+                    userName: userName // Flowise에서 참조할 변수 이름 (예: userName)
+                }
             }
             // uploads 필드는 파일이 있을 때만 추가
         };
 
-        // *** 파일이 첨부되었을 경우 uploads 필드 추가 ***
+        // 파일이 첨부되었을 경우 uploads 필드 추가
         if (attachment) {
             console.log(`Attachment found: ${attachment.name} (${attachment.contentType}, ${attachment.url})`);
             requestBody.uploads = [
                 {
-                    // Flowise API 스키마에 맞춰 데이터 구성 (URL 방식)
-                    type: 'url', // 또는 'file'로 하고 data에 base64 인코딩 데이터 전달 가능
-                    name: attachment.name, // 파일 이름
-                    mime: attachment.contentType || 'application/octet-stream', // MIME 타입 (없으면 기본값)
-                    data: attachment.url // 파일 접근 URL
+                    type: 'url',
+                    name: attachment.name,
+                    mime: attachment.contentType || 'application/octet-stream',
+                    data: attachment.url
                 }
             ];
-            // 만약 Flowise가 base64 인코딩된 데이터를 요구한다면:
-            // 1. 파일을 다운로드 받아서
-            // 2. Buffer로 읽은 후
-            // 3. base64로 인코딩하여 `data` 필드에 넣고 `type`을 'file'로 설정해야 합니다.
-            //    (이 과정은 코드가 더 복잡해지므로 여기서는 URL 방식만 예시로 듭니다.)
         }
 
-        console.log(`[Session: ${sessionId}] Sending to Flowise:`, JSON.stringify(requestBody, null, 2)); // 요청 로그 (파일 정보 포함)
+        console.log(`[Session: ${sessionId}] Sending to Flowise:`, JSON.stringify(requestBody, null, 2));
 
         try {
             // Flowise API 호출
@@ -174,11 +175,9 @@ client.on(Events.InteractionCreate, async interaction => {
             }
 
             const flowiseResponse = await response.json();
-            console.log(`[Session: ${sessionId}] Received from Flowise:`, flowiseResponse); // 응답 로그
+            console.log(`[Session: ${sessionId}] Received from Flowise:`, flowiseResponse);
 
-            // 응답 텍스트 추출 및 전송
             const replyText = flowiseResponse.text || '죄송합니다, AI로부터 답변을 받지 못했습니다.';
-            // 파일 처리 결과에 대한 추가 정보가 있다면 여기에 포함시킬 수 있음 (Flowise 응답 구조 확인 필요)
             await interaction.editReply(replyText);
 
         } catch (error) {
@@ -195,7 +194,6 @@ client.on(Events.InteractionCreate, async interaction => {
         const embed = new EmbedBuilder()
             .setTitle("도움말")
             .setColor(0x000000)
-            // 도움말에 파일 첨부 옵션 설명 추가
             .setDescription('명령어: /chat [질문] [file:첨부파일], /help, /avatar, /server, /call');
         if (!interaction.replied && !interaction.deferred) {
             await interaction.reply({ embeds: [embed], ephemeral: true });
@@ -203,7 +201,6 @@ client.on(Events.InteractionCreate, async interaction => {
              await interaction.editReply({ embeds: [embed] });
         }
     }
-    // ... (avatar, server, call 명령어 처리 코드는 동일) ...
     else if (commandName === 'avatar') {
          if (!interaction.replied && !interaction.deferred) {
             await interaction.reply({ content: interaction.user.displayAvatarURL(), ephemeral: true });
@@ -226,28 +223,16 @@ client.on(Events.InteractionCreate, async interaction => {
          }
     }
 });
-
-// --- 기존 메시지 기반 명령어 처리 (주석 처리 또는 제거 권장) ---
-/*
-client.on('messageCreate', async msg => {
-    // ...
-});
-*/
 // ```
 
 // **주요 변경점:**
 
-// 1.  **명령어 정의 수정:** `SlashCommandBuilder`를 사용하여 `/chat` 명령어에 `addAttachmentOption('file')`을 추가했습니다. 이제 사용자는 `/chat` 명령어 사용 시 파일을 선택적으로 첨부할 수 있습니다.
-// 2.  **첨부 파일 처리:** `interactionCreate` 핸들러에서 `interaction.options.getAttachment('file')`을 사용하여 첨부된 파일 객체를 가져옵니다.
-// 3.  **`uploads` 필드 추가:** 파일이 첨부된 경우, Flowise API 요청 본문(`requestBody`)에 Flowise API 스키마에 맞는 `uploads` 배열을 추가합니다. 여기서는 파일 URL, 이름, MIME 타입을 포함하는 객체를 넣었습니다 (`type: 'url'`).
-// 4.  **도움말 업데이트:** `/help` 명령어의 설명에 파일 첨부 옵션(`[file:첨부파일]`)을 추가했습니다.
+// 1.  **사용자 이름 가져오기:** `interaction.user.globalName || interaction.user.username` 코드를 추가하여 명령어를 사용한 유저의 이름을 `userName` 변수에 저장합니다.
+// 2.  **`overrideConfig.vars` 추가:** Flowise API 요청 본문(`requestBody`)의 `overrideConfig` 안에 `vars` 객체를 추가하고, 그 안에 `{ userName: userName }` 형태로 사용자 이름을 포함시켰습니다.
 
-// **다음 단계:**
+// **이제 어떻게 될까요?**
 
-// 1.  이 수정된 `index.js` 코드를 Cloudtype에 **재배포**합니다. (명령어 정의가 변경되었으므로 등록 과정이 다시 실행됩니다.)
-// 2.  Discord에서 `/chat` 명령어를 사용할 때, 질문 입력 필드 외에 **파일 첨부 옵션**이 나타나는지 확인합니다.
-// 3.  파일(이미지, 텍스트 파일 등)을 첨부하고 질문과 함께 명령어를 실행해 보세요.
-// 4.  Cloudtype **로그**를 확인하여 `Attachment found:` 로그와 함께 Flowise로 `uploads` 필드가 포함된 요청이 전송되는지 확인합니다.
-// 5.  **Flowise 챗플로우 수정:** 이제 Discord 봇은 파일 정보를 보내주므로, **Flowise 챗플로우를 수정**하여 이 `uploads` 정보를 받아 처리하도록 만들어야 합니다. (예: 이미지 URL을 처리할 수 있는 멀티모달 모델 사용, URL에서 텍스트를 추출하는 도구 추가 등) Flowise 쪽 수정 없이는 봇이 파일 내용을 이해하지 못합니다.
+// * 이 수정된 코드를 배포하면, Discord 봇은 `/chat` 명령어가 사용될 때마다 해당 사용자의 이름을 알아내어 Flowise API 요청에 `userName`이라는 변수 이름으로 함께 보냅니다.
+// * **하지만 Flowise 챗봇이 이 정보를 실제로 사용하게 하려면 (예: "안녕하세요, [사용자 이름]님!")**, **Flowise 캔버스에서 `Tool Agent`의 시스템 메시지나 프롬프트를 수정**하여 `overrideConfig.vars`로 전달된 `userName` 변수를 인식하고 활용하도록 만들어야 합니다. 단순히 Discord 봇 코드만 수정한다고 해서 Flowise 챗봇이 자동으로 이름을 부르지는 않습니다.
 
-// 이제 Discord 봇은 파일 정보를 Flowise로 전달할 준비가 되었습
+// 우선 이 코드를 적용하여 사용자 이름이 Flowise로 잘 전달되는지 확인해 보
