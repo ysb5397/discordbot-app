@@ -166,6 +166,9 @@ client.on(Events.InteractionCreate, async interaction => {
     // --- /chat 명령어 처리 ---
     if (commandName === 'chat') {
         // ... (deferReply, userQuestion, sessionId, attachment 등 가져오는 코드는 동일) ...
+        const userQuestion = interaction.options.getString('question');
+        const sessionId = interaction.user.id;
+        const attachment = interaction.options.getAttachment('file');
 
         // Flowise API 요청 본문 구성
         const requestBody = {
