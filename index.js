@@ -14,17 +14,17 @@ dotenv.config(); // .env 파일 로드
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.GuildMessages, // 메시지 기반 명령어 처리가 없다면 제거 가능
+        GatewayIntentBits.MessageContent // 메시지 기반 명령어 처리가 없다면 제거 가능
     ]
 });
 
 // --- 환경 변수 확인 및 로드 ---
 const discordToken = process.env.DISCORD_BOT_TOKEN;
-const clientId = process.env.DISCORD_CLIENT_ID;
-const guildId = process.env.DISCORD_GUILD_ID;
-const flowiseEndpoint = process.env.FLOWISE_ENDPOINT;
-const flowiseApiKey = process.env.FLOWISE_API_KEY;
+const clientId = process.env.DISCORD_CLIENT_ID; // 슬래시 명령어 등록에 필수
+const guildId = process.env.DISCORD_GUILD_ID;   // 슬래시 명령어 등록에 필수 (특정 서버 전용)
+const flowiseEndpoint = process.env.FLOWISE_ENDPOINT; // Flowise 엔드포인트
+const flowiseApiKey = process.env.FLOWISE_API_KEY;   // Flowise API 키 (선택 사항)
 
 // 필수 환경 변수 확인
 if (!discordToken || !clientId || !guildId || !flowiseEndpoint) {
@@ -71,12 +71,12 @@ const commands = [
                 .setRequired(true))
         .addStringOption(option =>
             option.setName('start_time')
-                .setDescription("시작 시간 (예: '2025-05-10 20:00') - KST 기준")
+                .setDescription("시작 시간 (예: '2025-05-10 20:00') - 한국 시간(KST) 기준") // 설명에 KST 명시
                 .setRequired(true))
-        .addChannelOption(option =>
+        .addChannelOption(option => // 채널 옵션 (텍스트 채널 포함)
             option.setName('channel')
-                .setDescription('이벤트가 열릴 음성 또는 스테이지 채널')
-                .addChannelTypes(ChannelType.GuildVoice, ChannelType.GuildStageVoice)
+                .setDescription('이벤트가 열릴 음성, 스테이지 또는 텍스트 채널')
+                .addChannelTypes(ChannelType.GuildVoice, ChannelType.GuildStageVoice, ChannelType.GuildText)
                 .setRequired(true))
 
 ].map(command => command.toJSON());
@@ -87,9 +87,10 @@ const rest = new REST({ version: '10' }).setToken(discordToken);
 (async () => {
     try {
         console.log('(/) 슬래시 명령어 등록 시작...');
+        // 특정 서버(Guild)에 명령어 등록
         await rest.put(
             Routes.applicationGuildCommands(clientId, guildId),
-            { body: commands }, // 통합된 명령어 배열 사용
+            { body: commands },
         );
         console.log('(/) 슬래시 명령어가 성공적으로 등록되었습니다.');
     } catch (error) {
@@ -127,17 +128,15 @@ client.on(Events.ClientReady, () => {
 
 // --- 슬래시 명령어 처리 핸들러 (하나의 핸들러로 통합) ---
 client.on(Events.InteractionCreate, async interaction => {
-    console.log('Interaction received!');
-    if (!interaction.isChatInputCommand()) {
-        console.log('Interaction is not a chat input command.');
-        return;
-    }
+    // 상호작용이 슬래시 명령어가 아니면 무시
+    if (!interaction.isChatInputCommand()) return;
 
     const { commandName } = interaction;
-    console.log(`Processing interaction: /${commandName}`);
+    console.log(`Processing interaction: /${commandName} by ${interaction.user.tag}`);
 
     // --- /chat 명령어 처리 ---
     if (commandName === 'chat') {
+        // 이미 응답했거나 지연된 경우 무시
         if (interaction.deferred || interaction.replied) {
              console.log("Interaction already deferred or replied.");
              return;
@@ -150,19 +149,20 @@ client.on(Events.InteractionCreate, async interaction => {
         }
 
         const userQuestion = interaction.options.getString('question');
-        const sessionId = interaction.user.id;
+        const sessionId = interaction.user.id; // 사용자 ID를 세션 ID로 사용
         const attachment = interaction.options.getAttachment('file');
 
-        // Flowise API 요청 본문
+        // Flowise API 요청 본문 구성
         const requestBody = {
             question: userQuestion,
             overrideConfig: {
                 sessionId: sessionId
             }
         };
+        // 파일 첨부 시 uploads 필드 추가
         if (attachment) {
             requestBody.uploads = [{
-                type: 'url',
+                type: 'url', // URL 방식으로 전달 (Flowise에서 처리 필요)
                 name: attachment.name,
                 mime: attachment.contentType || 'application/octet-stream',
                 data: attachment.url
@@ -182,6 +182,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 body: JSON.stringify(requestBody)
             });
 
+            // API 응답 오류 처리
             if (!response.ok) {
                 const errorData = await response.text();
                 console.error(`[Session: ${sessionId}] Flowise API Error: ${response.status} ${response.statusText}`, errorData);
@@ -189,14 +190,16 @@ client.on(Events.InteractionCreate, async interaction => {
                 return;
             }
 
+            // 성공 응답 처리
             const flowiseResponse = await response.json();
             console.log(`[Session: ${sessionId}] Received from Flowise:`, flowiseResponse);
 
-            // Embed로 응답 보내기
+            // Embed로 응답 구성
             let replyEmbeds = [];
+            // 이미지 URL 확인 (Flowise 응답 구조에 따라 키 이름 확인 필요)
             const imageUrl = flowiseResponse.imageUrl || (typeof flowiseResponse.text === 'string' && (flowiseResponse.text.startsWith('http://') || flowiseResponse.text.startsWith('https://')) && /\.(jpg|jpeg|png|gif)$/i.test(flowiseResponse.text) ? flowiseResponse.text : null);
 
-            if (imageUrl) {
+            if (imageUrl) { // 이미지 응답 처리
                 const imageEmbed = new EmbedBuilder()
                     .setTitle('AI가 생성한 이미지')
                     .setImage(imageUrl)
@@ -205,25 +208,25 @@ client.on(Events.InteractionCreate, async interaction => {
             }
 
             const replyText = flowiseResponse.text;
-            if (replyText && !imageUrl) {
+            if (replyText && !imageUrl) { // 텍스트 응답 처리
                 const textEmbed = new EmbedBuilder()
                     .setDescription(replyText.length > 4096 ? replyText.substring(0, 4093) + '...' : replyText)
                     .setColor(0x00FA9A) // MediumSpringGreen
                     .setTimestamp()
                     .setFooter({ text: '해당 결과는 AI에 의해 생성되었으며, 항상 정확한 결과를 도출하지 않습니다.' });
                 replyEmbeds.push(textEmbed);
-            } else if (!imageUrl && !replyText) {
+            } else if (!imageUrl && !replyText) { // 응답 내용이 없는 경우
                  const errorEmbed = new EmbedBuilder()
                     .setDescription('죄송합니다, AI로부터 답변을 받지 못했습니다.')
-                    .setColor(0xFF0000);
+                    .setColor(0xFF0000); // 빨간색
                  replyEmbeds.push(errorEmbed);
             }
 
-            // 사용자 멘션과 함께 Embed 전송
+            // 최종 응답 전송 (사용자 멘션 + Embed)
             const mentionString = `<@${interaction.user.id}>`;
-            await interaction.editReply({ content: mentionString, embeds: replyEmbeds }); // Embed와 함께 멘션
+            await interaction.editReply({ content: mentionString, embeds: replyEmbeds });
 
-        } catch (error) {
+        } catch (error) { // Flowise API 호출 또는 응답 처리 중 예외 발생
             console.error(`[Session: ${sessionId}] Error processing Flowise request for /chat:`, error);
             try {
                 await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, 요청 처리 중 오류가 발생했습니다.`);
@@ -234,10 +237,15 @@ client.on(Events.InteractionCreate, async interaction => {
     }
     // --- /create_event 명령어 처리 ---
     else if (commandName === 'create_event') {
-        // 권한 확인 (ManageEvents 권한 확인)
+        // 사용자 권한 확인
         if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.ManageEvents)) {
-             return interaction.reply({ content: '이 명령어를 사용하려면 이벤트 관리 권한이 필요합니다.', ephemeral: true });
+             return interaction.reply({ content: '이 명령어를 사용하려면 "이벤트 관리" 권한이 필요합니다.', ephemeral: true });
         }
+        // 봇 권한 확인
+        if (!interaction.guild.members.me?.permissions.has(PermissionsBitField.Flags.ManageEvents)) {
+            return interaction.reply({ content: '봇이 이벤트를 생성할 권한이 없습니다. 서버 관리자에게 문의하세요.', ephemeral: true });
+        }
+
 
         try {
             await interaction.deferReply({ ephemeral: true }); // 명령어 사용자에게만 진행 상황 표시
@@ -248,41 +256,66 @@ client.on(Events.InteractionCreate, async interaction => {
             const startTimeString = interaction.options.getString('start_time');
             const eventChannel = interaction.options.getChannel('channel');
 
-            // 시작 시간 처리 (간단 예시 - 라이브러리 사용 권장)
+            // 시작 시간 처리 (KST 입력 -> UTC 변환)
             let scheduledStartTime;
             try {
                 const dateParts = startTimeString.match(/(\d{4})-(\d{2})-(\d{2})\s(\d{2}):(\d{2})/);
-                if (!dateParts) throw new Error('Invalid date format');
-                // 주의: 서버 시간대 영향 받을 수 있음
-                scheduledStartTime = new Date(parseInt(dateParts[1]), parseInt(dateParts[2]) - 1, parseInt(dateParts[3]), parseInt(dateParts[4]), parseInt(dateParts[5]));
-                if (isNaN(scheduledStartTime.getTime())) throw new Error('Invalid date');
+                if (!dateParts) throw new Error("Invalid date format. Use 'YYYY-MM-DD HH:MM'");
+
+                const year = parseInt(dateParts[1]);
+                const month = parseInt(dateParts[2]) - 1; // JavaScript month is 0-indexed
+                const day = parseInt(dateParts[3]);
+                const hourKST = parseInt(dateParts[4]);
+                const minute = parseInt(dateParts[5]);
+
+                // 입력된 KST 시간을 기준으로 UTC 타임스탬프 계산
+                const utcTimestamp = Date.UTC(year, month, day, hourKST - 9, minute);
+                scheduledStartTime = new Date(utcTimestamp); // UTC 타임스탬프로 Date 객체 생성
+
+                if (isNaN(scheduledStartTime.getTime())) throw new Error('Invalid date calculation');
+
+                // Discord API는 미래 시간만 받으므로 확인
                 if (scheduledStartTime < new Date()) {
                     return interaction.editReply('오류: 이벤트 시작 시간은 현재 시간 이후여야 합니다.');
                 }
+                console.log(`[Schedule] Parsed start time: ${startTimeString} KST -> ${scheduledStartTime.toISOString()} UTC`);
+
             } catch (e) {
                 console.error("Date parsing error:", e);
                 return interaction.editReply(`오류: 시작 시간 형식이 잘못되었습니다. 'YYYY-MM-DD HH:MM' 형식으로 입력해주세요. (예: '2025-05-10 20:00')`);
             }
 
-            // 이벤트 생성 옵션
+            // 이벤트 생성 옵션 구성
             const eventOptions = {
                 name: eventName,
                 description: eventDescription,
-                scheduledStartTime: scheduledStartTime,
+                scheduledStartTime: scheduledStartTime, // UTC 기준 Date 객체 전달
                 privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
-                entityType: eventChannel.type === ChannelType.GuildStageVoice ? GuildScheduledEventEntityType.StageInstance : GuildScheduledEventEntityType.Voice,
-                channel: eventChannel.id
+                entityType: null, // 아래에서 설정
             };
 
-            // 이벤트 생성
+            // 선택된 채널 타입에 따라 entityType 및 관련 정보 설정
+            if (eventChannel.type === ChannelType.GuildStageVoice) {
+                eventOptions.entityType = GuildScheduledEventEntityType.StageInstance;
+                eventOptions.channel = eventChannel.id;
+            } else if (eventChannel.type === ChannelType.GuildVoice) {
+                eventOptions.entityType = GuildScheduledEventEntityType.Voice;
+                eventOptions.channel = eventChannel.id;
+            } else if (eventChannel.type === ChannelType.GuildText) {
+                eventOptions.entityType = GuildScheduledEventEntityType.External;
+                eventOptions.entityMetadata = { location: `#${eventChannel.name} 채널에서 진행` };
+            } else {
+                return interaction.editReply('오류: 지원하지 않는 채널 타입입니다.');
+            }
+
+            // 이벤트 생성 시도
             const createdEvent = await interaction.guild.scheduledEvents.create(eventOptions);
 
             console.log(`Event created: ${createdEvent.name} (ID: ${createdEvent.id})`);
-            await interaction.editReply(`✅ 이벤트 "${createdEvent.name}"이(가) 성공적으로 생성되었습니다!`);
+            await interaction.editReply(`✅ 이벤트 "${createdEvent.name}"이(가) 성공적으로 생성되었습니다! (시작: ${startTimeString} KST)`); // 사용자 입력 시간 기준으로 안내
 
-        } catch (error) {
+        } catch (error) { // 이벤트 생성 중 오류 발생
             console.error('Error creating scheduled event:', error);
-            // 오류 메시지에 권한 문제 가능성 언급 추가
             await interaction.editReply('❌ 이벤트를 생성하는 중 오류가 발생했습니다. 입력값, 봇의 "이벤트 관리" 권한, 또는 채널 설정을 확인해주세요.');
         }
     }
@@ -290,8 +323,8 @@ client.on(Events.InteractionCreate, async interaction => {
     else if (commandName === 'help') {
         const embed = new EmbedBuilder()
             .setTitle("도움말")
-            .setColor(0xFFD700) // 금색으로 변경
-            .setDescription('명령어: /chat [질문] [file:첨부파일], /help, /avatar, /server, /call, /create_event [옵션들]'); // /create_event 추가
+            .setColor(0xFFD700) // 금색
+            .setDescription('명령어: /chat [질문] [file:첨부파일], /help, /avatar, /server, /call, /create_event [옵션들]');
         await interaction.reply({ embeds: [embed], ephemeral: true });
     }
     else if (commandName === 'avatar') {
@@ -313,12 +346,4 @@ client.on('messageCreate', async msg => {
 */
 // ```
 
-// **주요 수정 사항:**
-
-// 1.  **`require` 정리:** 필요한 모든 `discord.js` 모듈을 파일 상단에서 한 번만 불러옵니다. (`PermissionsBitField` 추가)
-// 2.  **`commands` 배열 통합:** `/chat`과 `/create_event`를 포함한 모든 명령어 정의를 하나의 `commands` 배열로 합쳤습니다.
-// 3.  **`InteractionCreate` 핸들러 통합:** `client.on(Events.InteractionCreate, ...)` 핸들러를 하나만 사용하고, 내부에서 `if/else if`를 사용하여 `commandName`에 따라 각 명령어 로직을 분기합니다.
-// 4.  **권한 확인 수정:** `/create_event`에서 권한 확인 시 `interaction.member.permissions` 대신 `interaction.memberPermissions`를 사용하고, 문자열 대신 `PermissionsBitField.Flags.ManageEvents`를 사용하도록 수정했습니다 (v14 방식).
-// 5.  **다른 명령어 처리:** 다른 명령어(`/help`, `/avatar` 등) 처리 로직도 `else if` 블록 안에 포함시켰습니다. `/help` 설명에 `/create_event`를 추가했습니다.
-
-// 이제 이 통합된 코드를 사용하시면 `/chat`과 `/create_event` 명령어를 모두 처리할 수 있습
+// 이 코드가 지금까지 논의된 모든 기능과 수정 사항을 포함한 최종 버전입니다. 환경 변수와 봇 권한을 다시 한번 확인하시고 배포하여 사용하시면 됩
