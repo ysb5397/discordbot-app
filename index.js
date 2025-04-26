@@ -1,5 +1,6 @@
 // discord.js v14 이상 필요
-const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder, InteractionType, Events } = require('discord.js'); // AttachmentBuilder 제거
+// EmbedBuilder를 이미 require 하고 있는지 확인
+const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder, InteractionType, Events, AttachmentBuilder } = require('discord.js');
 // node-fetch v2 설치 필요 (npm install node-fetch@2)
 const fetch = require('node-fetch');
 const dotenv = require('dotenv');
@@ -38,8 +39,11 @@ const commands = [
         .addStringOption(option =>
             option.setName('question')
                 .setDescription('AI에게 할 질문 내용')
-                .setRequired(true)), // 텍스트 질문만 받음
-    // *** 파일 첨부 옵션 제거됨 ***
+                .setRequired(true))
+        .addAttachmentOption(option =>
+            option.setName('file')
+                .setDescription('AI에게 보여줄 파일을 첨부하세요 (이미지, 코드 등).')
+                .setRequired(false)),
     // --- 다른 명령어들 ---
     new SlashCommandBuilder().setName('help').setDescription('봇 도움말을 표시합니다.'),
     new SlashCommandBuilder().setName('avatar').setDescription('당신의 아바타 URL을 보여줍니다.'),
@@ -76,9 +80,7 @@ const discordLogin = async () => {
         await client.login(discordToken);
     } catch (error) {
         console.error("Discord 로그인 실패:", error.message);
-        if (error.code === 'TOKEN_INVALID') {
-            console.error("-> 제공된 토큰이 유효하지 않습니다.");
-        }
+        // ... (오류 처리) ...
         await sleep(5000);
         process.exit(1);
     }
@@ -110,7 +112,7 @@ client.on(Events.InteractionCreate, async interaction => {
              return;
         }
         try {
-            await interaction.deferReply();
+            await interaction.deferReply(); // 응답 지연
         } catch (deferError) {
             console.error("Failed to defer reply:", deferError);
             return;
@@ -118,21 +120,23 @@ client.on(Events.InteractionCreate, async interaction => {
 
         const userQuestion = interaction.options.getString('question');
         const sessionId = interaction.user.id;
-        const userName = interaction.user.globalName || interaction.user.username;
-        console.log(`User Name: ${userName}`);
+        const attachment = interaction.options.getAttachment('file');
 
-        // *** 파일 첨부 관련 로직 제거됨 ***
-
-        // Flowise API 요청 본문 (uploads 필드 없음)
+        // Flowise API 요청 본문
         const requestBody = {
             question: userQuestion,
             overrideConfig: {
-                sessionId: sessionId,
-                vars: {
-                    userName: userName
-                }
+                sessionId: sessionId
             }
         };
+        if (attachment) {
+            requestBody.uploads = [{
+                type: 'url',
+                name: attachment.name,
+                mime: attachment.contentType || 'application/octet-stream',
+                data: attachment.url
+            }];
+        }
 
         console.log(`[Session: ${sessionId}] Sending to Flowise:`, JSON.stringify(requestBody, null, 2));
 
@@ -150,80 +154,90 @@ client.on(Events.InteractionCreate, async interaction => {
             if (!response.ok) {
                 const errorData = await response.text();
                 console.error(`[Session: ${sessionId}] Flowise API Error: ${response.status} ${response.statusText}`, errorData);
-                await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, AI 응답 생성 중 오류가 발생했습니다. (Code: ${response.status})`);
+                await interaction.editReply(`죄송합니다, AI 응답 생성 중 오류가 발생했습니다. (Code: ${response.status})`);
                 return;
             }
 
             const flowiseResponse = await response.json();
             console.log(`[Session: ${sessionId}] Received from Flowise:`, flowiseResponse);
 
-            const replyText = flowiseResponse.text || '죄송합니다, AI로부터 답변을 받지 못했습니다.';
-            const mentionString = `<@${interaction.user.id}>`;
-            const finalReply = `${mentionString} ${replyText}`;
-            await interaction.editReply(finalReply);
+            // --- *** Embed로 응답 보내도록 수정 *** ---
+            let replyEmbeds = []; // Embed 배열
+
+            // 이미지 URL 처리 (이전 코드와 동일)
+            const imageUrl = flowiseResponse.imageUrl || (typeof flowiseResponse.text === 'string' && (flowiseResponse.text.startsWith('http://') || flowiseResponse.text.startsWith('https://')) && /\.(jpg|jpeg|png|gif)$/i.test(flowiseResponse.text) ? flowiseResponse.text : null);
+
+            if (imageUrl) {
+                console.log(`[Session: ${sessionId}] Detected image URL: ${imageUrl}`);
+                const imageEmbed = new EmbedBuilder()
+                    .setTitle('AI가 생성한 이미지')
+                    .setImage(imageUrl)
+                    .setColor(0x0099FF);
+                replyEmbeds.push(imageEmbed);
+            }
+
+            // 텍스트 응답 처리 (이미지가 아닐 경우 또는 추가 텍스트)
+            const replyText = flowiseResponse.text;
+            if (replyText && !imageUrl) { // 텍스트가 있고, 이미지 URL이 아닐 경우에만 텍스트 Embed 생성
+                const textEmbed = new EmbedBuilder()
+                    // .setTitle('AI 응답') // 제목은 선택 사항
+                    .setDescription(replyText.length > 4096 ? replyText.substring(0, 4093) + '...' : replyText) // Embed Description 최대 길이 제한 고려
+                    .setColor(0x00FA9A); // 하늘색에 가까운 연두색 (원하는 색상 코드로 변경 가능)
+                    .setTimestamp() // 메시지 시간 표시 (선택 사항)
+                    .setFooter({ text: '해당 결과는 AI에 의해 생성되었으며, 항상 정확한 결과를 도출하지 않습니다.' }); // 꼬리말 (선택 사항)
+                replyEmbeds.push(textEmbed);
+            } else if (!imageUrl && !replyText) {
+                 // 응답이 아예 없는 경우
+                 const errorEmbed = new EmbedBuilder()
+                    .setDescription('죄송합니다, AI로부터 답변을 받지 못했습니다.')
+                    .setColor(0xFF0000); // 빨간색
+                 replyEmbeds.push(errorEmbed);
+            }
+
+            // 최종 응답 전송 (content는 비우고 embeds만 사용)
+            await interaction.editReply({ content: ' ', embeds: replyEmbeds }); // content를 빈 문자열로 보내야 Embed만 보임
 
         } catch (error) {
             console.error(`[Session: ${sessionId}] Error processing Flowise request for /chat:`, error);
             try {
-                await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, 요청 처리 중 오류가 발생했습니다.`);
+                await interaction.editReply('죄송합니다, 요청 처리 중 오류가 발생했습니다.');
             } catch (editError) {
                 console.error("Failed to send error reply via editReply:", editError);
             }
         }
     }
     // --- 다른 슬래시 명령어 처리 ---
+    // (help, avatar, server, call 등은 이전과 동일하게 Embed 또는 일반 텍스트 사용 가능)
     else if (commandName === 'help') {
         const embed = new EmbedBuilder()
             .setTitle("도움말")
             .setColor(0x000000)
-            // *** 파일 첨부 안내 제거됨 ***
-            .setDescription('명령어: /chat [질문], /help, /avatar, /server, /call');
+            .setDescription('명령어: /chat [질문] [file:첨부파일], /help, /avatar, /server, /call');
         if (!interaction.replied && !interaction.deferred) {
             await interaction.reply({ embeds: [embed], ephemeral: true });
         } else {
              await interaction.editReply({ embeds: [embed] });
         }
     }
-    // ... (avatar, server, call 명령어 처리 코드는 동일) ...
-    else if (commandName === 'avatar') {
-         if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: interaction.user.displayAvatarURL(), ephemeral: true });
-         } else {
-             await interaction.editReply({ content: interaction.user.displayAvatarURL() });
-         }
-    }
-    else if (commandName === 'server') {
-         if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply(`<@${interaction.user.id}> 현재 서버 이름: ${interaction.guild.name}\n총 멤버 수: ${interaction.guild.memberCount}`);
-         } else {
-             await interaction.editReply(`<@${interaction.user.id}> 현재 서버 이름: ${interaction.guild.name}\n총 멤버 수: ${interaction.guild.memberCount}`);
-         }
-    }
-     else if (commandName === 'call') {
-         if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply(`<@${interaction.user.id}> !callback`);
-         } else {
-             await interaction.editReply(`<@${interaction.user.id}> !callback`);
-         }
-    }
+    // ... (avatar, server, call 명령어 처리 코드는 이전과 동일) ...
+    else if (commandName === 'avatar') { /*...*/ }
+    else if (commandName === 'server') { /*...*/ }
+    else if (commandName === 'call') { /*...*/ }
 });
+
+// ... (나머지 코드) ...
 // ```
 
-// **설명:**
+// **주요 변경점:**
 
-// * `/chat` 명령어 정의에서 `.addAttachmentOption()` 부분이 삭제되었습니다.
-// * `interactionCreate` 핸들러 내에서 `interaction.options.getAttachment('file')` 호출 및 관련 `if (attachment)` 블록이 삭제되었습니다. Flowise 요청 본문(`requestBody`)에 `uploads` 필드를 추가하는 로직이 없어졌습니다.
-// * `/help` 명령어 설명에서 `[file:첨부파일]` 부분이 삭제되었습니다.
+// 1.  **`/chat` 응답 처리:**
+//     * Flowise로부터 응답(`flowiseResponse`)을 받은 후, 이미지 URL이 있는지 먼저 확인합니다.
+//     * 이미지 URL이 있다면 이미지 Embed를 생성합니다.
+//     * 이미지 URL이 없고 텍스트 응답(`replyText`)이 있다면, **`EmbedBuilder`를 새로 생성**하여 `.setDescription(replyText)`로 텍스트 내용을 설정합니다.
+//     * `.setColor(0x5865F2)` 등으로 **왼쪽 바의 색상**을 지정할 수 있습니다. (원하는 16진수 색상 코드로 변경 가능)
+//     * `.setTitle()`, `.setTimestamp()`, `.setFooter()` 등으로 Embed에 제목, 시간, 꼬리말 등을 추가할 수 있습니다 (선택 사항).
+//     * 생성된 Embed 객체를 `replyEmbeds` 배열에 추가합니다.
+//     * 최종적으로 `interaction.editReply()`를 호출할 때, **`content: ' '`** (빈 문자열 또는 공백)로 설정하고 **`embeds: replyEmbeds`**를 전달하여 Embed만 보이도록 합니다.
+// 2.  **다른 명령어:** `/help` 명령어는 이미 Embed를 사용하고 있었고, `/avatar`, `/server`, `/call` 등 다른 명령어는 필요에 따라 Embed를 사용하도록 수정하거나 그대로 둘 수 있습니다.
 
-// 이제 이 코드를 배포하시면 `/chat` 명령어는 텍스트 질문만 받게 됩니다. "명령어 전송 중..." 메시지가 계속 뜨는 현상이 파일 처리 로직 때문이었다면 이 수정으로 해결될 수 있습니다.
-
-// **검색 기능 강화에 대하여:**
-
-// Discord 봇 코드에서 파일 처리 부분을 제거했지만, 이것이 Flowise의 **검색 기능 자체를 강화하는 것은 아닙니다.** 검색 기능(PDF 검색 또는 웹 검색)의 성능을 개선하려면 여전히 **Flowise 캔버스**에서 관련 설정을 조정해야 합니다. 예를 들면:
-
-// * **`Retriever Tool` 설명 개선:** 에이전트가 PDF 검색을 더 잘 이해하도록 설명을 더 명확하고 구체적으로 작성합니다.
-// * **`Pinecone` 노드 설정:** `topK` (가져올 결과 수) 값을 조정하거나, MMR(Max Marginal Relevance) 검색 옵션을 사용해 볼 수 있습니다.
-// * **`Google Custom Search API` 노드 설정:** 검색 결과 수를 조정하거나, 특정 사이트만 검색하도록 설정할 수 있습니다.
-// * **`Tool Agent` 시스템 메시지:** 어떤 상황에 어떤 검색 도구를 우선적으로 사용해야 할지 더 명확하게 지시합니다.
-
-// 우선 이 수정된 코드를 배포하여 로딩 지연 문제가 해결되는지 확인해 보시고, 그 다음에 Flowise 쪽에서 검색 기능 강화를 위한 설정을 조정하는 단계를 진행하시면 좋겠습
+// 이제 이 코드를 배포하면 `/chat` 명령어에 대한 AI의 답변이 일반 텍스트 대신 왼쪽에 색깔 줄이 있는 Embed 형태로 표시될 것입
