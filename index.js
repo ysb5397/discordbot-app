@@ -234,13 +234,13 @@ client.on('messageCreate', async msg => {
     // 여기에 !call, !avatar 등 간단한 기존 명령어 처리 로직만 남겨둘 수 있습니다.
 });
 */
-```
+// ```
 
-**주요 변경점:**
+// **주요 변경점:**
 
-* `client.on(Events.InteractionCreate, async interaction => { ... });` 핸들러 시작 부분에 `console.log('Interaction received!');` 로그를 추가했습니다.
-* 슬래시 명령어가 아닌 다른 상호작용(버튼 클릭 등)일 경우를 대비해 로그를 추가했습니다 (`console.log('Interaction is not a chat input command.');`).
-* 처리 시작 시 어떤 명령어가 수신되었는지 로그를 남기도록 수정했습니다 (`console.log(\`Processing interaction: /${commandName}\`);`).
-* 다른 명령어(`/help`, `/avatar` 등) 처리 시에도 `interaction.reply()` 또는 `interaction.editReply()`를 상황에 맞게 사용하도록 예시를 조금 더 보강했습니다. (Flowise 호출이 없는 명령어는 `deferReply`가 필요 없으므로 바로 `reply`를 사용할 수 있습니다.)
+// * `client.on(Events.InteractionCreate, async interaction => { ... });` 핸들러 시작 부분에 `console.log('Interaction received!');` 로그를 추가했습니다.
+// * 슬래시 명령어가 아닌 다른 상호작용(버튼 클릭 등)일 경우를 대비해 로그를 추가했습니다 (`console.log('Interaction is not a chat input command.');`).
+// * 처리 시작 시 어떤 명령어가 수신되었는지 로그를 남기도록 수정했습니다 (`console.log(\`Processing interaction: /${commandName}\`);`).
+// * 다른 명령어(`/help`, `/avatar` 등) 처리 시에도 `interaction.reply()` 또는 `interaction.editReply()`를 상황에 맞게 사용하도록 예시를 조금 더 보강했습니다. (Flowise 호출이 없는 명령어는 `deferReply`가 필요 없으므로 바로 `reply`를 사용할 수 있습니다.)
 
-이제 이 코드를 Cloudtype에 다시 배포하고 Discord에서 슬래시 명령어를 사용했을 때, Cloudtype 로그에 **"Interaction received!"** 와 **"Processing interaction: /명령어이름"** 로그가 출력되는지 확인해 보세요. 로그가 출력된다면 이벤트 자체는 정상적으로 수신되고 있는 것입
+// 이제 이 코드를 Cloudtype에 다시 배포하고 Discord에서 슬래시 명령어를 사용했을 때, Cloudtype 로그에 **"Interaction received!"** 와 **"Processing interaction: /명령어이름"** 로그가 출력되는지 확인해 보세요. 로그가 출력된다면 이벤트 자체는 정상적으로 수신되고 있는 것입
