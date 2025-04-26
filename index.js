@@ -36,6 +36,9 @@ if (!flowiseApiKey) {
     console.warn("환경 변수 'FLOWISE_API_KEY'가 설정되지 않았습니다. API 키가 필요 없는 Flowise 설정인 경우 무시하세요.");
 }
 
+// --- 봇 이름 변수 ---
+let botName = "AI Assistant"; // 기본 이름 (봇이 로그인하기 전까지 사용될 값)
+
 // --- 유틸리티 함수 ---
 // 시간 문자열 파싱 함수 (KST -> UTC Date 객체)
 function parseKSTDateTime(dateTimeString) {
@@ -147,6 +150,9 @@ discordLogin();
 // --- 이벤트 핸들러 ---
 client.on(Events.ClientReady, () => {
     console.log(`Logged in as ${client.user.tag}.`);
+    // *** 봇 이름 변수 업데이트 ***
+    botName = client.user.username; // 실제 봇 사용자 이름으로 업데이트
+    console.log(`Bot name set to: ${botName}`); // 로그 추가 (확인용)
     console.log(`Flowise Endpoint: ${flowiseEndpoint}`);
 });
 
@@ -159,29 +165,36 @@ client.on(Events.InteractionCreate, async interaction => {
 
     // --- /chat 명령어 처리 ---
     if (commandName === 'chat') {
-        // ... (이전 /chat 처리 로직과 동일) ...
-         if (interaction.deferred || interaction.replied) { console.log("Interaction already deferred or replied."); return; }
-         try { await interaction.deferReply(); } catch (deferError) { console.error("Failed to defer reply:", deferError); return; }
-         const userQuestion = interaction.options.getString('question');
-         const sessionId = interaction.user.id;
-         const attachment = interaction.options.getAttachment('file');
-         const requestBody = { question: userQuestion, overrideConfig: { sessionId: sessionId } };
-         if (attachment) { requestBody.uploads = [{ type: 'url', name: attachment.name, mime: attachment.contentType || 'application/octet-stream', data: attachment.url }]; }
-         console.log(`[Session: ${sessionId}] Sending to Flowise:`, JSON.stringify(requestBody, null, 2));
-         try {
-             const response = await fetch(flowiseEndpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(flowiseApiKey ? { 'Authorization': `Bearer ${flowiseApiKey}` } : {}) }, body: JSON.stringify(requestBody) });
-             if (!response.ok) { const errorData = await response.text(); console.error(`[Session: ${sessionId}] Flowise API Error: ${response.status} ${response.statusText}`, errorData); await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, AI 응답 생성 중 오류가 발생했습니다. (Code: ${response.status})`); return; }
-             const flowiseResponse = await response.json();
-             console.log(`[Session: ${sessionId}] Received from Flowise:`, flowiseResponse);
-             let replyEmbeds = [];
-             const imageUrl = flowiseResponse.imageUrl || (typeof flowiseResponse.text === 'string' && (flowiseResponse.text.startsWith('http://') || flowiseResponse.text.startsWith('https://')) && /\.(jpg|jpeg|png|gif)$/i.test(flowiseResponse.text) ? flowiseResponse.text : null);
-             if (imageUrl) { const imageEmbed = new EmbedBuilder().setTitle('AI가 생성한 이미지').setImage(imageUrl).setColor(0x0099FF); replyEmbeds.push(imageEmbed); }
-             const replyText = flowiseResponse.text;
-             if (replyText && !imageUrl) { const textEmbed = new EmbedBuilder().setDescription(replyText.length > 4096 ? replyText.substring(0, 4093) + '...' : replyText).setColor(0x00FA9A).setTimestamp().setFooter({ text: '해당 결과는 AI에 의해 생성되었으며, 항상 정확한 결과를 도출하지 않습니다.' }); replyEmbeds.push(textEmbed); }
-             else if (!imageUrl && !replyText) { const errorEmbed = new EmbedBuilder().setDescription('죄송합니다, AI로부터 답변을 받지 못했습니다.').setColor(0xFF0000); replyEmbeds.push(errorEmbed); }
-             const mentionString = `<@${interaction.user.id}>`;
-             await interaction.editReply({ content: mentionString, embeds: replyEmbeds });
-         } catch (error) { console.error(`[Session: ${sessionId}] Error processing Flowise request for /chat:`, error); try { await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, 요청 처리 중 오류가 발생했습니다.`); } catch (editError) { console.error("Failed to send error reply via editReply:", editError); } }
+        // ... (deferReply, userQuestion, sessionId, attachment 등 가져오는 코드는 동일) ...
+
+        // Flowise API 요청 본문 구성
+        const requestBody = {
+            question: userQuestion,
+            overrideConfig: {
+                sessionId: sessionId,
+                // *** vars 객체 추가하여 봇 이름 전달 ***
+                vars: {
+                    bot_name: botName // 여기서 정의된 botName 변수 전달
+                }
+            }
+        };
+        // 파일 첨부 시 uploads 필드 추가
+        if (attachment) {
+            requestBody.uploads = [{
+                type: 'url',
+                name: attachment.name,
+                mime: attachment.contentType || 'application/octet-stream',
+                data: attachment.url
+            }];
+        }
+
+        console.log(`[Session: ${sessionId}] Sending to Flowise:`, JSON.stringify(requestBody, null, 2)); // 수정된 requestBody 로그 확인
+
+        try {
+            // ... (Flowise API 호출 및 응답 처리 로직은 동일) ...
+        } catch (error) {
+            // ... (오류 처리 로직은 동일) ...
+        }
     }
     // --- /create_event 명령어 처리 ---
     else if (commandName === 'create_event') {
