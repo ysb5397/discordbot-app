@@ -102,17 +102,35 @@ client.on(Events.ClientReady, () => { // 'ready' 대신 Events.ClientReady 사�
 
 // --- 슬래시 명령어 처리 핸들러 ---
 client.on(Events.InteractionCreate, async interaction => {
+    // *** 추가된 로그: 인터랙션 수신 확인 ***
+    console.log('Interaction received!');
+
     // 상호작용이 슬래시 명령어가 아니면 무시
-    if (!interaction.isChatInputCommand()) return;
+    if (!interaction.isChatInputCommand()) {
+        console.log('Interaction is not a chat input command.'); // 추가 로그: 슬래시 명령어가 아님
+        return;
+    }
 
     const { commandName } = interaction;
 
-    console.log(`Received interaction: /${commandName}`); // 인터랙션 로그
+    // *** 수정된 로그: 수신된 명령어 이름 포함 ***
+    console.log(`Processing interaction: /${commandName}`);
 
     // --- /chat 명령어 처리 ---
     if (commandName === 'chat') {
         // 응답 지연 (Flowise 응답이 오래 걸릴 수 있으므로)
-        await interaction.deferReply();
+        // deferReply는 한 번만 호출해야 하므로, 이미 defer되었는지 확인 (선택적 개선)
+        if (interaction.deferred || interaction.replied) {
+             console.log("Interaction already deferred or replied.");
+             return;
+        }
+        try {
+            await interaction.deferReply();
+        } catch (deferError) {
+            console.error("Failed to defer reply:", deferError);
+            return; // defer 실패 시 더 이상 진행 불가
+        }
+
 
         // 사용자가 입력한 질문 가져오기
         const userQuestion = interaction.options.getString('question');
@@ -143,6 +161,7 @@ client.on(Events.InteractionCreate, async interaction => {
             if (!response.ok) {
                 const errorData = await response.text();
                 console.error(`[Session: ${sessionId}] Flowise API Error: ${response.status} ${response.statusText}`, errorData);
+                // deferReply 후에는 editReply 사용
                 await interaction.editReply(`죄송합니다, AI 응답 생성 중 오류가 발생했습니다. (Code: ${response.status})`);
                 return;
             }
@@ -171,16 +190,37 @@ client.on(Events.InteractionCreate, async interaction => {
             .setTitle("도움말")
             .setColor(0x000000)
             .setDescription('명령어: /chat [질문], /help, /avatar, /server, /call');
-        await interaction.reply({ embeds: [embed], ephemeral: true }); // ephemeral: true -> 명령어 사용자에게만 보임
+        // deferReply 없이 바로 응답 가능하면 reply 사용
+        if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ embeds: [embed], ephemeral: true });
+        } else {
+            // 이미 defer되었다면 editReply 사용 (내용은 동일하게)
+             await interaction.editReply({ embeds: [embed] }); // ephemeral은 editReply에서 직접 지원 안 함
+             // 또는 followUp으로 ephemeral 메시지 전송 고려
+             // await interaction.followUp({ embeds: [embed], ephemeral: true });
+        }
     }
     else if (commandName === 'avatar') {
-        await interaction.reply({ content: interaction.user.displayAvatarURL(), ephemeral: true });
+         if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: interaction.user.displayAvatarURL(), ephemeral: true });
+         } else {
+             await interaction.editReply({ content: interaction.user.displayAvatarURL() });
+             // await interaction.followUp({ content: interaction.user.displayAvatarURL(), ephemeral: true });
+         }
     }
     else if (commandName === 'server') {
-        await interaction.reply(`현재 서버 이름: ${interaction.guild.name}\n총 멤버 수: ${interaction.guild.memberCount}`);
+         if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply(`현재 서버 이름: ${interaction.guild.name}\n총 멤버 수: ${interaction.guild.memberCount}`);
+         } else {
+             await interaction.editReply(`현재 서버 이름: ${interaction.guild.name}\n총 멤버 수: ${interaction.guild.memberCount}`);
+         }
     }
      else if (commandName === 'call') {
-        await interaction.reply('!callback'); // 콜백 메시지 전송
+         if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply('!callback');
+         } else {
+             await interaction.editReply('!callback');
+         }
     }
     // 여기에 다른 슬래시 명령어 처리 로직 추가 가능
 });
@@ -188,24 +228,19 @@ client.on(Events.InteractionCreate, async interaction => {
 
 // --- 기존 메시지 기반 명령어 처리 (선택 사항) ---
 // 슬래시 명령어로 모두 전환했다면 이 핸들러는 필요 없을 수 있습니다.
-// 만약 기존 !명령어도 유지하고 싶다면, 아래 코드를 남겨두되,
-// Flowise 호출 로직은 위 interactionCreate 핸들러에서 처리하므로 제거해야 합니다.
 /*
 client.on('messageCreate', async msg => {
     if (msg.author.bot) return;
     // 여기에 !call, !avatar 등 간단한 기존 명령어 처리 로직만 남겨둘 수 있습니다.
-    // Flowise 호출 로직은 제거합니다.
 });
 */
 ```
 
-**실행 전 확인 및 준비사항:**
+**주요 변경점:**
 
-1.  **환경 변수 추가:** `.env` 파일 또는 Cloudtype 환경 변수 설정에 **`DISCORD_CLIENT_ID`**와 **`DISCORD_GUILD_ID`**를 **반드시 추가**해야 합니다. 이 값들은 Discord Developer Portal에서 봇 애플리케이션 정보와 봇을 추가한 서버 ID를 확인하여 얻을 수 있습니다.
-2.  **라이브러리 설치:** `discord.js` v14 이상, `node-fetch@2`, `dotenv`가 설치되어 있는지 확인합니다.
-3.  **Intents:** `GatewayIntentBits.Guilds`는 슬래시 명령어를 특정 서버에 등록할 때 필요할 수 있습니다. (MessageContent는 슬래시 명령어만 사용한다면 필수는 아닙니다.)
-4.  **봇 권한:** 봇이 서버에서 **`application.commands` 권한**을 가지고 있어야 슬래시 명령어를 사용하고 응답할 수 있습니다. 봇 초대 시 이 권한을 부여했는지 확인하거나, 서버 설정 > 통합(Integrations) 에서 봇 권한을 수정해야 할 수 있습니다.
-5.  **코드 통합:** 기존 `index.js`를 이 코드로 대체하거나, 필요한 부분을 병합하세요. 특히 `ready` 이벤트 핸들러와 `interactionCreate` 핸들러 추가, `messageCreate` 핸들러 수정이 중요합니다.
-6.  **배포:** 수정한 코드를 저장하고 Cloudtype에 다시 배포합니다.
+* `client.on(Events.InteractionCreate, async interaction => { ... });` 핸들러 시작 부분에 `console.log('Interaction received!');` 로그를 추가했습니다.
+* 슬래시 명령어가 아닌 다른 상호작용(버튼 클릭 등)일 경우를 대비해 로그를 추가했습니다 (`console.log('Interaction is not a chat input command.');`).
+* 처리 시작 시 어떤 명령어가 수신되었는지 로그를 남기도록 수정했습니다 (`console.log(\`Processing interaction: /${commandName}\`);`).
+* 다른 명령어(`/help`, `/avatar` 등) 처리 시에도 `interaction.reply()` 또는 `interaction.editReply()`를 상황에 맞게 사용하도록 예시를 조금 더 보강했습니다. (Flowise 호출이 없는 명령어는 `deferReply`가 필요 없으므로 바로 `reply`를 사용할 수 있습니다.)
 
-이제 Discord에서 `/chat 질문내용` 형식으로 명령어를 사용하면 AI와 대화하고 메모리도 유지될 것입니다. 다른 명령어들도 `/help`, `/avatar` 등으로 사용할 수 있습
+이제 이 코드를 Cloudtype에 다시 배포하고 Discord에서 슬래시 명령어를 사용했을 때, Cloudtype 로그에 **"Interaction received!"** 와 **"Processing interaction: /명령어이름"** 로그가 출력되는지 확인해 보세요. 로그가 출력된다면 이벤트 자체는 정상적으로 수신되고 있는 것입
