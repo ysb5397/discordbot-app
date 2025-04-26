@@ -122,26 +122,21 @@ client.on(Events.InteractionCreate, async interaction => {
         const userQuestion = interaction.options.getString('question');
         const sessionId = interaction.user.id;
         const attachment = interaction.options.getAttachment('file');
-
-        // *** 사용자 이름 가져오기 ***
-        // globalName (표시 이름) 우선 사용, 없으면 username 사용
         const userName = interaction.user.globalName || interaction.user.username;
-        console.log(`User Name: ${userName}`); // 사용자 이름 로그 추가
+        console.log(`User Name: ${userName}`);
 
         // Flowise API 요청 본문 기본 구조
         const requestBody = {
             question: userQuestion,
             overrideConfig: {
                 sessionId: sessionId,
-                // *** vars 객체에 사용자 이름 추가 ***
                 vars: {
-                    userName: userName // Flowise에서 참조할 변수 이름 (예: userName)
+                    userName: userName
                 }
             }
-            // uploads 필드는 파일이 있을 때만 추가
         };
 
-        // 파일이 첨부되었을 경우 uploads 필드 추가
+        // 파일 첨부 처리
         if (attachment) {
             console.log(`Attachment found: ${attachment.name} (${attachment.contentType}, ${attachment.url})`);
             requestBody.uploads = [
@@ -170,7 +165,8 @@ client.on(Events.InteractionCreate, async interaction => {
             if (!response.ok) {
                 const errorData = await response.text();
                 console.error(`[Session: ${sessionId}] Flowise API Error: ${response.status} ${response.statusText}`, errorData);
-                await interaction.editReply(`죄송합니다, AI 응답 생성 중 오류가 발생했습니다. (Code: ${response.status})`);
+                // *** 오류 발생 시에도 멘션 포함 (선택 사항) ***
+                await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, AI 응답 생성 중 오류가 발생했습니다. (Code: ${response.status})`);
                 return;
             }
 
@@ -178,24 +174,34 @@ client.on(Events.InteractionCreate, async interaction => {
             console.log(`[Session: ${sessionId}] Received from Flowise:`, flowiseResponse);
 
             const replyText = flowiseResponse.text || '죄송합니다, AI로부터 답변을 받지 못했습니다.';
-            await interaction.editReply(replyText);
+
+            // *** 사용자 멘션 추가 ***
+            const mentionString = `<@${interaction.user.id}>`; // 사용자 멘션 문자열 생성
+            const finalReply = `${mentionString} ${replyText}`; // 멘션과 답변 텍스트 결합
+
+            // 지연된 응답 수정하여 최종 답변 전송 (멘션 포함)
+            await interaction.editReply(finalReply);
 
         } catch (error) {
             console.error(`[Session: ${sessionId}] Error processing Flowise request for /chat:`, error);
             try {
-                await interaction.editReply('죄송합니다, 요청 처리 중 오류가 발생했습니다.');
+                // *** 오류 발생 시에도 멘션 포함 (선택 사항) ***
+                await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, 요청 처리 중 오류가 발생했습니다.`);
             } catch (editError) {
                 console.error("Failed to send error reply via editReply:", editError);
             }
         }
     }
     // --- 다른 슬래시 명령어 처리 ---
+    // 다른 명령어들도 필요하다면 멘션을 추가할 수 있습니다.
+    // 예: interaction.editReply(`<@${interaction.user.id}> ${replyContent}`);
     else if (commandName === 'help') {
         const embed = new EmbedBuilder()
             .setTitle("도움말")
             .setColor(0x000000)
             .setDescription('명령어: /chat [질문] [file:첨부파일], /help, /avatar, /server, /call');
         if (!interaction.replied && !interaction.deferred) {
+            // help는 ephemeral이므로 멘션하지 않음
             await interaction.reply({ embeds: [embed], ephemeral: true });
         } else {
              await interaction.editReply({ embeds: [embed] });
@@ -203,6 +209,7 @@ client.on(Events.InteractionCreate, async interaction => {
     }
     else if (commandName === 'avatar') {
          if (!interaction.replied && !interaction.deferred) {
+            // avatar는 ephemeral이므로 멘션하지 않음
             await interaction.reply({ content: interaction.user.displayAvatarURL(), ephemeral: true });
          } else {
              await interaction.editReply({ content: interaction.user.displayAvatarURL() });
@@ -210,16 +217,18 @@ client.on(Events.InteractionCreate, async interaction => {
     }
     else if (commandName === 'server') {
          if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply(`현재 서버 이름: ${interaction.guild.name}\n총 멤버 수: ${interaction.guild.memberCount}`);
+            // server 정보는 멘션 추가 가능
+            await interaction.reply(`<@${interaction.user.id}> 현재 서버 이름: ${interaction.guild.name}\n총 멤버 수: ${interaction.guild.memberCount}`);
          } else {
-             await interaction.editReply(`현재 서버 이름: ${interaction.guild.name}\n총 멤버 수: ${interaction.guild.memberCount}`);
+             await interaction.editReply(`<@${interaction.user.id}> 현재 서버 이름: ${interaction.guild.name}\n총 멤버 수: ${interaction.guild.memberCount}`);
          }
     }
      else if (commandName === 'call') {
          if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply('!callback');
+            // call 응답에도 멘션 추가 가능
+            await interaction.reply(`<@${interaction.user.id}> !callback`);
          } else {
-             await interaction.editReply('!callback');
+             await interaction.editReply(`<@${interaction.user.id}> !callback`);
          }
     }
 });
@@ -227,12 +236,10 @@ client.on(Events.InteractionCreate, async interaction => {
 
 // **주요 변경점:**
 
-// 1.  **사용자 이름 가져오기:** `interaction.user.globalName || interaction.user.username` 코드를 추가하여 명령어를 사용한 유저의 이름을 `userName` 변수에 저장합니다.
-// 2.  **`overrideConfig.vars` 추가:** Flowise API 요청 본문(`requestBody`)의 `overrideConfig` 안에 `vars` 객체를 추가하고, 그 안에 `{ userName: userName }` 형태로 사용자 이름을 포함시켰습니다.
+// * `/chat` 명령어 처리 로직에서 Flowise로부터 응답(`replyText`)을 받은 후, `const mentionString = \`<@${interaction.user.id}>\`;` 코드로 사용자 멘션 문자열을 만듭니다.
+// * `const finalReply = \`${mentionString} ${replyText}\`;` 코드로 멘션과 응답 텍스트를 합칩니다.
+// * `await interaction.editReply(finalReply);` 코드로 멘션이 포함된 최종 답변을 전송합니다.
+// * 오류 발생 시 응답에도 멘션을 포함하도록 수정했습니다 (선택 사항).
+// * 다른 명령어(`/server`, `/call`)에도 예시로 멘션을 추가했습니다. `/help`, `/avatar`는 보통 사용자에게만 보이는 `ephemeral` 응답이라 멘션을 넣지 않았습니다. 필요에 따라 다른 명령어에도 멘션을 추가하거나 제거할 수 있습니다.
 
-// **이제 어떻게 될까요?**
-
-// * 이 수정된 코드를 배포하면, Discord 봇은 `/chat` 명령어가 사용될 때마다 해당 사용자의 이름을 알아내어 Flowise API 요청에 `userName`이라는 변수 이름으로 함께 보냅니다.
-// * **하지만 Flowise 챗봇이 이 정보를 실제로 사용하게 하려면 (예: "안녕하세요, [사용자 이름]님!")**, **Flowise 캔버스에서 `Tool Agent`의 시스템 메시지나 프롬프트를 수정**하여 `overrideConfig.vars`로 전달된 `userName` 변수를 인식하고 활용하도록 만들어야 합니다. 단순히 Discord 봇 코드만 수정한다고 해서 Flowise 챗봇이 자동으로 이름을 부르지는 않습니다.
-
-// 우선 이 코드를 적용하여 사용자 이름이 Flowise로 잘 전달되는지 확인해 보
+// 이제 이 코드를 배포하시면 `/chat` 명령어를 사용했을 때 봇이 사용자를 멘션하며 답변할 것입
