@@ -211,7 +211,7 @@ client.on(Events.InteractionCreate, async interaction => {
     else if (commandName === 'help') {
         const embed = new EmbedBuilder()
             .setTitle("도움말")
-            .setColor(0x000000)
+            .setColor(0xFFD700)
             .setDescription('명령어: /chat [질문] [file:첨부파일], /help, /avatar, /server, /call');
         if (!interaction.replied && !interaction.deferred) {
             await interaction.reply({ embeds: [embed], ephemeral: true });
