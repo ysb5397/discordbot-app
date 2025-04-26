@@ -182,8 +182,8 @@ client.on(Events.InteractionCreate, async interaction => {
                 const textEmbed = new EmbedBuilder()
                     // .setTitle('AI 응답') // 제목은 선택 사항
                     .setDescription(replyText.length > 4096 ? replyText.substring(0, 4093) + '...' : replyText) // Embed Description 최대 길이 제한 고려
-                    .setColor(0x00FA9A); // 하늘색에 가까운 연두색 (원하는 색상 코드로 변경 가능)
-                    setTimestamp() // 메시지 시간 표시 (선택 사항)
+                    .setColor(0x00FA9A) // 하늘색에 가까운 연두색 (원하는 색상 코드로 변경 가능)
+                    .setTimestamp() // 메시지 시간 표시 (선택 사항)
                     .setFooter({ text: '해당 결과는 AI에 의해 생성되었으며, 항상 정확한 결과를 도출하지 않습니다.' }); // 꼬리말 (선택 사항)
                 replyEmbeds.push(textEmbed);
             } else if (!imageUrl && !replyText) {
