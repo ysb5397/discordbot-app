@@ -1,5 +1,5 @@
 // discord.js v14 이상 필요
-const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder, InteractionType, Events, AttachmentBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder, InteractionType, Events } = require('discord.js'); // AttachmentBuilder 제거
 // node-fetch v2 설치 필요 (npm install node-fetch@2)
 const fetch = require('node-fetch');
 const dotenv = require('dotenv');
@@ -38,11 +38,8 @@ const commands = [
         .addStringOption(option =>
             option.setName('question')
                 .setDescription('AI에게 할 질문 내용')
-                .setRequired(true))
-        .addAttachmentOption(option =>
-            option.setName('file')
-                .setDescription('AI에게 보여줄 파일을 첨부하세요 (이미지, 코드 등).')
-                .setRequired(false)),
+                .setRequired(true)), // 텍스트 질문만 받음
+    // *** 파일 첨부 옵션 제거됨 ***
     // --- 다른 명령어들 ---
     new SlashCommandBuilder().setName('help').setDescription('봇 도움말을 표시합니다.'),
     new SlashCommandBuilder().setName('avatar').setDescription('당신의 아바타 URL을 보여줍니다.'),
@@ -121,11 +118,12 @@ client.on(Events.InteractionCreate, async interaction => {
 
         const userQuestion = interaction.options.getString('question');
         const sessionId = interaction.user.id;
-        const attachment = interaction.options.getAttachment('file');
         const userName = interaction.user.globalName || interaction.user.username;
         console.log(`User Name: ${userName}`);
 
-        // Flowise API 요청 본문 기본 구조
+        // *** 파일 첨부 관련 로직 제거됨 ***
+
+        // Flowise API 요청 본문 (uploads 필드 없음)
         const requestBody = {
             question: userQuestion,
             overrideConfig: {
@@ -135,19 +133,6 @@ client.on(Events.InteractionCreate, async interaction => {
                 }
             }
         };
-
-        // 파일 첨부 처리
-        if (attachment) {
-            console.log(`Attachment found: ${attachment.name} (${attachment.contentType}, ${attachment.url})`);
-            requestBody.uploads = [
-                {
-                    type: 'url',
-                    name: attachment.name,
-                    mime: attachment.contentType || 'application/octet-stream',
-                    data: attachment.url
-                }
-            ];
-        }
 
         console.log(`[Session: ${sessionId}] Sending to Flowise:`, JSON.stringify(requestBody, null, 2));
 
@@ -165,7 +150,6 @@ client.on(Events.InteractionCreate, async interaction => {
             if (!response.ok) {
                 const errorData = await response.text();
                 console.error(`[Session: ${sessionId}] Flowise API Error: ${response.status} ${response.statusText}`, errorData);
-                // *** 오류 발생 시에도 멘션 포함 (선택 사항) ***
                 await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, AI 응답 생성 중 오류가 발생했습니다. (Code: ${response.status})`);
                 return;
             }
@@ -174,18 +158,13 @@ client.on(Events.InteractionCreate, async interaction => {
             console.log(`[Session: ${sessionId}] Received from Flowise:`, flowiseResponse);
 
             const replyText = flowiseResponse.text || '죄송합니다, AI로부터 답변을 받지 못했습니다.';
-
-            // *** 사용자 멘션 추가 ***
-            const mentionString = `<@${interaction.user.id}>`; // 사용자 멘션 문자열 생성
-            const finalReply = `${mentionString} ${replyText}`; // 멘션과 답변 텍스트 결합
-
-            // 지연된 응답 수정하여 최종 답변 전송 (멘션 포함)
+            const mentionString = `<@${interaction.user.id}>`;
+            const finalReply = `${mentionString} ${replyText}`;
             await interaction.editReply(finalReply);
 
         } catch (error) {
             console.error(`[Session: ${sessionId}] Error processing Flowise request for /chat:`, error);
             try {
-                // *** 오류 발생 시에도 멘션 포함 (선택 사항) ***
                 await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, 요청 처리 중 오류가 발생했습니다.`);
             } catch (editError) {
                 console.error("Failed to send error reply via editReply:", editError);
@@ -193,23 +172,21 @@ client.on(Events.InteractionCreate, async interaction => {
         }
     }
     // --- 다른 슬래시 명령어 처리 ---
-    // 다른 명령어들도 필요하다면 멘션을 추가할 수 있습니다.
-    // 예: interaction.editReply(`<@${interaction.user.id}> ${replyContent}`);
     else if (commandName === 'help') {
         const embed = new EmbedBuilder()
             .setTitle("도움말")
             .setColor(0x000000)
-            .setDescription('명령어: /chat [질문] [file:첨부파일], /help, /avatar, /server, /call');
+            // *** 파일 첨부 안내 제거됨 ***
+            .setDescription('명령어: /chat [질문], /help, /avatar, /server, /call');
         if (!interaction.replied && !interaction.deferred) {
-            // help는 ephemeral이므로 멘션하지 않음
             await interaction.reply({ embeds: [embed], ephemeral: true });
         } else {
              await interaction.editReply({ embeds: [embed] });
         }
     }
+    // ... (avatar, server, call 명령어 처리 코드는 동일) ...
     else if (commandName === 'avatar') {
          if (!interaction.replied && !interaction.deferred) {
-            // avatar는 ephemeral이므로 멘션하지 않음
             await interaction.reply({ content: interaction.user.displayAvatarURL(), ephemeral: true });
          } else {
              await interaction.editReply({ content: interaction.user.displayAvatarURL() });
@@ -217,7 +194,6 @@ client.on(Events.InteractionCreate, async interaction => {
     }
     else if (commandName === 'server') {
          if (!interaction.replied && !interaction.deferred) {
-            // server 정보는 멘션 추가 가능
             await interaction.reply(`<@${interaction.user.id}> 현재 서버 이름: ${interaction.guild.name}\n총 멤버 수: ${interaction.guild.memberCount}`);
          } else {
              await interaction.editReply(`<@${interaction.user.id}> 현재 서버 이름: ${interaction.guild.name}\n총 멤버 수: ${interaction.guild.memberCount}`);
@@ -225,7 +201,6 @@ client.on(Events.InteractionCreate, async interaction => {
     }
      else if (commandName === 'call') {
          if (!interaction.replied && !interaction.deferred) {
-            // call 응답에도 멘션 추가 가능
             await interaction.reply(`<@${interaction.user.id}> !callback`);
          } else {
              await interaction.editReply(`<@${interaction.user.id}> !callback`);
@@ -234,12 +209,21 @@ client.on(Events.InteractionCreate, async interaction => {
 });
 // ```
 
-// **주요 변경점:**
+// **설명:**
 
-// * `/chat` 명령어 처리 로직에서 Flowise로부터 응답(`replyText`)을 받은 후, `const mentionString = \`<@${interaction.user.id}>\`;` 코드로 사용자 멘션 문자열을 만듭니다.
-// * `const finalReply = \`${mentionString} ${replyText}\`;` 코드로 멘션과 응답 텍스트를 합칩니다.
-// * `await interaction.editReply(finalReply);` 코드로 멘션이 포함된 최종 답변을 전송합니다.
-// * 오류 발생 시 응답에도 멘션을 포함하도록 수정했습니다 (선택 사항).
-// * 다른 명령어(`/server`, `/call`)에도 예시로 멘션을 추가했습니다. `/help`, `/avatar`는 보통 사용자에게만 보이는 `ephemeral` 응답이라 멘션을 넣지 않았습니다. 필요에 따라 다른 명령어에도 멘션을 추가하거나 제거할 수 있습니다.
+// * `/chat` 명령어 정의에서 `.addAttachmentOption()` 부분이 삭제되었습니다.
+// * `interactionCreate` 핸들러 내에서 `interaction.options.getAttachment('file')` 호출 및 관련 `if (attachment)` 블록이 삭제되었습니다. Flowise 요청 본문(`requestBody`)에 `uploads` 필드를 추가하는 로직이 없어졌습니다.
+// * `/help` 명령어 설명에서 `[file:첨부파일]` 부분이 삭제되었습니다.
 
-// 이제 이 코드를 배포하시면 `/chat` 명령어를 사용했을 때 봇이 사용자를 멘션하며 답변할 것입
+// 이제 이 코드를 배포하시면 `/chat` 명령어는 텍스트 질문만 받게 됩니다. "명령어 전송 중..." 메시지가 계속 뜨는 현상이 파일 처리 로직 때문이었다면 이 수정으로 해결될 수 있습니다.
+
+// **검색 기능 강화에 대하여:**
+
+// Discord 봇 코드에서 파일 처리 부분을 제거했지만, 이것이 Flowise의 **검색 기능 자체를 강화하는 것은 아닙니다.** 검색 기능(PDF 검색 또는 웹 검색)의 성능을 개선하려면 여전히 **Flowise 캔버스**에서 관련 설정을 조정해야 합니다. 예를 들면:
+
+// * **`Retriever Tool` 설명 개선:** 에이전트가 PDF 검색을 더 잘 이해하도록 설명을 더 명확하고 구체적으로 작성합니다.
+// * **`Pinecone` 노드 설정:** `topK` (가져올 결과 수) 값을 조정하거나, MMR(Max Marginal Relevance) 검색 옵션을 사용해 볼 수 있습니다.
+// * **`Google Custom Search API` 노드 설정:** 검색 결과 수를 조정하거나, 특정 사이트만 검색하도록 설정할 수 있습니다.
+// * **`Tool Agent` 시스템 메시지:** 어떤 상황에 어떤 검색 도구를 우선적으로 사용해야 할지 더 명확하게 지시합니다.
+
+// 우선 이 수정된 코드를 배포하여 로딩 지연 문제가 해결되는지 확인해 보시고, 그 다음에 Flowise 쪽에서 검색 기능 강화를 위한 설정을 조정하는 단계를 진행하시면 좋겠습
