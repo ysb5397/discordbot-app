@@ -235,7 +235,8 @@ client.on(Events.InteractionCreate, async interaction => {
                     sessionId: sessionId,
                     vars: { bot_name: botName },
                     flowise_request_type: 'request_plan' // Flowise에 계획 요청임을 알림
-                }
+                },
+                streaming: true // <-- 이 줄 추가!
             };
 
             console.log(`[/deep_research Session: ${sessionId}] Sending PLAN request to Flowise:`, JSON.stringify(requestBody, null, 2));
