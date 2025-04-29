@@ -15,7 +15,7 @@ dotenv.config(); // .env 파일 로드
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        // GatewayIntentBits.GuildMessages, // 메시지 기반 명령어가 없다면 제거 가능
+        GatewayIntentBits.GuildMessages, // 메시지 기반 명령어가 없다면 제거 가능
         // GatewayIntentBits.MessageContent, // 메시지 기반 명령어가 없다면 제거 가능
         // GatewayIntentBits.GuildScheduledEvents, // 이벤트 관련 기능에 필요할 수 있음
         // // *** 버튼 상호작용을 위해 수정 ***
