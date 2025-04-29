@@ -11,14 +11,14 @@ const fetch = require('node-fetch');
 const dotenv = require('dotenv');
 dotenv.config(); // .env 파일 로드
 
-// v14 Intents 사용 - *** 원래 Intent 목록 사용 (GuildInteractions 철자 확인) ***
+// v14 Intents 사용 - *** 잘못된 GuildInteractions Intent 제거 ***
 const client = new Client({
     intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,      // 메시지 관련 Intent
-        GatewayIntentBits.MessageContent,     // 메시지 내용 접근 Intent (Privileged)
-        GatewayIntentBits.GuildScheduledEvents, // 서버 이벤트 관련 Intent
-        GatewayIntentBits.GuildInteractions   // 상호작용 관련 Intent (철자 확인!)
+        GatewayIntentBits.Guilds,             // 서버 관련 기본 이벤트 (상호작용 포함)
+        GatewayIntentBits.GuildMessages,      // 메시지 관련 Intent (필요시)
+        GatewayIntentBits.MessageContent,     // 메시지 내용 접근 Intent (Privileged, 필요시)
+        GatewayIntentBits.GuildScheduledEvents  // 서버 이벤트 관련 Intent (필요시)
+        // GatewayIntentBits.GuildInteractions <-- 이 줄 제거!
     ]
 });
 
@@ -406,13 +406,12 @@ client.on('messageCreate', async msg => {
 */
 // ```
 
-// **실행:**
+// **실행 및 확인:**
 
-// 이제 이 수정된 코드를 사용하여 봇을 다시 시작해보세요. (`node index.js` 또는 `npm run dev` 등)
+// 1.  이 수정된 코드로 `index.js` 파일을 업데이트합니다.
+// 2.  봇을 다시 시작합니다 (`node index.js`).
+// 3.  오류 없이 봇이 정상적으로 로그인되는지 확인합니다.
 
-// **예상 결과:**
+// 만약 이 코드로 봇이 **정상적으로 시작된다면**, `BitFieldInvalid` 오류는 해결된 것입니다. 이제 `/deep_research` 명령어를 사용했을 때 Flowise 워크플로우가 계획 제안 메시지를 올바르게 반환하고, 버튼 상호작용이 제대로 작동하는지 테스트해볼 수 있습니다. (Flowise 워크플로우 수정이 필요할 수 있다는 점을 기억하세요.)
 
-// * **오류 없이 시작:** 의존성 문제가 해결되었다면, `BitFieldInvalid` 오류 없이 봇이 정상적으로 로그인하고 "Logged in as..." 메시지가 출력되어야 합니다.
-// * **오류 지속:** 만약 이 과정을 거쳤음에도 불구하고 동일한 오류가 계속 발생한다면, 문제는 Node.js 버전(v22.4.1)과 `discord.js` v14 간의 호환성 문제일 가능성이 매우 높아집니다. 이 경우, 가능하다면 Node.js 버전을 LTS 버전(예: v20.x)으로 다운그레이드하여 테스트해보는 것이 좋습니다.
-
-// 결과를 알려주시면 다음 단계를 함께 고민해보겠습
+// 만약 이 코드로도 **여전히 오류가 발생한다면**, 정말 예상치 못한 환경 문제나 라이브러리 설치 문제일 수 있습니다. 그 경우에는 프로젝트 폴더 전체를 새로 만들고 필요한 파일만 복사하여 처음부터 다시 설정해보는 극단적인 방법까지 고려해야 할 수도 있습
