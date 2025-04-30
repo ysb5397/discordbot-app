@@ -291,6 +291,279 @@ client.on(Events.InteractionCreate, async interaction => {
                  try { await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, 리서치 계획 요청 중 오류가 발생했습니다.`); } catch (e) { console.error("Edit reply failed:", e); }
             }
         }
+
+        // --- /create_event 명령어 처리 ---
+        else if (commandName === 'create_event') {
+            // 사용자 권한 확인
+            if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.ManageEvents)) {
+                 return interaction.reply({ content: '이 명령어를 사용하려면 "이벤트 관리" 권한이 필요합니다.', ephemeral: true });
+            }
+            // 봇 권한 확인
+            if (!interaction.guild.members.me?.permissions.has(PermissionsBitField.Flags.ManageEvents)) {
+                return interaction.reply({ content: '봇이 이벤트를 생성할 권한이 없습니다. 서버 관리자에게 문의하세요.', ephemeral: true });
+            }
+    
+            try {
+                await interaction.deferReply({ ephemeral: true });
+    
+                // 옵션 값 가져오기
+                const eventName = interaction.options.getString('name');
+                const eventDescription = interaction.options.getString('description');
+                const startTimeString = interaction.options.getString('start_time');
+                const eventChannel = interaction.options.getChannel('channel');
+                const endTimeString = interaction.options.getString('end_time');
+    
+                // 시작 시간 처리 (KST 입력 -> UTC 변환)
+                let scheduledStartTime;
+                try {
+                    scheduledStartTime = parseKSTDateTime(startTimeString);
+                    if (scheduledStartTime < new Date()) {
+                        return interaction.editReply('오류: 이벤트 시작 시간은 현재 시간 이후여야 합니다.');
+                    }
+                    console.log(`[Schedule Create] Parsed start time: ${startTimeString} KST -> ${scheduledStartTime.toISOString()} UTC`);
+                } catch (e) {
+                    console.error("Start Date parsing error:", e);
+                    return interaction.editReply(`오류: 시작 시간 형식이 잘못되었습니다. 'YYYY-MM-DD HH:MM' 형식으로 입력해주세요. (예: '2025-05-10 20:00')`);
+                }
+    
+                // 종료 시간 처리
+                let scheduledEndTime = null;
+                if (endTimeString) {
+                    try {
+                        scheduledEndTime = parseKSTDateTime(endTimeString);
+                        if (scheduledEndTime <= scheduledStartTime) {
+                            return interaction.editReply('오류: 이벤트 종료 시간은 시작 시간 이후여야 합니다.');
+                        }
+                        console.log(`[Schedule Create] Parsed end time: ${endTimeString} KST -> ${scheduledEndTime.toISOString()} UTC`);
+                    } catch (e) {
+                        console.error("End Date parsing error:", e);
+                        return interaction.editReply(`오류: 종료 시간 형식이 잘못되었습니다. 'YYYY-MM-DD HH:MM' 형식으로 입력해주세요.`);
+                    }
+                }
+    
+                // 이벤트 생성 옵션 구성
+                const eventOptions = {
+                    name: eventName,
+                    description: eventDescription,
+                    scheduledStartTime: scheduledStartTime, // UTC 기준 Date 객체
+                    privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
+                    entityType: null,
+                };
+    
+                // 채널 타입에 따라 entityType 및 관련 정보 설정
+                if (eventChannel.type === ChannelType.GuildStageVoice) {
+                    eventOptions.entityType = GuildScheduledEventEntityType.StageInstance;
+                    eventOptions.channel = eventChannel.id;
+                    if (scheduledEndTime) eventOptions.scheduledEndTime = scheduledEndTime;
+                } else if (eventChannel.type === ChannelType.GuildVoice) {
+                    eventOptions.entityType = GuildScheduledEventEntityType.Voice;
+                    eventOptions.channel = eventChannel.id;
+                    if (scheduledEndTime) eventOptions.scheduledEndTime = scheduledEndTime;
+                } else if (eventChannel.type === ChannelType.GuildText) {
+                    eventOptions.entityType = GuildScheduledEventEntityType.External;
+                    eventOptions.entityMetadata = { location: `#${eventChannel.name} 채널에서 진행` };
+                    // External 타입일 경우 종료 시간 필수
+                    if (!scheduledEndTime) {
+                        return interaction.editReply('오류: 텍스트 채널을 이벤트 장소로 지정할 경우, 반드시 종료 시간(`end_time` 옵션)을 입력해야 합니다.');
+                    }
+                    eventOptions.scheduledEndTime = scheduledEndTime;
+                } else {
+                    return interaction.editReply('오류: 지원하지 않는 채널 타입입니다.');
+                }
+    
+                // 이벤트 생성 시도
+                const createdEvent = await interaction.guild.scheduledEvents.create(eventOptions);
+    
+                console.log(`Event created: ${createdEvent.name} (ID: ${createdEvent.id})`);
+                await interaction.editReply(`✅ 이벤트 "${createdEvent.name}"이(가) 성공적으로 생성되었습니다! (시작: ${startTimeString} KST${endTimeString ? `, 종료: ${endTimeString} KST` : ''})`);
+    
+            } catch (error) { // 이벤트 생성 중 오류 발생
+                console.error('Error creating scheduled event:', error);
+                if (error.code === 50035 && error.message.includes('scheduled_end_time')) {
+                     await interaction.editReply('❌ 이벤트를 생성하는 중 오류가 발생했습니다. 텍스트 채널을 선택한 경우 종료 시간이 필요합니다.');
+                } else {
+                     await interaction.editReply('❌ 이벤트를 생성하는 중 오류가 발생했습니다. 입력값, 봇 권한, 채널 설정을 확인해주세요.');
+                }
+            }
+        }
+        // --- /edit_event 명령어 처리 ---
+        else if (commandName === 'edit_event') {
+            // 권한 확인
+            if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.ManageEvents)) {
+                 return interaction.reply({ content: '이 명령어를 사용하려면 "이벤트 관리" 권한이 필요합니다.', ephemeral: true });
+            }
+            if (!interaction.guild.members.me?.permissions.has(PermissionsBitField.Flags.ManageEvents)) {
+                return interaction.reply({ content: '봇이 이벤트를 수정할 권한이 없습니다. 서버 관리자에게 문의하세요.', ephemeral: true });
+            }
+    
+            try {
+                await interaction.deferReply({ ephemeral: true });
+    
+                const currentName = interaction.options.getString('current_name');
+                const newName = interaction.options.getString('new_name');
+                const newDescription = interaction.options.getString('new_description');
+                const newStartTimeString = interaction.options.getString('new_start_time');
+                const newChannel = interaction.options.getChannel('new_channel');
+                const newEndTimeString = interaction.options.getString('new_end_time');
+    
+                // 이름으로 이벤트 찾기 (중복 가능성)
+                const events = await interaction.guild.scheduledEvents.fetch();
+                const targetEvents = events.filter(event => event.name === currentName);
+    
+                if (targetEvents.size === 0) {
+                    return interaction.editReply(`❌ 이름이 "${currentName}"인 이벤트를 찾을 수 없습니다.`);
+                }
+                if (targetEvents.size > 1) {
+                    return interaction.editReply(`❌ 이름이 "${currentName}"인 이벤트가 여러 개 있습니다. 더 구체적인 이름이나 ID로 수정해주세요.`);
+                }
+    
+                const eventToEdit = targetEvents.first();
+                const editOptions = {}; // 수정할 옵션만 담을 객체
+    
+                // 각 옵션이 입력되었는지 확인하고 editOptions에 추가
+                if (newName) editOptions.name = newName;
+                if (newDescription) editOptions.description = newDescription;
+    
+                // 시작 시간 수정 처리
+                if (newStartTimeString) {
+                    try {
+                        editOptions.scheduledStartTime = parseKSTDateTime(newStartTimeString);
+                        if (editOptions.scheduledStartTime < new Date()) {
+                            return interaction.editReply('오류: 새 시작 시간은 현재 시간 이후여야 합니다.');
+                        }
+                        console.log(`[Schedule Edit] Parsed new start time: ${newStartTimeString} KST -> ${editOptions.scheduledStartTime.toISOString()} UTC`);
+                    } catch (e) {
+                        console.error("New Start Date parsing error:", e);
+                        return interaction.editReply(`오류: 새 시작 시간 형식이 잘못되었습니다. 'YYYY-MM-DD HH:MM' 형식으로 입력해주세요.`);
+                    }
+                }
+    
+                // 종료 시간 수정 처리
+                let newScheduledEndTime = null;
+                if (newEndTimeString) {
+                    try {
+                        newScheduledEndTime = parseKSTDateTime(newEndTimeString);
+                        const startTimeToCheck = editOptions.scheduledStartTime || eventToEdit.scheduledStartAt;
+                        if (newScheduledEndTime <= startTimeToCheck) {
+                            return interaction.editReply('오류: 새 종료 시간은 시작 시간 이후여야 합니다.');
+                        }
+                        editOptions.scheduledEndTime = newScheduledEndTime; // 수정 옵션에 추가
+                        console.log(`[Schedule Edit] Parsed new end time: ${newEndTimeString} KST -> ${editOptions.scheduledEndTime.toISOString()} UTC`);
+                    } catch (e) {
+                        console.error("New End Date parsing error:", e);
+                        return interaction.editReply(`오류: 새 종료 시간 형식이 잘못되었습니다. 'YYYY-MM-DD HH:MM' 형식으로 입력해주세요.`);
+                    }
+                }
+    
+                // 채널/위치 수정 처리
+                if (newChannel) {
+                    if (newChannel.type === ChannelType.GuildStageVoice) {
+                        editOptions.entityType = GuildScheduledEventEntityType.StageInstance;
+                        editOptions.channel = newChannel.id;
+                        editOptions.entityMetadata = null;
+                    } else if (newChannel.type === ChannelType.GuildVoice) {
+                        editOptions.entityType = GuildScheduledEventEntityType.Voice;
+                        editOptions.channel = newChannel.id;
+                        editOptions.entityMetadata = null;
+                    } else if (newChannel.type === ChannelType.GuildText) {
+                        editOptions.entityType = GuildScheduledEventEntityType.External;
+                        editOptions.entityMetadata = { location: `#${newChannel.name} 채널에서 진행` };
+                        editOptions.channel = null;
+                        // 외부 이벤트로 변경 시 종료 시간 확인 (수정 옵션 또는 기존 이벤트에서)
+                        const endTimeToCheck = editOptions.scheduledEndTime || eventToEdit.scheduledEndAt;
+                        if (!endTimeToCheck) {
+                            return interaction.editReply('오류: 이벤트 장소를 텍스트 채널(외부)로 변경하려면 종료 시간이 필요합니다. `new_end_time` 옵션도 함께 입력해주세요.');
+                        }
+                        // 종료 시간이 이미 설정되어 있다면 editOptions에 포함됨
+                    } else {
+                        return interaction.editReply('오류: 지원하지 않는 채널 타입입니다.');
+                    }
+                } else if (eventToEdit.entityType === GuildScheduledEventEntityType.External) {
+                     // 외부 이벤트인데 채널 변경 없이 종료 시간도 수정 안 할 경우, 기존 종료 시간은 있는지 확인
+                     const endTimeToCheck = editOptions.scheduledEndTime || eventToEdit.scheduledEndAt;
+                     if (!endTimeToCheck) {
+                         return interaction.editReply('오류: 외부 이벤트에는 종료 시간이 필요합니다. `new_end_time` 옵션을 입력해주세요.');
+                     }
+                     // editOptions에 종료 시간이 없다면, 기존 종료 시간을 유지해야 함 (edit 호출 시 자동으로 유지됨)
+                }
+    
+    
+                // 수정할 내용이 있는지 확인
+                if (Object.keys(editOptions).length === 0) {
+                    return interaction.editReply('수정할 내용을 하나 이상 입력해주세요.');
+                }
+    
+                // 이벤트 수정 시도
+                const updatedEvent = await eventToEdit.edit(editOptions);
+    
+                console.log(`Event updated: ${updatedEvent.name} (ID: ${updatedEvent.id})`);
+                await interaction.editReply(`✅ 이벤트 "${currentName}"이(가) 성공적으로 수정되었습니다! (새 이름: ${updatedEvent.name})`);
+    
+            } catch (error) { // 이벤트 수정 중 오류 발생
+                console.error('Error editing scheduled event:', error);
+                if (error.code === 50035) { // Invalid Form Body
+                     if (error.message.includes('scheduled_end_time')) {
+                         await interaction.editReply('❌ 이벤트 수정 중 오류: 외부 이벤트에는 종료 시간이 필요합니다.');
+                     } else if (error.message.includes('scheduled_start_time')) {
+                         await interaction.editReply('❌ 이벤트 수정 중 오류: 시작 시간은 현재 시간 이후여야 합니다.');
+                     } else {
+                        await interaction.editReply('❌ 이벤트 수정 중 오류가 발생했습니다. 입력값을 확인해주세요.');
+                     }
+                } else if (error.code === 50013) { // Missing Permissions
+                     await interaction.editReply('❌ 이벤트 수정 중 오류: 봇이 이벤트를 수정할 권한이 없습니다.');
+                }
+                else {
+                    await interaction.editReply('❌ 이벤트를 수정하는 중 오류가 발생했습니다. 입력값이나 봇 권한을 확인해주세요.');
+                }
+            }
+        }
+        // --- /delete_event 명령어 처리 ---
+        else if (commandName === 'delete_event') {
+            // 권한 확인
+            if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.ManageEvents)) {
+                 return interaction.reply({ content: '이 명령어를 사용하려면 "이벤트 관리" 권한이 필요합니다.', ephemeral: true });
+            }
+            if (!interaction.guild.members.me?.permissions.has(PermissionsBitField.Flags.ManageEvents)) {
+                return interaction.reply({ content: '봇이 이벤트를 삭제할 권한이 없습니다. 서버 관리자에게 문의하세요.', ephemeral: true });
+            }
+    
+            try {
+                await interaction.deferReply({ ephemeral: true });
+    
+                const eventName = interaction.options.getString('name');
+    
+                // 이름으로 이벤트 찾기
+                const events = await interaction.guild.scheduledEvents.fetch();
+                const targetEvents = events.filter(event => event.name === eventName);
+    
+                if (targetEvents.size === 0) {
+                    return interaction.editReply(`❌ 이름이 "${eventName}"인 이벤트를 찾을 수 없습니다.`);
+                }
+                if (targetEvents.size > 1) {
+                     const eventList = targetEvents.map((event, id) => ` - ${event.name} (ID: ${id})`).join('\n');
+                    return interaction.editReply(`❌ 이름이 "${eventName}"인 이벤트가 여러 개 발견되었습니다. 삭제할 이벤트의 ID를 사용하여 다시 시도해주세요.\n발견된 이벤트:\n${eventList}\n(ID 기반 삭제는 아직 지원되지 않습니다.)`);
+                }
+    
+                const eventToDelete = targetEvents.first();
+    
+                // 이벤트 삭제 시도
+                await interaction.guild.scheduledEvents.delete(eventToDelete.id);
+    
+                console.log(`Event deleted: ${eventToDelete.name} (ID: ${eventToDelete.id})`);
+                await interaction.editReply(`✅ 이벤트 "${eventName}"이(가) 성공적으로 삭제되었습니다!`);
+    
+            } catch (error) { // 이벤트 삭제 중 오류 발생
+                console.error('Error deleting scheduled event:', error);
+                if (error.code === 50013) { // Missing Permissions
+                     await interaction.editReply('❌ 이벤트 삭제 중 오류: 봇이 이벤트를 삭제할 권한이 없습니다.');
+                } else if (error.code === 10062) { // Unknown Interaction or Event
+                     await interaction.editReply('❌ 이벤트 삭제 중 오류: 해당 이벤트를 찾을 수 없거나 이미 삭제되었습니다.');
+                }
+                else {
+                    await interaction.editReply('❌ 이벤트를 삭제하는 중 오류가 발생했습니다.');
+                }
+            }
+        }
         // --- 다른 슬래시 명령어 처리 ---
         else if (commandName === 'help') {
             const embed = new EmbedBuilder().setTitle("도움말").setColor(0xFFD700).setDescription('명령어: /chat [질문] [file:첨부파일], /deep_research [질문], /help, /avatar, /server, /call, /create_event [옵션들], /edit_event [옵션들], /delete_event [이름]');
