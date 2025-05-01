@@ -51,9 +51,7 @@ function parseKSTDateTime(dateTimeString) {
     const day = parseInt(dateParts[3]);
     const hourKST = parseInt(dateParts[4]);
     const minute = parseInt(dateParts[5]);
-    if (hourKST < 9) {
-        day++;
-    }
+    
     const utcTimestamp = Date.UTC(year, month, day, hourKST - 9, minute);
     const dateObject = new Date(utcTimestamp);
     if (isNaN(dateObject.getTime())) throw new Error('Invalid date calculation');
