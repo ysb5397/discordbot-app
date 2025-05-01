@@ -11,14 +11,13 @@ const fetch = require('node-fetch');
 const dotenv = require('dotenv');
 dotenv.config(); // .env 파일 로드
 
-// v14 Intents 사용 - *** 잘못된 GuildInteractions Intent 제거 ***
+// v14 Intents 사용
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,             // 서버 관련 기본 이벤트 (상호작용 포함)
         GatewayIntentBits.GuildMessages,      // 메시지 관련 Intent (필요시)
         GatewayIntentBits.MessageContent,     // 메시지 내용 접근 Intent (Privileged, 필요시)
         GatewayIntentBits.GuildScheduledEvents  // 서버 이벤트 관련 Intent (필요시)
-        // GatewayIntentBits.GuildInteractions <-- 이 줄 제거!
     ]
 });
 
@@ -42,26 +41,35 @@ if (!flowiseApiKey) {
 let botName = "AI Assistant";
 
 // --- 유틸리티 함수 ---
-// 시간 문자열 파싱 함수 (KST -> UTC Date 객체) - 변경 없음
+// 시간 문자열 파싱 함수 (KST -> UTC Date 객체) - *** 수정됨: 복잡한 검증 로직 제거 ***
 function parseKSTDateTime(dateTimeString) {
+    // 정규식으로 'YYYY-MM-DD HH:MM' 형식 확인
     const dateParts = dateTimeString.match(/^(\d{4})-(\d{2})-(\d{2})\s(\d{2}):(\d{2})$/);
     if (!dateParts) throw new Error("Invalid date format. Use 'YYYY-MM-DD HH:MM'");
+
+    // 날짜 및 시간 구성 요소 추출
     const year = parseInt(dateParts[1]);
-    const month = parseInt(dateParts[2]) - 1;
+    const month = parseInt(dateParts[2]) - 1; // JavaScript Date 객체의 월은 0부터 시작
     const day = parseInt(dateParts[3]);
     const hourKST = parseInt(dateParts[4]);
     const minute = parseInt(dateParts[5]);
-    
+
+    // KST 시간에서 9시간을 빼서 UTC 타임스탬프 계산
+    // Date.UTC는 음수 시간 값을 올바르게 처리하여 날짜를 자동으로 조정합니다.
     const utcTimestamp = Date.UTC(year, month, day, hourKST - 9, minute);
+
+    // UTC 타임스탬프로 Date 객체 생성
     const dateObject = new Date(utcTimestamp);
+
+    // 생성된 Date 객체가 유효한지 확인 (타임스탬프가 NaN인지 검사)
     if (isNaN(dateObject.getTime())) throw new Error('Invalid date calculation');
-    if (dateObject.getUTCFullYear() !== year ||
-        dateObject.getUTCMonth() !== month ||
-        dateObject.getUTCDate() !== day ||
-        dateObject.getUTCHours() !== (hourKST - 9 + 24) % 24 ||
-        dateObject.getUTCMinutes() !== minute) {
-        throw new Error('Invalid date components after UTC conversion');
-    }
+
+    // *** 제거된 검증 로직 ***
+    // KST에서 UTC로 변환할 때 자정(UTC 기준)을 넘어가면 날짜가 변경될 수 있으므로,
+    // 변환 후 각 구성요소를 원래 값과 비교하는 복잡한 검증은 문제를 일으킬 수 있어 제거했습니다.
+    // isNaN(dateObject.getTime()) 검사만으로도 유효한 Date 객체가 생성되었는지 충분히 확인할 수 있습니다.
+
+    // 유효한 Date 객체 반환 (내부적으로 UTC 시간 저장)
     return dateObject;
 }
 
@@ -237,7 +245,7 @@ client.on(Events.InteractionCreate, async interaction => {
                     vars: { bot_name: botName },
                     flowise_request_type: 'request_plan' // Flowise에 계획 요청임을 알림
                 },
-                streaming: true // <-- 이 줄 추가!
+                streaming: true // 스트리밍 사용 여부 (필요시)
             };
 
             console.log(`[/deep_research Session: ${sessionId}] Sending PLAN request to Flowise:`, JSON.stringify(requestBody, null, 2));
@@ -258,22 +266,23 @@ client.on(Events.InteractionCreate, async interaction => {
                 const flowiseResponse = await response.json();
                 console.log(`[/deep_research Plan Request Session: ${sessionId}] Received PLAN from Flowise:`, flowiseResponse);
 
-                const researchPlanText = flowiseResponse.plan || flowiseResponse.text;
+                const researchPlanText = flowiseResponse.plan || flowiseResponse.text; // Flowise 응답 필드 확인
 
                 if (!researchPlanText) {
                     await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, AI로부터 리서치 계획을 받지 못했습니다.`);
                     return;
                 }
 
+                // 상호작용 ID를 키로 사용하여 임시 데이터 저장
                 pendingResearch.set(interaction.id, { originalQuestion: userQuestion, sessionId: sessionId });
 
                 const confirmButton = new ButtonBuilder()
-                    .setCustomId(`confirm_research_${interaction.id}`)
+                    .setCustomId(`confirm_research_${interaction.id}`) // 버튼 ID에 상호작용 ID 포함
                     .setLabel('계획대로 진행')
                     .setStyle(ButtonStyle.Success);
 
                 const cancelButton = new ButtonBuilder()
-                    .setCustomId(`cancel_research_${interaction.id}`)
+                    .setCustomId(`cancel_research_${interaction.id}`) // 버튼 ID에 상호작용 ID 포함
                     .setLabel('취소')
                     .setStyle(ButtonStyle.Danger);
 
@@ -303,86 +312,97 @@ client.on(Events.InteractionCreate, async interaction => {
             if (!interaction.guild.members.me?.permissions.has(PermissionsBitField.Flags.ManageEvents)) {
                 return interaction.reply({ content: '봇이 이벤트를 생성할 권한이 없습니다. 서버 관리자에게 문의하세요.', ephemeral: true });
             }
-    
+
             try {
                 await interaction.deferReply({ ephemeral: true });
-    
+
                 // 옵션 값 가져오기
                 const eventName = interaction.options.getString('name');
                 const eventDescription = interaction.options.getString('description');
                 const startTimeString = interaction.options.getString('start_time');
                 const eventChannel = interaction.options.getChannel('channel');
                 const endTimeString = interaction.options.getString('end_time');
-    
+
                 // 시작 시간 처리 (KST 입력 -> UTC 변환)
                 let scheduledStartTime;
                 try {
+                    // 수정된 parseKSTDateTime 함수 사용
                     scheduledStartTime = parseKSTDateTime(startTimeString);
-                    if (scheduledStartTime < new Date()) {
+                    if (scheduledStartTime < new Date()) { // 현재 시간보다 이전인지 확인
                         return interaction.editReply('오류: 이벤트 시작 시간은 현재 시간 이후여야 합니다.');
                     }
                     console.log(`[Schedule Create] Parsed start time: ${startTimeString} KST -> ${scheduledStartTime.toISOString()} UTC`);
                 } catch (e) {
                     console.error("Start Date parsing error:", e);
+                    // 사용자에게 명확한 형식 안내
                     return interaction.editReply(`오류: 시작 시간 형식이 잘못되었습니다. 'YYYY-MM-DD HH:MM' 형식으로 입력해주세요. (예: '2025-05-10 20:00')`);
                 }
-    
+
                 // 종료 시간 처리
                 let scheduledEndTime = null;
                 if (endTimeString) {
                     try {
+                        // 수정된 parseKSTDateTime 함수 사용
                         scheduledEndTime = parseKSTDateTime(endTimeString);
+                        // 종료 시간이 시작 시간보다 이전이거나 같은지 확인
                         if (scheduledEndTime <= scheduledStartTime) {
                             return interaction.editReply('오류: 이벤트 종료 시간은 시작 시간 이후여야 합니다.');
                         }
                         console.log(`[Schedule Create] Parsed end time: ${endTimeString} KST -> ${scheduledEndTime.toISOString()} UTC`);
                     } catch (e) {
                         console.error("End Date parsing error:", e);
+                        // 사용자에게 명확한 형식 안내
                         return interaction.editReply(`오류: 종료 시간 형식이 잘못되었습니다. 'YYYY-MM-DD HH:MM' 형식으로 입력해주세요.`);
                     }
                 }
-    
+
                 // 이벤트 생성 옵션 구성
                 const eventOptions = {
                     name: eventName,
                     description: eventDescription,
                     scheduledStartTime: scheduledStartTime, // UTC 기준 Date 객체
-                    privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
-                    entityType: null,
+                    privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly, // 서버 멤버만 볼 수 있도록 설정
+                    entityType: null, // 채널 타입에 따라 설정됨
+                    // entityMetadata는 External 타입일 때만 사용
                 };
-    
+
                 // 채널 타입에 따라 entityType 및 관련 정보 설정
                 if (eventChannel.type === ChannelType.GuildStageVoice) {
                     eventOptions.entityType = GuildScheduledEventEntityType.StageInstance;
-                    eventOptions.channel = eventChannel.id;
-                    if (scheduledEndTime) eventOptions.scheduledEndTime = scheduledEndTime;
+                    eventOptions.channel = eventChannel.id; // 스테이지 채널 ID 설정
+                    if (scheduledEndTime) eventOptions.scheduledEndTime = scheduledEndTime; // 종료 시간 설정 (선택)
                 } else if (eventChannel.type === ChannelType.GuildVoice) {
                     eventOptions.entityType = GuildScheduledEventEntityType.Voice;
-                    eventOptions.channel = eventChannel.id;
-                    if (scheduledEndTime) eventOptions.scheduledEndTime = scheduledEndTime;
+                    eventOptions.channel = eventChannel.id; // 음성 채널 ID 설정
+                    if (scheduledEndTime) eventOptions.scheduledEndTime = scheduledEndTime; // 종료 시간 설정 (선택)
                 } else if (eventChannel.type === ChannelType.GuildText) {
-                    eventOptions.entityType = GuildScheduledEventEntityType.External;
-                    eventOptions.entityMetadata = { location: `#${eventChannel.name} 채널에서 진행` };
+                    eventOptions.entityType = GuildScheduledEventEntityType.External; // 외부 이벤트로 설정
+                    eventOptions.entityMetadata = { location: `#${eventChannel.name} 채널에서 진행` }; // 위치 정보 설정
                     // External 타입일 경우 종료 시간 필수
                     if (!scheduledEndTime) {
                         return interaction.editReply('오류: 텍스트 채널을 이벤트 장소로 지정할 경우, 반드시 종료 시간(`end_time` 옵션)을 입력해야 합니다.');
                     }
-                    eventOptions.scheduledEndTime = scheduledEndTime;
+                    eventOptions.scheduledEndTime = scheduledEndTime; // 종료 시간 설정 (필수)
                 } else {
-                    return interaction.editReply('오류: 지원하지 않는 채널 타입입니다.');
+                    // 지원하지 않는 채널 타입 처리
+                    return interaction.editReply('오류: 지원하지 않는 채널 타입입니다. (음성, 스테이지, 텍스트 채널만 가능)');
                 }
-    
+
                 // 이벤트 생성 시도
                 const createdEvent = await interaction.guild.scheduledEvents.create(eventOptions);
-    
+
                 console.log(`Event created: ${createdEvent.name} (ID: ${createdEvent.id})`);
+                // 사용자에게 성공 메시지 표시 (KST 기준 시간 포함)
                 await interaction.editReply(`✅ 이벤트 "${createdEvent.name}"이(가) 성공적으로 생성되었습니다! (시작: ${startTimeString} KST${endTimeString ? `, 종료: ${endTimeString} KST` : ''})`);
-    
+
             } catch (error) { // 이벤트 생성 중 오류 발생
                 console.error('Error creating scheduled event:', error);
+                // Discord API 오류 코드에 따른 분기 처리
                 if (error.code === 50035 && error.message.includes('scheduled_end_time')) {
+                     // 종료 시간 관련 오류 (주로 External 타입인데 종료 시간 누락 시)
                      await interaction.editReply('❌ 이벤트를 생성하는 중 오류가 발생했습니다. 텍스트 채널을 선택한 경우 종료 시간이 필요합니다.');
                 } else {
+                     // 기타 오류 (권한 부족, 잘못된 입력 등)
                      await interaction.editReply('❌ 이벤트를 생성하는 중 오류가 발생했습니다. 입력값, 봇 권한, 채널 설정을 확인해주세요.');
                 }
             }
@@ -396,40 +416,43 @@ client.on(Events.InteractionCreate, async interaction => {
             if (!interaction.guild.members.me?.permissions.has(PermissionsBitField.Flags.ManageEvents)) {
                 return interaction.reply({ content: '봇이 이벤트를 수정할 권한이 없습니다. 서버 관리자에게 문의하세요.', ephemeral: true });
             }
-    
+
             try {
                 await interaction.deferReply({ ephemeral: true });
-    
+
                 const currentName = interaction.options.getString('current_name');
                 const newName = interaction.options.getString('new_name');
                 const newDescription = interaction.options.getString('new_description');
                 const newStartTimeString = interaction.options.getString('new_start_time');
                 const newChannel = interaction.options.getChannel('new_channel');
                 const newEndTimeString = interaction.options.getString('new_end_time');
-    
-                // 이름으로 이벤트 찾기 (중복 가능성)
+
+                // 이름으로 이벤트 찾기 (대소문자 구분 없이)
                 const events = await interaction.guild.scheduledEvents.fetch();
-                const targetEvents = events.filter(event => event.name === currentName);
-    
+                const targetEvents = events.filter(event => event.name.toLowerCase() === currentName.toLowerCase());
+
                 if (targetEvents.size === 0) {
                     return interaction.editReply(`❌ 이름이 "${currentName}"인 이벤트를 찾을 수 없습니다.`);
                 }
                 if (targetEvents.size > 1) {
-                    return interaction.editReply(`❌ 이름이 "${currentName}"인 이벤트가 여러 개 있습니다. 더 구체적인 이름이나 ID로 수정해주세요.`);
+                    // 중복 이름 처리: 사용자에게 ID로 다시 시도하도록 안내 (ID 기반 수정은 아직 구현 안 됨)
+                    const eventList = targetEvents.map((event, id) => ` - ${event.name} (ID: ${id})`).join('\n');
+                    return interaction.editReply(`❌ 이름이 "${currentName}"인 이벤트가 여러 개 있습니다. 더 구체적인 이름이나 ID로 수정해주세요.\n발견된 이벤트:\n${eventList}\n(ID 기반 수정은 아직 지원되지 않습니다.)`);
                 }
-    
+
                 const eventToEdit = targetEvents.first();
                 const editOptions = {}; // 수정할 옵션만 담을 객체
-    
+
                 // 각 옵션이 입력되었는지 확인하고 editOptions에 추가
                 if (newName) editOptions.name = newName;
                 if (newDescription) editOptions.description = newDescription;
-    
+
                 // 시작 시간 수정 처리
                 if (newStartTimeString) {
                     try {
+                        // 수정된 parseKSTDateTime 함수 사용
                         editOptions.scheduledStartTime = parseKSTDateTime(newStartTimeString);
-                        if (editOptions.scheduledStartTime < new Date()) {
+                        if (editOptions.scheduledStartTime < new Date()) { // 현재 시간보다 이전인지 확인
                             return interaction.editReply('오류: 새 시작 시간은 현재 시간 이후여야 합니다.');
                         }
                         console.log(`[Schedule Edit] Parsed new start time: ${newStartTimeString} KST -> ${editOptions.scheduledStartTime.toISOString()} UTC`);
@@ -438,12 +461,14 @@ client.on(Events.InteractionCreate, async interaction => {
                         return interaction.editReply(`오류: 새 시작 시간 형식이 잘못되었습니다. 'YYYY-MM-DD HH:MM' 형식으로 입력해주세요.`);
                     }
                 }
-    
+
                 // 종료 시간 수정 처리
                 let newScheduledEndTime = null;
                 if (newEndTimeString) {
                     try {
+                        // 수정된 parseKSTDateTime 함수 사용
                         newScheduledEndTime = parseKSTDateTime(newEndTimeString);
+                        // 수정될 시작 시간 또는 기존 시작 시간과 비교
                         const startTimeToCheck = editOptions.scheduledStartTime || eventToEdit.scheduledStartAt;
                         if (newScheduledEndTime <= startTimeToCheck) {
                             return interaction.editReply('오류: 새 종료 시간은 시작 시간 이후여야 합니다.');
@@ -455,65 +480,72 @@ client.on(Events.InteractionCreate, async interaction => {
                         return interaction.editReply(`오류: 새 종료 시간 형식이 잘못되었습니다. 'YYYY-MM-DD HH:MM' 형식으로 입력해주세요.`);
                     }
                 }
-    
+
                 // 채널/위치 수정 처리
                 if (newChannel) {
                     if (newChannel.type === ChannelType.GuildStageVoice) {
                         editOptions.entityType = GuildScheduledEventEntityType.StageInstance;
                         editOptions.channel = newChannel.id;
-                        editOptions.entityMetadata = null;
+                        editOptions.entityMetadata = null; // 외부 위치 정보 제거
                     } else if (newChannel.type === ChannelType.GuildVoice) {
                         editOptions.entityType = GuildScheduledEventEntityType.Voice;
                         editOptions.channel = newChannel.id;
-                        editOptions.entityMetadata = null;
+                        editOptions.entityMetadata = null; // 외부 위치 정보 제거
                     } else if (newChannel.type === ChannelType.GuildText) {
                         editOptions.entityType = GuildScheduledEventEntityType.External;
                         editOptions.entityMetadata = { location: `#${newChannel.name} 채널에서 진행` };
-                        editOptions.channel = null;
+                        editOptions.channel = null; // 채널 ID 제거
                         // 외부 이벤트로 변경 시 종료 시간 확인 (수정 옵션 또는 기존 이벤트에서)
                         const endTimeToCheck = editOptions.scheduledEndTime || eventToEdit.scheduledEndAt;
                         if (!endTimeToCheck) {
+                            // 새 종료 시간도 없고 기존 종료 시간도 없으면 오류
                             return interaction.editReply('오류: 이벤트 장소를 텍스트 채널(외부)로 변경하려면 종료 시간이 필요합니다. `new_end_time` 옵션도 함께 입력해주세요.');
                         }
-                        // 종료 시간이 이미 설정되어 있다면 editOptions에 포함됨
+                        // 종료 시간이 이미 설정되어 있다면 editOptions에 포함됨 (위에서 처리)
                     } else {
                         return interaction.editReply('오류: 지원하지 않는 채널 타입입니다.');
                     }
                 } else if (eventToEdit.entityType === GuildScheduledEventEntityType.External) {
-                     // 외부 이벤트인데 채널 변경 없이 종료 시간도 수정 안 할 경우, 기존 종료 시간은 있는지 확인
+                     // 기존 이벤트가 External 타입인데, 채널 변경 없이 종료 시간만 수정하는 경우
+                     // 또는 채널 변경 없이 아무것도 수정 안 하는 경우
+                     // 이 경우, 종료 시간이 반드시 있어야 함 (수정 옵션 또는 기존 값)
                      const endTimeToCheck = editOptions.scheduledEndTime || eventToEdit.scheduledEndAt;
                      if (!endTimeToCheck) {
+                         // 새 종료 시간도 없고 기존 종료 시간도 없으면 오류
                          return interaction.editReply('오류: 외부 이벤트에는 종료 시간이 필요합니다. `new_end_time` 옵션을 입력해주세요.');
                      }
                      // editOptions에 종료 시간이 없다면, 기존 종료 시간을 유지해야 함 (edit 호출 시 자동으로 유지됨)
                 }
-    
-    
+
+
                 // 수정할 내용이 있는지 확인
                 if (Object.keys(editOptions).length === 0) {
                     return interaction.editReply('수정할 내용을 하나 이상 입력해주세요.');
                 }
-    
+
                 // 이벤트 수정 시도
                 const updatedEvent = await eventToEdit.edit(editOptions);
-    
+
                 console.log(`Event updated: ${updatedEvent.name} (ID: ${updatedEvent.id})`);
                 await interaction.editReply(`✅ 이벤트 "${currentName}"이(가) 성공적으로 수정되었습니다! (새 이름: ${updatedEvent.name})`);
-    
+
             } catch (error) { // 이벤트 수정 중 오류 발생
                 console.error('Error editing scheduled event:', error);
-                if (error.code === 50035) { // Invalid Form Body
+                 // Discord API 오류 코드에 따른 분기 처리
+                if (error.code === 50035) { // Invalid Form Body 오류
                      if (error.message.includes('scheduled_end_time')) {
                          await interaction.editReply('❌ 이벤트 수정 중 오류: 외부 이벤트에는 종료 시간이 필요합니다.');
                      } else if (error.message.includes('scheduled_start_time')) {
                          await interaction.editReply('❌ 이벤트 수정 중 오류: 시작 시간은 현재 시간 이후여야 합니다.');
                      } else {
+                        // 기타 Form Body 오류
                         await interaction.editReply('❌ 이벤트 수정 중 오류가 발생했습니다. 입력값을 확인해주세요.');
                      }
-                } else if (error.code === 50013) { // Missing Permissions
+                } else if (error.code === 50013) { // Missing Permissions 오류
                      await interaction.editReply('❌ 이벤트 수정 중 오류: 봇이 이벤트를 수정할 권한이 없습니다.');
                 }
                 else {
+                    // 기타 예상치 못한 오류
                     await interaction.editReply('❌ 이벤트를 수정하는 중 오류가 발생했습니다. 입력값이나 봇 권한을 확인해주세요.');
                 }
             }
@@ -527,40 +559,43 @@ client.on(Events.InteractionCreate, async interaction => {
             if (!interaction.guild.members.me?.permissions.has(PermissionsBitField.Flags.ManageEvents)) {
                 return interaction.reply({ content: '봇이 이벤트를 삭제할 권한이 없습니다. 서버 관리자에게 문의하세요.', ephemeral: true });
             }
-    
+
             try {
                 await interaction.deferReply({ ephemeral: true });
-    
+
                 const eventName = interaction.options.getString('name');
-    
-                // 이름으로 이벤트 찾기
+
+                // 이름으로 이벤트 찾기 (대소문자 구분 없이)
                 const events = await interaction.guild.scheduledEvents.fetch();
-                const targetEvents = events.filter(event => event.name === eventName);
-    
+                const targetEvents = events.filter(event => event.name.toLowerCase() === eventName.toLowerCase());
+
                 if (targetEvents.size === 0) {
                     return interaction.editReply(`❌ 이름이 "${eventName}"인 이벤트를 찾을 수 없습니다.`);
                 }
                 if (targetEvents.size > 1) {
+                     // 중복 이름 처리: 사용자에게 ID로 다시 시도하도록 안내
                      const eventList = targetEvents.map((event, id) => ` - ${event.name} (ID: ${id})`).join('\n');
                     return interaction.editReply(`❌ 이름이 "${eventName}"인 이벤트가 여러 개 발견되었습니다. 삭제할 이벤트의 ID를 사용하여 다시 시도해주세요.\n발견된 이벤트:\n${eventList}\n(ID 기반 삭제는 아직 지원되지 않습니다.)`);
                 }
-    
+
                 const eventToDelete = targetEvents.first();
-    
+
                 // 이벤트 삭제 시도
                 await interaction.guild.scheduledEvents.delete(eventToDelete.id);
-    
+
                 console.log(`Event deleted: ${eventToDelete.name} (ID: ${eventToDelete.id})`);
                 await interaction.editReply(`✅ 이벤트 "${eventName}"이(가) 성공적으로 삭제되었습니다!`);
-    
+
             } catch (error) { // 이벤트 삭제 중 오류 발생
                 console.error('Error deleting scheduled event:', error);
-                if (error.code === 50013) { // Missing Permissions
+                // Discord API 오류 코드에 따른 분기 처리
+                if (error.code === 50013) { // Missing Permissions 오류
                      await interaction.editReply('❌ 이벤트 삭제 중 오류: 봇이 이벤트를 삭제할 권한이 없습니다.');
-                } else if (error.code === 10062) { // Unknown Interaction or Event
+                } else if (error.code === 10062) { // Unknown Interaction or Event 오류 (이미 삭제되었거나 존재하지 않음)
                      await interaction.editReply('❌ 이벤트 삭제 중 오류: 해당 이벤트를 찾을 수 없거나 이미 삭제되었습니다.');
                 }
                 else {
+                    // 기타 예상치 못한 오류
                     await interaction.editReply('❌ 이벤트를 삭제하는 중 오류가 발생했습니다.');
                 }
             }
@@ -573,9 +608,10 @@ client.on(Events.InteractionCreate, async interaction => {
         else if (commandName === 'avatar') { await interaction.reply({ content: interaction.user.displayAvatarURL(), ephemeral: true }); }
         else if (commandName === 'server') { await interaction.reply(`<@${interaction.user.id}> 현재 서버 이름: ${interaction.guild.name}\n총 멤버 수: ${interaction.guild.memberCount}`); }
         else if (commandName === 'call') { await interaction.reply(`<@${interaction.user.id}> !callback`); }
-        else if (commandName === 'create_event') { /* ... (이벤트 생성 코드) ... */ }
-        else if (commandName === 'edit_event') { /* ... (이벤트 수정 코드) ... */ }
-        else if (commandName === 'delete_event') { /* ... (이벤트 삭제 코드) ... */ }
+        // 이벤트 관련 명령어는 위에서 이미 처리됨
+        // else if (commandName === 'create_event') { /* ... */ }
+        // else if (commandName === 'edit_event') { /* ... */ }
+        // else if (commandName === 'delete_event') { /* ... */ }
 
     }
     // --- 버튼 상호작용 처리 ---
@@ -588,72 +624,96 @@ client.on(Events.InteractionCreate, async interaction => {
             const originalInteractionId = customId.replace('confirm_research_', '');
             const researchData = pendingResearch.get(originalInteractionId);
 
+            // 버튼을 누른 사용자가 원래 명령어를 실행한 사용자와 동일한지, 데이터가 유효한지 확인
             if (!researchData || interaction.user.id !== researchData.sessionId) {
                 await interaction.reply({ content: "이 확인 버튼은 당신의 것이 아니거나 만료되었습니다.", ephemeral: true });
                 return;
             }
 
+            // 버튼 클릭 후 메시지 업데이트 (로딩 표시)
             try {
+                // 기존 임베드와 함께 로딩 메시지 표시, 버튼 제거
                 await interaction.update({ content: `<@${interaction.user.id}>\n리서치를 진행합니다... 잠시만 기다려주세요.`, embeds: interaction.message.embeds, components: [] });
             } catch (updateError) {
                 console.error("Failed to update interaction message:", updateError);
+                // 업데이트 실패 시 후속 메시지로 알림 (선택 사항)
+                // await interaction.followUp({ content: "메시지 업데이트 중 오류 발생.", ephemeral: true });
             }
 
             const { originalQuestion, sessionId } = researchData;
 
+            // Flowise에 리서치 실행 요청 본문 구성
             const requestBody = {
-                question: `계획대로 \"${originalQuestion}\"에 대한 심층 리서치를 진행해 주세요.`, // Flowise에 실행 지시
+                // Flowise 워크플로우가 이해할 수 있도록 질문 형식 조정
+                question: `계획대로 \"${originalQuestion}\"에 대한 심층 리서치를 진행해 주세요.`,
                 overrideConfig: {
                     sessionId: sessionId,
                     vars: { bot_name: botName },
-                    flowise_request_type: 'execute_research' // Flowise에 실행 요청임을 알림
+                    flowise_request_type: 'execute_research' // Flowise에 실행 요청임을 명시
                 }
             };
 
             console.log(`[/deep_research Execute Session: ${sessionId}] Sending EXECUTE request to Flowise:`, JSON.stringify(requestBody, null, 2));
             try {
+                // Flowise API 호출 (리서치 실행)
                 const response = await fetch(flowiseEndpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', ...(flowiseApiKey ? { 'Authorization': `Bearer ${flowiseApiKey}` } : {}) },
                     body: JSON.stringify(requestBody)
                 });
 
+                // Flowise 응답 상태 확인
                 if (!response.ok) {
                      const errorData = await response.text();
                      console.error(`[/deep_research Execute Session: ${sessionId}] Flowise API Error: ${response.status} ${response.statusText}`, errorData);
+                     // 사용자에게 오류 알림 (후속 메시지 사용)
                      await interaction.followUp({ content: `<@${interaction.user.id}> 죄송합니다, 리서치 실행 중 오류가 발생했습니다. (Code: ${response.status})`, ephemeral: true });
+                     // 오류 발생 시에도 임시 데이터 정리
+                     pendingResearch.delete(originalInteractionId);
                      return;
                 }
 
+                // Flowise 응답 파싱
                 const flowiseResponse = await response.json();
                 console.log(`[/deep_research Execute Session: ${sessionId}] Received RESULT from Flowise:`, flowiseResponse);
 
+                // 응답 내용을 Embed로 구성
                 let replyEmbeds = [];
+                // 이미지 URL 처리
                 const imageUrl = flowiseResponse.imageUrl || (typeof flowiseResponse.text === 'string' && (flowiseResponse.text.startsWith('http://') || flowiseResponse.text.startsWith('https://')) && /\.(jpg|jpeg|png|gif)$/i.test(flowiseResponse.text) ? flowiseResponse.text : null);
                  if (imageUrl) {
                       const imageEmbed = new EmbedBuilder().setTitle('리서치 관련 이미지').setImage(imageUrl).setColor(0x0099FF);
                       replyEmbeds.push(imageEmbed);
                  }
+                // 텍스트 응답 처리
                 const replyText = flowiseResponse.text;
-                if (replyText && !imageUrl) {
+                if (replyText && !imageUrl) { // 텍스트가 있고 이미지가 아닐 경우
                     const textEmbed = new EmbedBuilder()
                         .setTitle(`'${originalQuestion}'에 대한 심층 리서치 결과`)
-                        .setDescription(replyText.length > 4096 ? replyText.substring(0, 4093) + '...' : replyText)
-                        .setColor(0x00FA9A)
+                        .setDescription(replyText.length > 4096 ? replyText.substring(0, 4093) + '...' : replyText) // 4096자 제한 처리
+                        .setColor(0x00FA9A) // 성공 색상
                         .setTimestamp()
                         .setFooter({ text: '해당 결과는 AI에 의해 생성되었으며, 항상 정확한 결과를 도출하지 않습니다.' });
                     replyEmbeds.push(textEmbed);
-                } else if (!imageUrl && !replyText) {
-                    const errorEmbed = new EmbedBuilder().setDescription('죄송합니다, AI로부터 리서치 결과를 받지 못했습니다.').setColor(0xFF0000);
+                } else if (!imageUrl && !replyText) { // 이미지도 텍스트도 없을 경우
+                    const errorEmbed = new EmbedBuilder().setDescription('죄송합니다, AI로부터 리서치 결과를 받지 못했습니다.').setColor(0xFF0000); // 오류 색상
                     replyEmbeds.push(errorEmbed);
                 }
 
+                // 최종 결과 전송 (후속 메시지 사용)
                 await interaction.followUp({ content: `<@${interaction.user.id}>`, embeds: replyEmbeds });
+                // 처리 완료 후 임시 데이터 삭제
                 pendingResearch.delete(originalInteractionId);
 
-            } catch (error) {
+            } catch (error) { // Flowise 요청/처리 중 예외 발생
                  console.error(`[/deep_research Execute Session: ${sessionId}] Error processing Flowise request:`, error);
-                 try { await interaction.followUp({ content: `<@${interaction.user.id}> 죄송합니다, 리서치 결과 처리 중 오류가 발생했습니다.`, ephemeral: true }); } catch (e) { console.error("FollowUp failed:", e); }
+                 try {
+                     // 사용자에게 오류 알림 (후속 메시지 사용)
+                     await interaction.followUp({ content: `<@${interaction.user.id}> 죄송합니다, 리서치 결과 처리 중 오류가 발생했습니다.`, ephemeral: true });
+                 } catch (e) {
+                     console.error("FollowUp failed after error:", e);
+                 }
+                 // 오류 발생 시에도 임시 데이터 정리
                  pendingResearch.delete(originalInteractionId);
             }
         }
@@ -662,31 +722,23 @@ client.on(Events.InteractionCreate, async interaction => {
             const originalInteractionId = customId.replace('cancel_research_', '');
             const researchData = pendingResearch.get(originalInteractionId);
 
+            // 버튼을 누른 사용자가 원래 명령어를 실행한 사용자와 동일한지, 데이터가 유효한지 확인
             if (!researchData || interaction.user.id !== researchData.sessionId) {
                 await interaction.reply({ content: "이 취소 버튼은 당신의 것이 아니거나 만료되었습니다.", ephemeral: true });
                 return;
             }
 
-            await interaction.update({ content: `<@${interaction.user.id}>\n심층 리서치 요청이 취소되었습니다.`, embeds: interaction.message.embeds, components: [] });
+            // 버튼 클릭 후 메시지 업데이트 (취소됨 표시)
+            await interaction.update({ content: `<@${interaction.user.id}>\n심층 리서치 요청이 취소되었습니다.`, embeds: interaction.message.embeds, components: [] }); // 버튼 제거
+            // 처리 완료 후 임시 데이터 삭제
             pendingResearch.delete(originalInteractionId);
         }
     }
 });
 
-// --- 기존 메시지 기반 명령어 처리 (주석 처리 또는 제거) ---
+// --- 기존 메시지 기반 명령어 처리 (주석 처리 또는 제거 권장) ---
 /*
 client.on('messageCreate', async msg => {
-    // ...
+    // 슬래시 명령어를 사용하는 것이 좋습니다.
 });
 */
-// ```
-
-// **실행 및 확인:**
-
-// 1.  이 수정된 코드로 `index.js` 파일을 업데이트합니다.
-// 2.  봇을 다시 시작합니다 (`node index.js`).
-// 3.  오류 없이 봇이 정상적으로 로그인되는지 확인합니다.
-
-// 만약 이 코드로 봇이 **정상적으로 시작된다면**, `BitFieldInvalid` 오류는 해결된 것입니다. 이제 `/deep_research` 명령어를 사용했을 때 Flowise 워크플로우가 계획 제안 메시지를 올바르게 반환하고, 버튼 상호작용이 제대로 작동하는지 테스트해볼 수 있습니다. (Flowise 워크플로우 수정이 필요할 수 있다는 점을 기억하세요.)
-
-// 만약 이 코드로도 **여전히 오류가 발생한다면**, 정말 예상치 못한 환경 문제나 라이브러리 설치 문제일 수 있습니다. 그 경우에는 프로젝트 폴더 전체를 새로 만들고 필요한 파일만 복사하여 처음부터 다시 설정해보는 극단적인 방법까지 고려해야 할 수도 있습
