@@ -38,44 +38,28 @@ if (!flowiseApiKey) {
 }
 
 // --- 봇 이름 변수 ---
-let botName = "AI Assistant";
+let botName = "AI Assistant"; // 기본값 설정
 
 // --- 유틸리티 함수 ---
 // 시간 문자열 파싱 함수 (KST -> UTC Date 객체) - *** 수정됨: 복잡한 검증 로직 제거 ***
 function parseKSTDateTime(dateTimeString) {
-    // 정규식으로 'YYYY-MM-DD HH:MM' 형식 확인
     const dateParts = dateTimeString.match(/^(\d{4})-(\d{2})-(\d{2})\s(\d{2}):(\d{2})$/);
     if (!dateParts) throw new Error("Invalid date format. Use 'YYYY-MM-DD HH:MM'");
-
-    // 날짜 및 시간 구성 요소 추출
     const year = parseInt(dateParts[1]);
-    const month = parseInt(dateParts[2]) - 1; // JavaScript Date 객체의 월은 0부터 시작
+    const month = parseInt(dateParts[2]) - 1;
     const day = parseInt(dateParts[3]);
     const hourKST = parseInt(dateParts[4]);
     const minute = parseInt(dateParts[5]);
-
-    // KST 시간에서 9시간을 빼서 UTC 타임스탬프 계산
-    // Date.UTC는 음수 시간 값을 올바르게 처리하여 날짜를 자동으로 조정합니다.
     const utcTimestamp = Date.UTC(year, month, day, hourKST - 9, minute);
-
-    // UTC 타임스탬프로 Date 객체 생성
     const dateObject = new Date(utcTimestamp);
-
-    // 생성된 Date 객체가 유효한지 확인 (타임스탬프가 NaN인지 검사)
     if (isNaN(dateObject.getTime())) throw new Error('Invalid date calculation');
-
-    // *** 제거된 검증 로직 ***
-    // KST에서 UTC로 변환할 때 자정(UTC 기준)을 넘어가면 날짜가 변경될 수 있으므로,
-    // 변환 후 각 구성요소를 원래 값과 비교하는 복잡한 검증은 문제를 일으킬 수 있어 제거했습니다.
-    // isNaN(dateObject.getTime()) 검사만으로도 유효한 Date 객체가 생성되었는지 충분히 확인할 수 있습니다.
-
-    // 유효한 Date 객체 반환 (내부적으로 UTC 시간 저장)
     return dateObject;
 }
 
 
 // --- 슬래시 명령어 정의 (모든 명령어 통합) ---
 const commands = [
+    // ... (다른 명령어 정의들은 이전과 동일하게 유지) ...
     new SlashCommandBuilder()
         .setName('chat')
         .setDescription('AI와 대화합니다.')
@@ -98,7 +82,8 @@ const commands = [
     new SlashCommandBuilder().setName('avatar').setDescription('당신의 아바타 URL을 보여줍니다.'),
     new SlashCommandBuilder().setName('server').setDescription('서버 정보를 보여줍니다.'),
     new SlashCommandBuilder().setName('call').setDescription('콜백 메시지를 보냅니다.'),
-    new SlashCommandBuilder()
+    // ... (이벤트 관련 명령어 정의들도 이전과 동일하게 유지) ...
+     new SlashCommandBuilder()
         .setName('create_event')
         .setDescription('서버 이벤트를 생성합니다.')
         .addStringOption(option => option.setName('name').setDescription('이벤트 이름').setRequired(true))
@@ -161,8 +146,13 @@ discordLogin();
 // --- 이벤트 핸들러 ---
 client.on(Events.ClientReady, () => {
     console.log(`Logged in as ${client.user.tag}.`);
-    botName = client.user.username;
-    console.log(`Bot name set to: ${botName}`);
+    // 봇 준비 완료 시 봇 이름 업데이트
+    if (client.user && client.user.username) {
+        botName = client.user.username;
+        console.log(`Bot name set to: ${botName}`);
+    } else {
+        console.warn("봇 사용자 정보를 가져올 수 없어 기본 이름 'AI Assistant'를 사용합니다.");
+    }
     console.log(`Flowise Endpoint: ${flowiseEndpoint}`);
 });
 
@@ -172,27 +162,6 @@ const pendingResearch = new Map();
 // --- 슬래시 명령어 및 버튼 상호작용 처리 핸들러 ---
 client.on(Events.InteractionCreate, async interaction => {
 
-    console.log(`[디버그] Flowise 요청 전 botName 변수 값: ${botName}`); // <-- 이 줄 추가
-
-    const requestBody = {
-        question: userQuestion,
-        overrideConfig: {
-            sessionId: sessionId,
-            vars: { bot_name: botName }, // botName 변수가 전달됨
-            // ... (다른 설정들) ...
-        },
-        // ...
-    };
-    
-    console.log(`[디버그] Flowise 요청 Body:`, JSON.stringify(requestBody, null, 2)); // <-- 요청 전체 확인용 추가
-    
-    try {
-      const response = await fetch(flowiseEndpoint, { // <-- API 호출
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...(flowiseApiKey ? { 'Authorization': `Bearer ${flowiseApiKey}` } : {}) },
-          body: JSON.stringify(requestBody)
-      });
-
     // --- 슬래시 명령어 처리 ---
     if (interaction.isChatInputCommand()) {
         const { commandName } = interaction;
@@ -200,12 +169,18 @@ client.on(Events.InteractionCreate, async interaction => {
 
         // --- /chat 명령어 처리 ---
         if (commandName === 'chat') {
+            // ... (이전 /chat 처리 로직과 동일) ...
+            // *** 수정 시작: console.log 추가 ***
             if (interaction.deferred || interaction.replied) return;
             try { await interaction.deferReply(); } catch (e) { console.error("Defer failed:", e); return; }
 
             const userQuestion = interaction.options.getString('question');
             const sessionId = interaction.user.id;
             const attachment = interaction.options.getAttachment('file');
+
+            // ***** 추가된 디버그 로그 *****
+            console.log(`[/chat] Flowise 요청 전 botName 변수 값: ${botName}`);
+
             const requestBody = {
                 question: userQuestion,
                 overrideConfig: { sessionId: sessionId, vars: { bot_name: botName } }
@@ -214,14 +189,17 @@ client.on(Events.InteractionCreate, async interaction => {
                 requestBody.uploads = [{ type: 'url', name: attachment.name, mime: attachment.contentType || 'application/octet-stream', data: attachment.url }];
             }
 
-            console.log(`[/chat Session: ${sessionId}] Sending to Flowise:`, JSON.stringify(requestBody, null, 2));
+            // ***** 추가된 디버그 로그 *****
+            console.log(`[/chat Session: ${sessionId}] Sending to Flowise (Body):`, JSON.stringify(requestBody, null, 2));
+
             try {
                 const response = await fetch(flowiseEndpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', ...(flowiseApiKey ? { 'Authorization': `Bearer ${flowiseApiKey}` } : {}) },
                     body: JSON.stringify(requestBody)
                 });
-                if (!response.ok) {
+                 // ... (이후 응답 처리 로직은 동일) ...
+                 if (!response.ok) {
                     const errorData = await response.text();
                     console.error(`[/chat Session: ${sessionId}] Flowise API Error: ${response.status} ${response.statusText}`, errorData);
                     await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, AI 응답 생성 중 오류가 발생했습니다. (Code: ${response.status})`);
@@ -250,14 +228,20 @@ client.on(Events.InteractionCreate, async interaction => {
                 console.error(`[/chat Session: ${sessionId}] Error processing Flowise request:`, error);
                 try { await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, 요청 처리 중 오류가 발생했습니다.`); } catch (e) { console.error("Edit reply failed:", e); }
             }
+            // *** 수정 끝 ***
         }
         // --- /deep_research 명령어 처리 (1단계: 계획 요청) ---
         else if (commandName === 'deep_research') {
+            // ... (이전 /deep_research 계획 요청 로직과 동일) ...
+             // *** 수정 시작: console.log 추가 ***
             if (interaction.deferred || interaction.replied) return;
             try { await interaction.deferReply(); } catch (e) { console.error("Defer failed:", e); return; }
 
             const userQuestion = interaction.options.getString('question');
             const sessionId = interaction.user.id;
+
+            // ***** 추가된 디버그 로그 *****
+            console.log(`[/deep_research Plan] Flowise 요청 전 botName 변수 값: ${botName}`);
 
             const requestBody = {
                 question: userQuestion,
@@ -269,14 +253,16 @@ client.on(Events.InteractionCreate, async interaction => {
                 streaming: true // 스트리밍 사용 여부 (필요시)
             };
 
-            console.log(`[/deep_research Session: ${sessionId}] Sending PLAN request to Flowise:`, JSON.stringify(requestBody, null, 2));
+            // ***** 추가된 디버그 로그 *****
+            console.log(`[/deep_research Plan Request Session: ${sessionId}] Sending PLAN request to Flowise (Body):`, JSON.stringify(requestBody, null, 2));
+
             try {
                 const response = await fetch(flowiseEndpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', ...(flowiseApiKey ? { 'Authorization': `Bearer ${flowiseApiKey}` } : {}) },
                     body: JSON.stringify(requestBody)
                 });
-
+                 // ... (이후 계획 응답 처리 및 버튼 생성 로직은 동일) ...
                 if (!response.ok) {
                     const errorData = await response.text();
                     console.error(`[/deep_research Plan Request Session: ${sessionId}] Flowise API Error: ${response.status} ${response.statusText}`, errorData);
@@ -287,23 +273,22 @@ client.on(Events.InteractionCreate, async interaction => {
                 const flowiseResponse = await response.json();
                 console.log(`[/deep_research Plan Request Session: ${sessionId}] Received PLAN from Flowise:`, flowiseResponse);
 
-                const researchPlanText = flowiseResponse.plan || flowiseResponse.text; // Flowise 응답 필드 확인
+                const researchPlanText = flowiseResponse.plan || flowiseResponse.text;
 
                 if (!researchPlanText) {
                     await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, AI로부터 리서치 계획을 받지 못했습니다.`);
                     return;
                 }
 
-                // 상호작용 ID를 키로 사용하여 임시 데이터 저장
                 pendingResearch.set(interaction.id, { originalQuestion: userQuestion, sessionId: sessionId });
 
                 const confirmButton = new ButtonBuilder()
-                    .setCustomId(`confirm_research_${interaction.id}`) // 버튼 ID에 상호작용 ID 포함
+                    .setCustomId(`confirm_research_${interaction.id}`)
                     .setLabel('계획대로 진행')
                     .setStyle(ButtonStyle.Success);
 
                 const cancelButton = new ButtonBuilder()
-                    .setCustomId(`cancel_research_${interaction.id}`) // 버튼 ID에 상호작용 ID 포함
+                    .setCustomId(`cancel_research_${interaction.id}`)
                     .setLabel('취소')
                     .setStyle(ButtonStyle.Danger);
 
@@ -321,6 +306,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 console.error(`[/deep_research Plan Request Session: ${sessionId}] Error processing Flowise request:`, error);
                  try { await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, 리서치 계획 요청 중 오류가 발생했습니다.`); } catch (e) { console.error("Edit reply failed:", e); }
             }
+            // *** 수정 끝 ***
         }
 
         // --- /create_event 명령어 처리 ---
@@ -642,116 +628,104 @@ client.on(Events.InteractionCreate, async interaction => {
 
         // --- 심층 리서치 확인 버튼 처리 ---
         if (customId.startsWith('confirm_research_')) {
+           // ... (이전 리서치 확인 버튼 로직과 동일) ...
+           // *** 수정 시작: console.log 추가 ***
             const originalInteractionId = customId.replace('confirm_research_', '');
             const researchData = pendingResearch.get(originalInteractionId);
 
-            // 버튼을 누른 사용자가 원래 명령어를 실행한 사용자와 동일한지, 데이터가 유효한지 확인
             if (!researchData || interaction.user.id !== researchData.sessionId) {
                 await interaction.reply({ content: "이 확인 버튼은 당신의 것이 아니거나 만료되었습니다.", ephemeral: true });
                 return;
             }
 
-            // 버튼 클릭 후 메시지 업데이트 (로딩 표시)
             try {
-                // 기존 임베드와 함께 로딩 메시지 표시, 버튼 제거
                 await interaction.update({ content: `<@${interaction.user.id}>\n리서치를 진행합니다... 잠시만 기다려주세요.`, embeds: interaction.message.embeds, components: [] });
             } catch (updateError) {
                 console.error("Failed to update interaction message:", updateError);
-                // 업데이트 실패 시 후속 메시지로 알림 (선택 사항)
-                // await interaction.followUp({ content: "메시지 업데이트 중 오류 발생.", ephemeral: true });
             }
 
             const { originalQuestion, sessionId } = researchData;
 
-            // Flowise에 리서치 실행 요청 본문 구성
+             // ***** 추가된 디버그 로그 *****
+            console.log(`[/deep_research Execute] Flowise 요청 전 botName 변수 값: ${botName}`);
+
             const requestBody = {
-                // Flowise 워크플로우가 이해할 수 있도록 질문 형식 조정
                 question: `계획대로 \"${originalQuestion}\"에 대한 심층 리서치를 진행해 주세요.`,
                 overrideConfig: {
                     sessionId: sessionId,
                     vars: { bot_name: botName },
-                    flowise_request_type: 'execute_research' // Flowise에 실행 요청임을 명시
+                    flowise_request_type: 'execute_research'
                 }
             };
 
-            console.log(`[/deep_research Execute Session: ${sessionId}] Sending EXECUTE request to Flowise:`, JSON.stringify(requestBody, null, 2));
+             // ***** 추가된 디버그 로그 *****
+            console.log(`[/deep_research Execute Session: ${sessionId}] Sending EXECUTE request to Flowise (Body):`, JSON.stringify(requestBody, null, 2));
+
             try {
-                // Flowise API 호출 (리서치 실행)
                 const response = await fetch(flowiseEndpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', ...(flowiseApiKey ? { 'Authorization': `Bearer ${flowiseApiKey}` } : {}) },
                     body: JSON.stringify(requestBody)
                 });
 
-                // Flowise 응답 상태 확인
-                if (!response.ok) {
+                 // ... (이후 리서치 결과 처리 로직은 동일) ...
+                 if (!response.ok) {
                      const errorData = await response.text();
                      console.error(`[/deep_research Execute Session: ${sessionId}] Flowise API Error: ${response.status} ${response.statusText}`, errorData);
-                     // 사용자에게 오류 알림 (후속 메시지 사용)
                      await interaction.followUp({ content: `<@${interaction.user.id}> 죄송합니다, 리서치 실행 중 오류가 발생했습니다. (Code: ${response.status})`, ephemeral: true });
-                     // 오류 발생 시에도 임시 데이터 정리
                      pendingResearch.delete(originalInteractionId);
                      return;
                 }
 
-                // Flowise 응답 파싱
                 const flowiseResponse = await response.json();
                 console.log(`[/deep_research Execute Session: ${sessionId}] Received RESULT from Flowise:`, flowiseResponse);
 
-                // 응답 내용을 Embed로 구성
                 let replyEmbeds = [];
-                // 이미지 URL 처리
                 const imageUrl = flowiseResponse.imageUrl || (typeof flowiseResponse.text === 'string' && (flowiseResponse.text.startsWith('http://') || flowiseResponse.text.startsWith('https://')) && /\.(jpg|jpeg|png|gif)$/i.test(flowiseResponse.text) ? flowiseResponse.text : null);
                  if (imageUrl) {
                       const imageEmbed = new EmbedBuilder().setTitle('리서치 관련 이미지').setImage(imageUrl).setColor(0x0099FF);
                       replyEmbeds.push(imageEmbed);
                  }
-                // 텍스트 응답 처리
                 const replyText = flowiseResponse.text;
-                if (replyText && !imageUrl) { // 텍스트가 있고 이미지가 아닐 경우
+                if (replyText && !imageUrl) {
                     const textEmbed = new EmbedBuilder()
                         .setTitle(`'${originalQuestion}'에 대한 심층 리서치 결과`)
-                        .setDescription(replyText.length > 4096 ? replyText.substring(0, 4093) + '...' : replyText) // 4096자 제한 처리
-                        .setColor(0x00FA9A) // 성공 색상
+                        .setDescription(replyText.length > 4096 ? replyText.substring(0, 4093) + '...' : replyText)
+                        .setColor(0x00FA9A)
                         .setTimestamp()
                         .setFooter({ text: '해당 결과는 AI에 의해 생성되었으며, 항상 정확한 결과를 도출하지 않습니다.' });
                     replyEmbeds.push(textEmbed);
-                } else if (!imageUrl && !replyText) { // 이미지도 텍스트도 없을 경우
-                    const errorEmbed = new EmbedBuilder().setDescription('죄송합니다, AI로부터 리서치 결과를 받지 못했습니다.').setColor(0xFF0000); // 오류 색상
+                } else if (!imageUrl && !replyText) {
+                    const errorEmbed = new EmbedBuilder().setDescription('죄송합니다, AI로부터 리서치 결과를 받지 못했습니다.').setColor(0xFF0000);
                     replyEmbeds.push(errorEmbed);
                 }
 
-                // 최종 결과 전송 (후속 메시지 사용)
                 await interaction.followUp({ content: `<@${interaction.user.id}>`, embeds: replyEmbeds });
-                // 처리 완료 후 임시 데이터 삭제
                 pendingResearch.delete(originalInteractionId);
 
-            } catch (error) { // Flowise 요청/처리 중 예외 발생
+            } catch (error) {
                  console.error(`[/deep_research Execute Session: ${sessionId}] Error processing Flowise request:`, error);
                  try {
-                     // 사용자에게 오류 알림 (후속 메시지 사용)
                      await interaction.followUp({ content: `<@${interaction.user.id}> 죄송합니다, 리서치 결과 처리 중 오류가 발생했습니다.`, ephemeral: true });
                  } catch (e) {
                      console.error("FollowUp failed after error:", e);
                  }
-                 // 오류 발생 시에도 임시 데이터 정리
                  pendingResearch.delete(originalInteractionId);
             }
+             // *** 수정 끝 ***
         }
         // --- 심층 리서치 취소 버튼 처리 ---
         else if (customId.startsWith('cancel_research_')) {
-            const originalInteractionId = customId.replace('cancel_research_', '');
+            // ... (취소 버튼 로직은 이전과 동일하게 유지) ...
+             const originalInteractionId = customId.replace('cancel_research_', '');
             const researchData = pendingResearch.get(originalInteractionId);
 
-            // 버튼을 누른 사용자가 원래 명령어를 실행한 사용자와 동일한지, 데이터가 유효한지 확인
             if (!researchData || interaction.user.id !== researchData.sessionId) {
                 await interaction.reply({ content: "이 취소 버튼은 당신의 것이 아니거나 만료되었습니다.", ephemeral: true });
                 return;
             }
 
-            // 버튼 클릭 후 메시지 업데이트 (취소됨 표시)
-            await interaction.update({ content: `<@${interaction.user.id}>\n심층 리서치 요청이 취소되었습니다.`, embeds: interaction.message.embeds, components: [] }); // 버튼 제거
-            // 처리 완료 후 임시 데이터 삭제
+            await interaction.update({ content: `<@${interaction.user.id}>\n심층 리서치 요청이 취소되었습니다.`, embeds: interaction.message.embeds, components: [] });
             pendingResearch.delete(originalInteractionId);
         }
     }
