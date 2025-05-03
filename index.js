@@ -172,6 +172,27 @@ const pendingResearch = new Map();
 // --- 슬래시 명령어 및 버튼 상호작용 처리 핸들러 ---
 client.on(Events.InteractionCreate, async interaction => {
 
+    console.log(`[디버그] Flowise 요청 전 botName 변수 값: ${botName}`); // <-- 이 줄 추가
+
+    const requestBody = {
+        question: userQuestion,
+        overrideConfig: {
+            sessionId: sessionId,
+            vars: { bot_name: botName }, // botName 변수가 전달됨
+            // ... (다른 설정들) ...
+        },
+        // ...
+    };
+    
+    console.log(`[디버그] Flowise 요청 Body:`, JSON.stringify(requestBody, null, 2)); // <-- 요청 전체 확인용 추가
+    
+    try {
+      const response = await fetch(flowiseEndpoint, { // <-- API 호출
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(flowiseApiKey ? { 'Authorization': `Bearer ${flowiseApiKey}` } : {}) },
+          body: JSON.stringify(requestBody)
+      });
+
     // --- 슬래시 명령어 처리 ---
     if (interaction.isChatInputCommand()) {
         const { commandName } = interaction;
