@@ -232,80 +232,107 @@ client.on(Events.InteractionCreate, async interaction => {
         }
         // --- /deep_research 명령어 처리 (1단계: 계획 요청) ---
         else if (commandName === 'deep_research') {
-            // ... (이전 /deep_research 계획 요청 로직과 동일) ...
-             // *** 수정 시작: console.log 추가 ***
             if (interaction.deferred || interaction.replied) return;
             try { await interaction.deferReply(); } catch (e) { console.error("Defer failed:", e); return; }
-
+        
             const userQuestion = interaction.options.getString('question');
-            const sessionId = interaction.user.id;
-
-            // ***** 추가된 디버그 로그 *****
-            console.log(`[/deep_research Plan] Flowise 요청 전 botName 변수 값: ${botName}`);
-
-            const requestBody = {
-                question: userQuestion,
-                overrideConfig: {
-                    sessionId: sessionId,
-                    vars: { bot_name: botName },
-                    flowise_request_type: 'request_plan' // Flowise에 계획 요청임을 알림
-                },
-                streaming: true // 스트리밍 사용 여부 (필요시)
-            };
-
-            // ***** 추가된 디버그 로그 *****
-            console.log(`[/deep_research Plan Request Session: ${sessionId}] Sending PLAN request to Flowise (Body):`, JSON.stringify(requestBody, null, 2));
-
+            const sessionId = interaction.user.id; // 세션 ID는 일관되게 사용
+        
+            // --- AI 1 (분석가) 호출 ---
+            let analystResponseText = '';
             try {
-                const response = await fetch(flowiseEndpoint, {
+                console.log(`[/deep_research AI-1 Session: ${sessionId}] Sending to Flowise for initial analysis (Question: ${userQuestion})`);
+                const requestBodyAI1 = {
+                    question: userQuestion, // 사용자 질문을 직접 전달
+                    overrideConfig: {
+                        sessionId: sessionId,
+                        vars: { bot_name: botName },
+                        // 만약 Flowise Chatflow에서 이 요청이 '1단계'임을 알려야 한다면,
+                        // 여기에 'current_step: "analysis"' 같은 플래그를 추가할 수 있습니다.
+                        // 또는, 완전히 다른 Flowise 엔드포인트(분석가 AI 전용)를 사용할 수도 있습니다.
+                        // flowise_request_type: 'analyst_ai_phase' // 예시 플래그
+                    }
+                };
+        
+                const responseAI1 = await fetch(flowiseEndpoint, { // 또는 flowiseEndpointForAnalystAI
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', ...(flowiseApiKey ? { 'Authorization': `Bearer ${flowiseApiKey}` } : {}) },
-                    body: JSON.stringify(requestBody)
+                    body: JSON.stringify(requestBodyAI1)
                 });
-                 // ... (이후 계획 응답 처리 및 버튼 생성 로직은 동일) ...
-                if (!response.ok) {
-                    const errorData = await response.text();
-                    console.error(`[/deep_research Plan Request Session: ${sessionId}] Flowise API Error: ${response.status} ${response.statusText}`, errorData);
-                    await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, 리서치 계획 생성 중 오류가 발생했습니다. (Code: ${response.status})`);
+        
+                if (!responseAI1.ok) {
+                    const errorData = await responseAI1.text();
+                    console.error(`[/deep_research AI-1 Session: ${sessionId}] Flowise API Error: ${responseAI1.status} ${responseAI1.statusText}`, errorData);
+                    await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, AI 1차 분석 중 오류가 발생했습니다. (Code: ${responseAI1.status})`);
                     return;
                 }
-
-                const flowiseResponse = await response.json();
-                console.log(`[/deep_research Plan Request Session: ${sessionId}] Received PLAN from Flowise:`, flowiseResponse);
-
-                const researchPlanText = flowiseResponse.plan || flowiseResponse.text;
-
-                if (!researchPlanText) {
-                    await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, AI로부터 리서치 계획을 받지 못했습니다.`);
-                    return;
-                }
-
-                pendingResearch.set(interaction.id, { originalQuestion: userQuestion, sessionId: sessionId });
-
-                const confirmButton = new ButtonBuilder()
-                    .setCustomId(`confirm_research_${interaction.id}`)
-                    .setLabel('계획대로 진행')
-                    .setStyle(ButtonStyle.Success);
-
-                const cancelButton = new ButtonBuilder()
-                    .setCustomId(`cancel_research_${interaction.id}`)
-                    .setLabel('취소')
-                    .setStyle(ButtonStyle.Danger);
-
-                const row = new ActionRowBuilder().addComponents(confirmButton, cancelButton);
-
-                const planEmbed = new EmbedBuilder()
-                    .setTitle("🔍 심층 리서치 계획 제안")
-                    .setDescription(researchPlanText)
-                    .setColor(0x5865F2)
-                    .setFooter({ text: "아래 버튼을 눌러 진행 여부를 선택해주세요." });
-
-                await interaction.editReply({ content: `<@${interaction.user.id}>`, embeds: [planEmbed], components: [row] });
-
+                const flowiseResponseAI1 = await responseAI1.json();
+                console.log(`[/deep_research AI-1 Session: ${sessionId}] Received from Flowise:`, flowiseResponseAI1);
+                analystResponseText = flowiseResponseAI1.text || "1차 분석 결과를 받지 못했습니다."; // Flowise 응답 구조에 따라 text, output 등 적절히 추출
+        
             } catch (error) {
-                console.error(`[/deep_research Plan Request Session: ${sessionId}] Error processing Flowise request:`, error);
-                 try { await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, 리서치 계획 요청 중 오류가 발생했습니다.`); } catch (e) { console.error("Edit reply failed:", e); }
+                console.error(`[/deep_research AI-1 Session: ${sessionId}] Error processing Flowise request:`, error);
+                await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, AI 1차 분석 요청 중 오류가 발생했습니다.`);
+                return;
             }
+        
+            // --- AI 2 (비평가/확장가) 호출 ---
+            // AI 1의 응답(analystResponseText)을 AI 2의 입력으로 사용합니다.
+            let criticResponseText = '';
+            if (analystResponseText && analystResponseText !== "1차 분석 결과를 받지 못했습니다.") {
+                try {
+                    // 사용자에게 중간 진행 상황을 알릴 수 있습니다.
+                    await interaction.editReply({ content: `<@${interaction.user.id}> 1차 분석 완료. 추가 분석을 진행합니다...`, embeds: [] });
+        
+                    console.log(`[/deep_research AI-2 Session: ${sessionId}] Sending to Flowise for critique/expansion (Prev. Analysis: ${analystResponseText.substring(0,100)}...)`);
+                    const requestBodyAI2 = {
+                        // AI 2가 이전 분석 결과를 입력으로 받도록 Flowise Chatflow를 설계해야 합니다.
+                        // 예를 들어, question 필드에 이전 결과를 넣거나, overrideConfig를 통해 특정 변수로 전달합니다.
+                        question: `다음 분석 내용에 대해 비평하거나 확장된 의견을 제시해주세요: ${analystResponseText}`,
+                        overrideConfig: {
+                            sessionId: sessionId,
+                            vars: { bot_name: botName, previous_analysis: analystResponseText },
+                            // flowise_request_type: 'critic_ai_phase' // 예시 플래그
+                        }
+                    };
+        
+                    const responseAI2 = await fetch(flowiseEndpoint, { // 또는 flowiseEndpointForCriticAI
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', ...(flowiseApiKey ? { 'Authorization': `Bearer ${flowiseApiKey}` } : {}) },
+                        body: JSON.stringify(requestBodyAI2)
+                    });
+        
+                    if (!responseAI2.ok) {
+                        const errorData = await responseAI2.text();
+                        console.error(`[/deep_research AI-2 Session: ${sessionId}] Flowise API Error: ${responseAI2.status} ${responseAI2.statusText}`, errorData);
+                        await interaction.followUp({content: `<@${interaction.user.id}> 죄송합니다, AI 2차 분석 중 오류가 발생했습니다. (Code: ${responseAI2.status})`, ephemeral: true});
+                        return;
+                    }
+                    const flowiseResponseAI2 = await responseAI2.json();
+                    console.log(`[/deep_research AI-2 Session: ${sessionId}] Received from Flowise:`, flowiseResponseAI2);
+                    criticResponseText = flowiseResponseAI2.text || "2차 분석 결과를 받지 못했습니다.";
+        
+                } catch (error) {
+                    console.error(`[/deep_research AI-2 Session: ${sessionId}] Error processing Flowise request:`, error);
+                    await interaction.followUp({ content: `<@${interaction.user.id}> 죄송합니다, AI 2차 분석 요청 중 오류가 발생했습니다.`, ephemeral: true });
+                    return;
+                }
+            }
+        
+            // --- 최종 결과 조합 및 전송 ---
+            const finalCombinedResponse = `**[AI 1차 분석 결과]:**\n${analystResponseText}\n\n**[AI 2차 추가 의견]:**\n${criticResponseText || "(추가 의견 없음)"}`;
+        
+            const finalEmbed = new EmbedBuilder()
+                .setTitle(`'${userQuestion}'에 대한 심층 분석 결과`)
+                .setDescription(finalCombinedResponse.length > 4096 ? finalCombinedResponse.substring(0, 4093) + '...' : finalCombinedResponse)
+                .setColor(0x00FA9A)
+                .setTimestamp()
+                .setFooter({ text: '해당 결과는 여러 AI의 협력을 통해 생성되었으며, 항상 정확한 결과를 도출하지 않습니다.' });
+        
+            // deferReply 후에는 editReply 또는 followUp 사용
+            await interaction.editReply({ content: `<@${interaction.user.id}>`, embeds: [finalEmbed], components: [] });
+        
+        }
             // *** 수정 끝 ***
         }
 
