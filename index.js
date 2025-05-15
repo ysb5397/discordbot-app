@@ -647,7 +647,6 @@ client.on(Events.InteractionCreate, async interaction => {
         // else if (commandName === 'edit_event') { /* ... */ }
         // else if (commandName === 'delete_event') { /* ... */ }
 
-    }
     // --- 버튼 상호작용 처리 ---
     else if (interaction.isButton()) {
         const customId = interaction.customId;
