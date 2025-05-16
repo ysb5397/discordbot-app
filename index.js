@@ -335,7 +335,7 @@ client.on(Events.InteractionCreate, async interaction => {
         
         }
             // *** 수정 끝 ***
-    }
+    
 
         // --- /create_event 명령어 처리 ---
         else if (commandName === 'create_event') {
@@ -651,112 +651,113 @@ client.on(Events.InteractionCreate, async interaction => {
         // else if (commandName === 'edit_event') { /* ... */ }
         // else if (commandName === 'delete_event') { /* ... */ }
 
-    // --- 버튼 상호작용 처리 ---
-    else if (interaction.isButton()) {
-        const customId = interaction.customId;
-        console.log(`Processing button interaction: ${customId} by ${interaction.user.tag}`);
+        // --- 버튼 상호작용 처리 ---
+        else if (interaction.isButton()) {
+            const customId = interaction.customId;
+            console.log(`Processing button interaction: ${customId} by ${interaction.user.tag}`);
 
-        // --- 심층 리서치 확인 버튼 처리 ---
-        if (customId.startsWith('confirm_research_')) {
-           // ... (이전 리서치 확인 버튼 로직과 동일) ...
-           // *** 수정 시작: console.log 추가 ***
-            const originalInteractionId = customId.replace('confirm_research_', '');
-            const researchData = pendingResearch.get(originalInteractionId);
+            // --- 심층 리서치 확인 버튼 처리 ---
+            if (customId.startsWith('confirm_research_')) {
+            // ... (이전 리서치 확인 버튼 로직과 동일) ...
+            // *** 수정 시작: console.log 추가 ***
+                const originalInteractionId = customId.replace('confirm_research_', '');
+                const researchData = pendingResearch.get(originalInteractionId);
 
-            if (!researchData || interaction.user.id !== researchData.sessionId) {
-                await interaction.reply({ content: "이 확인 버튼은 당신의 것이 아니거나 만료되었습니다.", ephemeral: true });
-                return;
+                if (!researchData || interaction.user.id !== researchData.sessionId) {
+                    await interaction.reply({ content: "이 확인 버튼은 당신의 것이 아니거나 만료되었습니다.", ephemeral: true });
+                    return;
+                }
+
+                try {
+                    await interaction.update({ content: `<@${interaction.user.id}>\n리서치를 진행합니다... 잠시만 기다려주세요.`, embeds: interaction.message.embeds, components: [] });
+                } catch (updateError) {
+                    console.error("Failed to update interaction message:", updateError);
+                }
+
+                const { originalQuestion, sessionId } = researchData;
+
+                // ***** 추가된 디버그 로그 *****
+                console.log(`[/deep_research Execute] Flowise 요청 전 botName 변수 값: ${botName}`);
+
+                const requestBody = {
+                    question: `계획대로 \"${originalQuestion}\"에 대한 심층 리서치를 진행해 주세요.`,
+                    overrideConfig: {
+                        sessionId: sessionId,
+                        vars: { bot_name: botName },
+                        flowise_request_type: 'execute_research'
+                    }
+                };
+
+                // ***** 추가된 디버그 로그 *****
+                console.log(`[/deep_research Execute Session: ${sessionId}] Sending EXECUTE request to Flowise (Body):`, JSON.stringify(requestBody, null, 2));
+
+                try {
+                    const response = await fetch(flowiseEndpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', ...(flowiseApiKey ? { 'Authorization': `Bearer ${flowiseApiKey}` } : {}) },
+                        body: JSON.stringify(requestBody)
+                    });
+
+                    // ... (이후 리서치 결과 처리 로직은 동일) ...
+                    if (!response.ok) {
+                        const errorData = await response.text();
+                        console.error(`[/deep_research Execute Session: ${sessionId}] Flowise API Error: ${response.status} ${response.statusText}`, errorData);
+                        await interaction.followUp({ content: `<@${interaction.user.id}> 죄송합니다, 리서치 실행 중 오류가 발생했습니다. (Code: ${response.status})`, ephemeral: true });
+                        pendingResearch.delete(originalInteractionId);
+                        return;
+                    }
+
+                    const flowiseResponse = await response.json();
+                    console.log(`[/deep_research Execute Session: ${sessionId}] Received RESULT from Flowise:`, flowiseResponse);
+
+                    let replyEmbeds = [];
+                    const imageUrl = flowiseResponse.imageUrl || (typeof flowiseResponse.text === 'string' && (flowiseResponse.text.startsWith('http://') || flowiseResponse.text.startsWith('https://')) && /\.(jpg|jpeg|png|gif)$/i.test(flowiseResponse.text) ? flowiseResponse.text : null);
+                    if (imageUrl) {
+                        const imageEmbed = new EmbedBuilder().setTitle('리서치 관련 이미지').setImage(imageUrl).setColor(0x0099FF);
+                        replyEmbeds.push(imageEmbed);
+                    }
+                    const replyText = flowiseResponse.text;
+                    if (replyText && !imageUrl) {
+                        const textEmbed = new EmbedBuilder()
+                            .setTitle(`'${originalQuestion}'에 대한 심층 리서치 결과`)
+                            .setDescription(replyText.length > 4096 ? replyText.substring(0, 4093) + '...' : replyText)
+                            .setColor(0x00FA9A)
+                            .setTimestamp()
+                            .setFooter({ text: '해당 결과는 AI에 의해 생성되었으며, 항상 정확한 결과를 도출하지 않습니다.' });
+                        replyEmbeds.push(textEmbed);
+                    } else if (!imageUrl && !replyText) {
+                        const errorEmbed = new EmbedBuilder().setDescription('죄송합니다, AI로부터 리서치 결과를 받지 못했습니다.').setColor(0xFF0000);
+                        replyEmbeds.push(errorEmbed);
+                    }
+
+                    await interaction.followUp({ content: `<@${interaction.user.id}>`, embeds: replyEmbeds });
+                    pendingResearch.delete(originalInteractionId);
+
+                } catch (error) {
+                    console.error(`[/deep_research Execute Session: ${sessionId}] Error processing Flowise request:`, error);
+                    try {
+                        await interaction.followUp({ content: `<@${interaction.user.id}> 죄송합니다, 리서치 결과 처리 중 오류가 발생했습니다.`, ephemeral: true });
+                    } catch (e) {
+                        console.error("FollowUp failed after error:", e);
+                    }
+                    pendingResearch.delete(originalInteractionId);
+                }
+                // *** 수정 끝 ***
             }
+            // --- 심층 리서치 취소 버튼 처리 ---
+            else if (customId.startsWith('cancel_research_')) {
+                // ... (취소 버튼 로직은 이전과 동일하게 유지) ...
+                const originalInteractionId = customId.replace('cancel_research_', '');
+                const researchData = pendingResearch.get(originalInteractionId);
 
-            try {
-                await interaction.update({ content: `<@${interaction.user.id}>\n리서치를 진행합니다... 잠시만 기다려주세요.`, embeds: interaction.message.embeds, components: [] });
-            } catch (updateError) {
-                console.error("Failed to update interaction message:", updateError);
-            }
-
-            const { originalQuestion, sessionId } = researchData;
-
-             // ***** 추가된 디버그 로그 *****
-            console.log(`[/deep_research Execute] Flowise 요청 전 botName 변수 값: ${botName}`);
-
-            const requestBody = {
-                question: `계획대로 \"${originalQuestion}\"에 대한 심층 리서치를 진행해 주세요.`,
-                overrideConfig: {
-                    sessionId: sessionId,
-                    vars: { bot_name: botName },
-                    flowise_request_type: 'execute_research'
-                }
-            };
-
-             // ***** 추가된 디버그 로그 *****
-            console.log(`[/deep_research Execute Session: ${sessionId}] Sending EXECUTE request to Flowise (Body):`, JSON.stringify(requestBody, null, 2));
-
-            try {
-                const response = await fetch(flowiseEndpoint, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', ...(flowiseApiKey ? { 'Authorization': `Bearer ${flowiseApiKey}` } : {}) },
-                    body: JSON.stringify(requestBody)
-                });
-
-                 // ... (이후 리서치 결과 처리 로직은 동일) ...
-                 if (!response.ok) {
-                     const errorData = await response.text();
-                     console.error(`[/deep_research Execute Session: ${sessionId}] Flowise API Error: ${response.status} ${response.statusText}`, errorData);
-                     await interaction.followUp({ content: `<@${interaction.user.id}> 죄송합니다, 리서치 실행 중 오류가 발생했습니다. (Code: ${response.status})`, ephemeral: true });
-                     pendingResearch.delete(originalInteractionId);
-                     return;
+                if (!researchData || interaction.user.id !== researchData.sessionId) {
+                    await interaction.reply({ content: "이 취소 버튼은 당신의 것이 아니거나 만료되었습니다.", ephemeral: true });
+                    return;
                 }
 
-                const flowiseResponse = await response.json();
-                console.log(`[/deep_research Execute Session: ${sessionId}] Received RESULT from Flowise:`, flowiseResponse);
-
-                let replyEmbeds = [];
-                const imageUrl = flowiseResponse.imageUrl || (typeof flowiseResponse.text === 'string' && (flowiseResponse.text.startsWith('http://') || flowiseResponse.text.startsWith('https://')) && /\.(jpg|jpeg|png|gif)$/i.test(flowiseResponse.text) ? flowiseResponse.text : null);
-                 if (imageUrl) {
-                      const imageEmbed = new EmbedBuilder().setTitle('리서치 관련 이미지').setImage(imageUrl).setColor(0x0099FF);
-                      replyEmbeds.push(imageEmbed);
-                 }
-                const replyText = flowiseResponse.text;
-                if (replyText && !imageUrl) {
-                    const textEmbed = new EmbedBuilder()
-                        .setTitle(`'${originalQuestion}'에 대한 심층 리서치 결과`)
-                        .setDescription(replyText.length > 4096 ? replyText.substring(0, 4093) + '...' : replyText)
-                        .setColor(0x00FA9A)
-                        .setTimestamp()
-                        .setFooter({ text: '해당 결과는 AI에 의해 생성되었으며, 항상 정확한 결과를 도출하지 않습니다.' });
-                    replyEmbeds.push(textEmbed);
-                } else if (!imageUrl && !replyText) {
-                    const errorEmbed = new EmbedBuilder().setDescription('죄송합니다, AI로부터 리서치 결과를 받지 못했습니다.').setColor(0xFF0000);
-                    replyEmbeds.push(errorEmbed);
-                }
-
-                await interaction.followUp({ content: `<@${interaction.user.id}>`, embeds: replyEmbeds });
+                await interaction.update({ content: `<@${interaction.user.id}>\n심층 리서치 요청이 취소되었습니다.`, embeds: interaction.message.embeds, components: [] });
                 pendingResearch.delete(originalInteractionId);
-
-            } catch (error) {
-                 console.error(`[/deep_research Execute Session: ${sessionId}] Error processing Flowise request:`, error);
-                 try {
-                     await interaction.followUp({ content: `<@${interaction.user.id}> 죄송합니다, 리서치 결과 처리 중 오류가 발생했습니다.`, ephemeral: true });
-                 } catch (e) {
-                     console.error("FollowUp failed after error:", e);
-                 }
-                 pendingResearch.delete(originalInteractionId);
             }
-             // *** 수정 끝 ***
-        }
-        // --- 심층 리서치 취소 버튼 처리 ---
-        else if (customId.startsWith('cancel_research_')) {
-            // ... (취소 버튼 로직은 이전과 동일하게 유지) ...
-             const originalInteractionId = customId.replace('cancel_research_', '');
-            const researchData = pendingResearch.get(originalInteractionId);
-
-            if (!researchData || interaction.user.id !== researchData.sessionId) {
-                await interaction.reply({ content: "이 취소 버튼은 당신의 것이 아니거나 만료되었습니다.", ephemeral: true });
-                return;
-            }
-
-            await interaction.update({ content: `<@${interaction.user.id}>\n심층 리서치 요청이 취소되었습니다.`, embeds: interaction.message.embeds, components: [] });
-            pendingResearch.delete(originalInteractionId);
         }
     }
 });
