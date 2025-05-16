@@ -335,7 +335,7 @@ client.on(Events.InteractionCreate, async interaction => {
         
         }
             // *** 수정 끝 ***
-        }
+    }
 
         // --- /create_event 명령어 처리 ---
         else if (commandName === 'create_event') {
