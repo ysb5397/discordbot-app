@@ -338,6 +338,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
         // --- /create_event 명령어 처리 ---
         else if (commandName === 'create_event') {
+            console.log('DEBUG: Entered create_event block');
             // 사용자 권한 확인
             if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.ManageEvents)) {
                  return interaction.reply({ content: '이 명령어를 사용하려면 "이벤트 관리" 권한이 필요합니다.', ephemeral: true });
@@ -443,6 +444,7 @@ client.on(Events.InteractionCreate, async interaction => {
         }
         // --- /edit_event 명령어 처리 ---
         else if (commandName === 'edit_event') {
+            console.log('DEBUG: Entered edit_event block');
             // 권한 확인
             if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.ManageEvents)) {
                  return interaction.reply({ content: '이 명령어를 사용하려면 "이벤트 관리" 권한이 필요합니다.', ephemeral: true });
@@ -586,6 +588,7 @@ client.on(Events.InteractionCreate, async interaction => {
         }
         // --- /delete_event 명령어 처리 ---
         else if (commandName === 'delete_event') {
+            console.log('DEBUG: Entered delete_event block');
             // 권한 확인
             if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.ManageEvents)) {
                  return interaction.reply({ content: '이 명령어를 사용하려면 "이벤트 관리" 권한이 필요합니다.', ephemeral: true });
