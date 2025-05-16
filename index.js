@@ -166,6 +166,7 @@ client.on(Events.InteractionCreate, async interaction => {
     if (interaction.isChatInputCommand()) {
         const { commandName } = interaction;
         console.log(`Processing slash command: /${commandName} by ${interaction.user.tag}`);
+        console.log('DEBUG: Actual commandName received:', commandName);
 
         // --- /chat 명령어 처리 ---
         if (commandName === 'chat') {
