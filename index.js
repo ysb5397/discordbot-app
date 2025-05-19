@@ -297,6 +297,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
 
                 // --- 이제 summaryText와 mainContent를 사용 ---
+                let replyEmbeds = [];
                 const filesToSend = []; // 파일 첨부를 위한 배열
 
                 // 1. 요약 임베드 생성
