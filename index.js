@@ -9,6 +9,8 @@ const {
 // node-fetch v2 설치 필요 (npm install node-fetch@2)
 const fetch = require('node-fetch');
 const dotenv = require('dotenv');
+const fs = require('fs').promises; // 비동기 파일 작업을 위해 promises API 사용
+const path = require('path');      // 경로 관련 작업을 위해 추가 (선택 사항이지만 유용)
 dotenv.config(); // .env 파일 로드
 
 // v14 Intents 사용
@@ -209,7 +211,115 @@ client.on(Events.InteractionCreate, async interaction => {
                 const flowiseResponse = await response.json();
                 console.log(`[/chat Session: ${sessionId}] Received from Flowise:`, flowiseResponse);
 
+                let fullText = flowiseResponse.text || "AI로부터 응답을 받지 못했습니다.";
+                let summaryText = "요약 정보를 가져오지 못했습니다.";
+                let mainContent = fullText; // 기본값은 전체 텍스트
+
+                // SUMMARY_START와 SUMMARY_END 구분자를 사용하여 요약과 본문 분리 시도
+                const summaryStartMarker = "SUMMARY_START";
+                const summaryEndMarker = "SUMMARY_END";
+                const summaryStartIndex = fullText.indexOf(summaryStartMarker);
+                const summaryEndIndex = fullText.indexOf(summaryEndMarker);
+
+                if (summaryStartIndex !== -1 && summaryEndIndex !== -1 && summaryStartIndex < summaryEndIndex) {
+                    summaryText = fullText.substring(summaryStartIndex + summaryStartMarker.length, summaryEndIndex).trim();
+                    // 요약을 제외한 본문 만들기 (여러 방법이 있을 수 있음)
+                    mainContent = (fullText.substring(0, summaryStartIndex) + fullText.substring(summaryEndIndex + summaryEndMarker.length)).trim();
+                    if (mainContent.length === 0) mainContent = "상세 내용은 첨부 파일을 확인해주세요."; // 본문이 비었을 경우 대비
+                    console.log(`[/${commandName} Session: ${sessionId}] Summary extracted: ${summaryText}`);
+                    console.log(`[/${commandName} Session: ${sessionId}] Main content (after summary removal): ${mainContent.substring(0,100)}...`);
+                } else {
+                    console.log(`[/${commandName} Session: ${sessionId}] Summary markers not found. Using full text for main content and a default summary.`);
+                    // 요약 구분자가 없다면, 본문의 첫 부분을 요약으로 사용하거나 기본 메시지 사용
+                    summaryText = mainContent.length > 200 ? mainContent.substring(0, 197) + "..." : mainContent;
+                    if (mainContent === "AI로부터 응답을 받지 못했습니다.") summaryText = mainContent;
+                }
+
+
+                // --- 이제 summaryText와 mainContent를 사용 ---
+
                 let replyEmbeds = [];
+                const filesToSend = []; // 파일 첨부를 위한 배열
+
+                // 1. 요약 임베드 생성
+                const summaryEmbed = new EmbedBuilder()
+                    .setTitle(commandName === 'deep_research' ? `'${flowiseResponse.originalQuestion || userQuestion}'에 대한 분석 요약` : "AI 응답 요약") // deep_research 시 originalQuestion 사용
+                    .setDescription(summaryText.length > 4096 ? summaryText.substring(0, 4093) + '...' : summaryText)
+                    .setColor(0x00FA9A)
+                    .setTimestamp()
+                    .setFooter({ text: '전체 내용은 첨부된 파일을 확인해주세요.' });
+                replyEmbeds.push(summaryEmbed);
+
+                // 2. 전체 내용을 파일로 생성 및 첨부 준비
+                // 디스코드 파일명은 너무 길거나 특수문자가 많으면 문제가 될 수 있으므로 적절히 처리
+                const fileNameSafe = `<span class="math-inline">\{commandName\}\_</span>{sessionId}_${Date.now()}.txt`.replace(/[^a-z0-9_.-]/gi, '_');
+                const filePath = path.join(__dirname, fileNameSafe); // 임시 파일 경로 (봇 실행 위치 기준)
+
+                try {
+                    await fs.writeFile(filePath, mainContent); // mainContent를 파일에 쓴다
+                    filesToSend.push({ attachment: filePath, name: `${commandName}_response.txt` }); // Discord.js v14 파일 첨부 형식
+                    console.log(`[/${commandName} Session: ${sessionId}] Content saved to file: ${filePath}`);
+                } catch (fileError) {
+                    console.error(`[/${commandName} Session: ${sessionId}] Error writing to file:`, fileError);
+                    // 파일 생성 실패 시 사용자에게 알림 (선택 사항)
+                    const errorEmbed = new EmbedBuilder()
+                        .setDescription("⚠️ 전체 내용을 파일로 저장하는 중 오류가 발생했습니다.")
+                        .setColor(0xFFCC00);
+                    replyEmbeds.push(errorEmbed);
+                }
+
+                // 3. 최종 응답 전송 (임베드 + 파일)
+                try {
+                    // deferReply 후에는 editReply 또는 followUp 사용
+                    // 버튼 상호작용(deep_research 확인/취소) 후에는 followUp 사용
+                    if (interaction.isButton() || (interaction.deferred && !interaction.replied)) {
+                        // deep_research의 확인 버튼 클릭 후 또는 일반 deferReply 후
+                        await interaction.editReply({
+                            content: `<@${interaction.user.id}>`,
+                            embeds: replyEmbeds,
+                            files: filesToSend.length > 0 ? filesToSend : undefined // 파일이 있을 때만 첨부
+                        });
+                    } else if (!interaction.replied) { // 아직 응답하지 않은 슬래시 명령어 (이론상 deferReply를 했어야 함)
+                        await interaction.reply({
+                            content: `<@${interaction.user.id}>`,
+                            embeds: replyEmbeds,
+                            files: filesToSend.length > 0 ? filesToSend : undefined,
+                            ephemeral: false // 또는 true, 상황에 맞게
+                        });
+                    } else { // 이미 응답한 경우 followUp (예: 오류 메시지 후 추가 정보)
+                        await interaction.followUp({
+                            content: `<@${interaction.user.id}>`,
+                            embeds: replyEmbeds,
+                            files: filesToSend.length > 0 ? filesToSend : undefined,
+                            ephemeral: false
+                        });
+                    }
+
+                } catch (replyError) {
+                    console.error(`[/${commandName} Session: ${sessionId}] Error sending final reply:`, replyError);
+                    // 여기서 실패하면 사용자는 아무것도 못 받을 수 있으므로, 가능한 간단한 followUp 시도
+                    try {
+                        await interaction.followUp({ content: `<@${interaction.user.id}> 응답을 전송하는 중 문제가 발생했습니다.`, ephemeral: true });
+                    } catch (finalError) {
+                        console.error(`[/${commandName} Session: ${sessionId}] Critical error: Failed to send even a basic followUp.`, finalError);
+                    }
+                } finally {
+                    // 임시 파일 삭제 (성공 여부와 관계없이)
+                    if (filesToSend.length > 0) {
+                        try {
+                            await fs.unlink(filePath);
+                            console.log(`[/${commandName} Session: ${sessionId}] Temporary file deleted: ${filePath}`);
+                        } catch (deleteError) {
+                            console.error(`[/${commandName} Session: ${sessionId}] Error deleting temporary file:`, deleteError);
+                        }
+                    }
+                    // pendingResearch 정리 (deep_research의 경우)
+                    if (commandName === 'deep_research' && interaction.isButton() && interaction.customId.startsWith('confirm_research_')) {
+                        const originalInteractionId = interaction.customId.replace('confirm_research_', '');
+                        pendingResearch.delete(originalInteractionId);
+                    }
+                }
+
                 const imageUrl = flowiseResponse.imageUrl || (typeof flowiseResponse.text === 'string' && (flowiseResponse.text.startsWith('http://') || flowiseResponse.text.startsWith('https://')) && /\.(jpg|jpeg|png|gif)$/i.test(flowiseResponse.text) ? flowiseResponse.text : null);
                 if (imageUrl) {
                      const imageEmbed = new EmbedBuilder().setTitle('AI가 생성한 이미지').setImage(imageUrl).setColor(0x0099FF);
