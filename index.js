@@ -208,7 +208,7 @@ client.on(Events.InteractionCreate, async interaction => {
                     await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, AI 응답 생성 중 오류가 발생했습니다. (Code: ${response.status})`);
                     return;
                 }
-                const flowiseResponse await response.json();
+                const flowiseResponse = await response.json();
                 let replyEmbeds = [];
 
                 const imageUrl = flowiseResponse.imageUrl || (typeof flowiseResponse.text === 'string' && (flowiseResponse.text.startsWith('http://') || flowiseResponse.text.startsWith('https://')) && /\.(jpg|jpeg|png|gif)$/i.test(flowiseResponse.text) ? flowiseResponse.text : null);
