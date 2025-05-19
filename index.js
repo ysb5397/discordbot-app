@@ -208,7 +208,67 @@ client.on(Events.InteractionCreate, async interaction => {
                     await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, AI 응답 생성 중 오류가 발생했습니다. (Code: ${response.status})`);
                     return;
                 }
-                const flowiseResponse = await response.json();
+
+                let replyEmbeds = [];
+
+                const imageUrl = flowiseResponse.imageUrl || (typeof flowiseResponse.text === 'string' && (flowiseResponse.text.startsWith('http://') || flowiseResponse.text.startsWith('https://')) && /\.(jpg|jpeg|png|gif)$/i.test(flowiseResponse.text) ? flowiseResponse.text : null);
+                if (imageUrl) {
+                     const imageEmbed = new EmbedBuilder().setTitle('AI가 생성한 이미지').setImage(imageUrl).setColor(0x0099FF);
+                     replyEmbeds.push(imageEmbed);
+                }
+                const replyText = flowiseResponse.text;
+                 if (replyText && !imageUrl) {
+                    const textEmbed = new EmbedBuilder().setDescription(replyText.length > 4096 ? replyText.substring(0, 4093) + '...' : replyText).setColor(0x00FA9A).setTimestamp().setFooter({ text: '해당 결과는 AI에 의해 생성되었으며, 항상 정확한 결과를 도출하지 않습니다.' });
+                    replyEmbeds.push(textEmbed);
+                 } else if (!imageUrl && !replyText) {
+                    const errorEmbed = new EmbedBuilder().setDescription('죄송합니다, AI로부터 답변을 받지 못했습니다.').setColor(0xFF0000);
+                    replyEmbeds.push(errorEmbed);
+                 }
+                 await interaction.editReply({ content: `<@${interaction.user.id}>`, embeds: replyEmbeds });
+
+            } catch (error) {
+                console.error(`[/chat Session: ${sessionId}] Error processing Flowise request:`, error);
+                try { await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, 요청 처리 중 오류가 발생했습니다.`); } catch (e) { console.error("Edit reply failed:", e); }
+            }
+            // *** 수정 끝 ***
+        }
+        // --- /deep_research 명령어 처리 (1단계: 계획 요청) ---
+        else if (commandName === 'deep_research') {
+            if (interaction.deferred || interaction.replied) return;
+            try { await interaction.deferReply(); } catch (e) { console.error("Defer failed:", e); return; }
+        
+            const userQuestion = interaction.options.getString('question');
+            const sessionId = interaction.user.id; // 세션 ID는 일관되게 사용
+        
+            // --- AI 1 (분석가) 호출 ---
+            let analystResponseText = '';
+            try {
+                console.log(`[/deep_research AI-1 Session: ${sessionId}] Sending to Flowise for initial analysis (Question: ${userQuestion})`);
+                const requestBodyAI1 = {
+                    question: userQuestion, // 사용자 질문을 직접 전달
+                    overrideConfig: {
+                        sessionId: sessionId,
+                        vars: { bot_name: botName },
+                        // 만약 Flowise Chatflow에서 이 요청이 '1단계'임을 알려야 한다면,
+                        // 여기에 'current_step: "analysis"' 같은 플래그를 추가할 수 있습니다.
+                        // 또는, 완전히 다른 Flowise 엔드포인트(분석가 AI 전용)를 사용할 수도 있습니다.
+                        // flowise_request_type: 'analyst_ai_phase' // 예시 플래그
+                    }
+                };
+        
+                const responseAI1 = await fetch(flowiseEndpoint, { // 또는 flowiseEndpointForAnalystAI
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...(flowiseApiKey ? { 'Authorization': `Bearer ${flowiseApiKey}` } : {}) },
+                    body: JSON.stringify(requestBodyAI1)
+                });
+        
+                if (!responseAI1.ok) {
+                    const errorData = await responseAI1.text();
+                    console.error(`[/deep_research AI-1 Session: ${sessionId}] Flowise API Error: ${responseAI1.status} ${responseAI1.statusText}`, errorData);
+                    await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, AI 1차 분석 중 오류가 발생했습니다. (Code: ${responseAI1.status})`);
+                    return;
+                }
+const flowiseResponse = await response.json();
                 console.log(`[/chat Session: ${sessionId}] Received from Flowise:`, flowiseResponse);
 
                 let fullText = flowiseResponse.text || "AI로부터 응답을 받지 못했습니다.";
@@ -238,8 +298,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
                 // --- 이제 summaryText와 mainContent를 사용 ---
 
-                let replyEmbeds = [];
-                const filesToSend = []; // 파일 첨부를 위한 배열
+const filesToSend = []; // 파일 첨부를 위한 배열
 
                 // 1. 요약 임베드 생성
                 const summaryEmbed = new EmbedBuilder()
@@ -320,63 +379,6 @@ client.on(Events.InteractionCreate, async interaction => {
                     }
                 }
 
-                const imageUrl = flowiseResponse.imageUrl || (typeof flowiseResponse.text === 'string' && (flowiseResponse.text.startsWith('http://') || flowiseResponse.text.startsWith('https://')) && /\.(jpg|jpeg|png|gif)$/i.test(flowiseResponse.text) ? flowiseResponse.text : null);
-                if (imageUrl) {
-                     const imageEmbed = new EmbedBuilder().setTitle('AI가 생성한 이미지').setImage(imageUrl).setColor(0x0099FF);
-                     replyEmbeds.push(imageEmbed);
-                }
-                const replyText = flowiseResponse.text;
-                 if (replyText && !imageUrl) {
-                    const textEmbed = new EmbedBuilder().setDescription(replyText.length > 4096 ? replyText.substring(0, 4093) + '...' : replyText).setColor(0x00FA9A).setTimestamp().setFooter({ text: '해당 결과는 AI에 의해 생성되었으며, 항상 정확한 결과를 도출하지 않습니다.' });
-                    replyEmbeds.push(textEmbed);
-                 } else if (!imageUrl && !replyText) {
-                    const errorEmbed = new EmbedBuilder().setDescription('죄송합니다, AI로부터 답변을 받지 못했습니다.').setColor(0xFF0000);
-                    replyEmbeds.push(errorEmbed);
-                 }
-                 await interaction.editReply({ content: `<@${interaction.user.id}>`, embeds: replyEmbeds });
-
-            } catch (error) {
-                console.error(`[/chat Session: ${sessionId}] Error processing Flowise request:`, error);
-                try { await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, 요청 처리 중 오류가 발생했습니다.`); } catch (e) { console.error("Edit reply failed:", e); }
-            }
-            // *** 수정 끝 ***
-        }
-        // --- /deep_research 명령어 처리 (1단계: 계획 요청) ---
-        else if (commandName === 'deep_research') {
-            if (interaction.deferred || interaction.replied) return;
-            try { await interaction.deferReply(); } catch (e) { console.error("Defer failed:", e); return; }
-        
-            const userQuestion = interaction.options.getString('question');
-            const sessionId = interaction.user.id; // 세션 ID는 일관되게 사용
-        
-            // --- AI 1 (분석가) 호출 ---
-            let analystResponseText = '';
-            try {
-                console.log(`[/deep_research AI-1 Session: ${sessionId}] Sending to Flowise for initial analysis (Question: ${userQuestion})`);
-                const requestBodyAI1 = {
-                    question: userQuestion, // 사용자 질문을 직접 전달
-                    overrideConfig: {
-                        sessionId: sessionId,
-                        vars: { bot_name: botName },
-                        // 만약 Flowise Chatflow에서 이 요청이 '1단계'임을 알려야 한다면,
-                        // 여기에 'current_step: "analysis"' 같은 플래그를 추가할 수 있습니다.
-                        // 또는, 완전히 다른 Flowise 엔드포인트(분석가 AI 전용)를 사용할 수도 있습니다.
-                        // flowise_request_type: 'analyst_ai_phase' // 예시 플래그
-                    }
-                };
-        
-                const responseAI1 = await fetch(flowiseEndpoint, { // 또는 flowiseEndpointForAnalystAI
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', ...(flowiseApiKey ? { 'Authorization': `Bearer ${flowiseApiKey}` } : {}) },
-                    body: JSON.stringify(requestBodyAI1)
-                });
-        
-                if (!responseAI1.ok) {
-                    const errorData = await responseAI1.text();
-                    console.error(`[/deep_research AI-1 Session: ${sessionId}] Flowise API Error: ${responseAI1.status} ${responseAI1.statusText}`, errorData);
-                    await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, AI 1차 분석 중 오류가 발생했습니다. (Code: ${responseAI1.status})`);
-                    return;
-                }
                 const flowiseResponseAI1 = await responseAI1.json();
                 console.log(`[/deep_research AI-1 Session: ${sessionId}] Received from Flowise:`, flowiseResponseAI1);
                 analystResponseText = flowiseResponseAI1.text || "1차 분석 결과를 받지 못했습니다."; // Flowise 응답 구조에 따라 text, output 등 적절히 추출
