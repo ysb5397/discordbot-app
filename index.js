@@ -235,215 +235,174 @@ client.on(Events.InteractionCreate, async interaction => {
         // --- /deep_research 명령어 처리 (1단계: 계획 요청) ---
         else if (commandName === 'deep_research') {
             if (interaction.deferred || interaction.replied) return;
-            try { await interaction.deferReply(); } catch (e) { console.error("Defer failed:", e); return; }
-        
+            try { await interaction.deferReply(); } catch (e) { console.error("Defer failed for /deep_research:", e); return; }
+
             const userQuestion = interaction.options.getString('question');
-            const sessionId = interaction.user.id; // 세션 ID는 일관되게 사용
-        
+            const sessionId = interaction.user.id;
+
             // --- AI 1 (분석가) 호출 ---
             let analystResponseText = '';
             try {
                 console.log(`[/deep_research AI-1 Session: ${sessionId}] Sending to Flowise for initial analysis (Question: ${userQuestion})`);
                 const requestBodyAI1 = {
-                    question: userQuestion, // 사용자 질문을 직접 전달
+                    question: userQuestion,
                     overrideConfig: {
                         sessionId: sessionId,
                         vars: { bot_name: botName },
-                        // 만약 Flowise Chatflow에서 이 요청이 '1단계'임을 알려야 한다면,
-                        // 여기에 'current_step: "analysis"' 같은 플래그를 추가할 수 있습니다.
-                        // 또는, 완전히 다른 Flowise 엔드포인트(분석가 AI 전용)를 사용할 수도 있습니다.
-                        // flowise_request_type: 'analyst_ai_phase' // 예시 플래그
+                        // flowise_request_type: 'analyst_ai_phase' // 필요시 Flowise에서 단계 구분을 위한 플래그
                     }
                 };
-        
-                const responseAI1 = await fetch(flowiseEndpoint, { // 또는 flowiseEndpointForAnalystAI
+
+                const responseAI1 = await fetch(flowiseEndpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', ...(flowiseApiKey ? { 'Authorization': `Bearer ${flowiseApiKey}` } : {}) },
                     body: JSON.stringify(requestBodyAI1)
                 });
-        
+
                 if (!responseAI1.ok) {
                     const errorData = await responseAI1.text();
                     console.error(`[/deep_research AI-1 Session: ${sessionId}] Flowise API Error: ${responseAI1.status} ${responseAI1.statusText}`, errorData);
                     await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, AI 1차 분석 중 오류가 발생했습니다. (Code: ${responseAI1.status})`);
                     return;
                 }
-                const flowiseResponse = await responseAI1.json();
-                console.log(`[/chat Session: ${sessionId}] Received from Flowise:`, flowiseResponse);
+                const flowiseResponseAI1 = await responseAI1.json(); // 수정: response -> responseAI1
+                console.log(`[/deep_research AI-1 Session: ${sessionId}] Received from Flowise:`, flowiseResponseAI1); // 수정: /chat -> /deep_research AI-1
+                analystResponseText = flowiseResponseAI1.text || "1차 분석 결과를 받지 못했습니다.";
 
-                let fullText = flowiseResponse.text || "AI로부터 응답을 받지 못했습니다.";
-                let summaryText = "요약 정보를 가져오지 못했습니다.";
-                let mainContent = fullText; // 기본값은 전체 텍스트
-
-                // SUMMARY_START와 SUMMARY_END 구분자를 사용하여 요약과 본문 분리 시도
-                const summaryStartMarker = "SUMMARY_START";
-                const summaryEndMarker = "SUMMARY_END";
-                const summaryStartIndex = fullText.indexOf(summaryStartMarker);
-                const summaryEndIndex = fullText.indexOf(summaryEndMarker);
-
-                if (summaryStartIndex !== -1 && summaryEndIndex !== -1 && summaryStartIndex < summaryEndIndex) {
-                    summaryText = fullText.substring(summaryStartIndex + summaryStartMarker.length, summaryEndIndex).trim();
-                    // 요약을 제외한 본문 만들기 (여러 방법이 있을 수 있음)
-                    mainContent = (fullText.substring(0, summaryStartIndex) + fullText.substring(summaryEndIndex + summaryEndMarker.length)).trim();
-                    if (mainContent.length === 0) mainContent = "상세 내용은 첨부 파일을 확인해주세요."; // 본문이 비었을 경우 대비
-                    console.log(`[/${commandName} Session: ${sessionId}] Summary extracted: ${summaryText}`);
-                    console.log(`[/${commandName} Session: ${sessionId}] Main content (after summary removal): ${mainContent.substring(0,100)}...`);
-                } else {
-                    console.log(`[/${commandName} Session: ${sessionId}] Summary markers not found. Using full text for main content and a default summary.`);
-                    // 요약 구분자가 없다면, 본문의 첫 부분을 요약으로 사용하거나 기본 메시지 사용
-                    summaryText = mainContent.length > 200 ? mainContent.substring(0, 197) + "..." : mainContent;
-                    if (mainContent === "AI로부터 응답을 받지 못했습니다.") summaryText = mainContent;
-                }
-
-
-                // --- 이제 summaryText와 mainContent를 사용 ---
-                const filesToSend = []; // 파일 첨부를 위한 배열
-
-                // 1. 요약 임베드 생성
-                const summaryEmbed = new EmbedBuilder()
-                    .setTitle(commandName === 'deep_research' ? `'${flowiseResponse.originalQuestion || userQuestion}'에 대한 분석 요약` : "AI 응답 요약") // deep_research 시 originalQuestion 사용
-                    .setDescription(summaryText.length > 4096 ? summaryText.substring(0, 4093) + '...' : summaryText)
-                    .setColor(0x00FA9A)
-                    .setTimestamp()
-                    .setFooter({ text: '전체 내용은 첨부된 파일을 확인해주세요.' });
-                replyEmbeds.push(summaryEmbed);
-
-                // 2. 전체 내용을 파일로 생성 및 첨부 준비
-                // 디스코드 파일명은 너무 길거나 특수문자가 많으면 문제가 될 수 있으므로 적절히 처리
-                const fileNameSafe = `<span class="math-inline">\{commandName\}\_</span>{sessionId}_${Date.now()}.txt`.replace(/[^a-z0-9_.-]/gi, '_');
-                const filePath = path.join(__dirname, fileNameSafe); // 임시 파일 경로 (봇 실행 위치 기준)
-
-                try {
-                    await fs.writeFile(filePath, mainContent); // mainContent를 파일에 쓴다
-                    filesToSend.push({ attachment: filePath, name: `${commandName}_response.txt` }); // Discord.js v14 파일 첨부 형식
-                    console.log(`[/${commandName} Session: ${sessionId}] Content saved to file: ${filePath}`);
-                } catch (fileError) {
-                    console.error(`[/${commandName} Session: ${sessionId}] Error writing to file:`, fileError);
-                    // 파일 생성 실패 시 사용자에게 알림 (선택 사항)
-                    const errorEmbed = new EmbedBuilder()
-                        .setDescription("⚠️ 전체 내용을 파일로 저장하는 중 오류가 발생했습니다.")
-                        .setColor(0xFFCC00);
-                    replyEmbeds.push(errorEmbed);
-                }
-
-                // 3. 최종 응답 전송 (임베드 + 파일)
-                try {
-                    // deferReply 후에는 editReply 또는 followUp 사용
-                    // 버튼 상호작용(deep_research 확인/취소) 후에는 followUp 사용
-                    if (interaction.isButton() || (interaction.deferred && !interaction.replied)) {
-                        // deep_research의 확인 버튼 클릭 후 또는 일반 deferReply 후
-                        await interaction.editReply({
-                            content: `<@${interaction.user.id}>`,
-                            embeds: replyEmbeds,
-                            files: filesToSend.length > 0 ? filesToSend : undefined // 파일이 있을 때만 첨부
-                        });
-                    } else if (!interaction.replied) { // 아직 응답하지 않은 슬래시 명령어 (이론상 deferReply를 했어야 함)
-                        await interaction.reply({
-                            content: `<@${interaction.user.id}>`,
-                            embeds: replyEmbeds,
-                            files: filesToSend.length > 0 ? filesToSend : undefined,
-                            ephemeral: false // 또는 true, 상황에 맞게
-                        });
-                    } else { // 이미 응답한 경우 followUp (예: 오류 메시지 후 추가 정보)
-                        await interaction.followUp({
-                            content: `<@${interaction.user.id}>`,
-                            embeds: replyEmbeds,
-                            files: filesToSend.length > 0 ? filesToSend : undefined,
-                            ephemeral: false
-                        });
-                    }
-
-                } catch (replyError) {
-                    console.error(`[/${commandName} Session: ${sessionId}] Error sending final reply:`, replyError);
-                    // 여기서 실패하면 사용자는 아무것도 못 받을 수 있으므로, 가능한 간단한 followUp 시도
-                    try {
-                        await interaction.followUp({ content: `<@${interaction.user.id}> 응답을 전송하는 중 문제가 발생했습니다.`, ephemeral: true });
-                    } catch (finalError) {
-                        console.error(`[/${commandName} Session: ${sessionId}] Critical error: Failed to send even a basic followUp.`, finalError);
-                    }
-                } finally {
-                    // 임시 파일 삭제 (성공 여부와 관계없이)
-                    if (filesToSend.length > 0) {
-                        try {
-                            await fs.unlink(filePath);
-                            console.log(`[/${commandName} Session: ${sessionId}] Temporary file deleted: ${filePath}`);
-                        } catch (deleteError) {
-                            console.error(`[/${commandName} Session: ${sessionId}] Error deleting temporary file:`, deleteError);
-                        }
-                    }
-                    // pendingResearch 정리 (deep_research의 경우)
-                    if (commandName === 'deep_research' && interaction.isButton() && interaction.customId.startsWith('confirm_research_')) {
-                        const originalInteractionId = interaction.customId.replace('confirm_research_', '');
-                        pendingResearch.delete(originalInteractionId);
-                    }
-                }
-
-                const flowiseResponseAI1 = await responseAI1.json();
-                console.log(`[/deep_research AI-1 Session: ${sessionId}] Received from Flowise:`, flowiseResponseAI1);
-                analystResponseText = flowiseResponseAI1.text || "1차 분석 결과를 받지 못했습니다."; // Flowise 응답 구조에 따라 text, output 등 적절히 추출
-        
             } catch (error) {
                 console.error(`[/deep_research AI-1 Session: ${sessionId}] Error processing Flowise request:`, error);
-                await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, AI 1차 분석 요청 중 오류가 발생했습니다.`);
+                // deferReply 후이므로 editReply 사용
+                try { await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, AI 1차 분석 요청 중 오류가 발생했습니다.`); } catch (e) { console.error("EditReply failed after AI-1 error:", e);}
                 return;
             }
-        
+
             // --- AI 2 (비평가/확장가) 호출 ---
-            // AI 1의 응답(analystResponseText)을 AI 2의 입력으로 사용합니다.
             let criticResponseText = '';
             if (analystResponseText && analystResponseText !== "1차 분석 결과를 받지 못했습니다.") {
                 try {
-                    // 사용자에게 중간 진행 상황을 알릴 수 있습니다.
-                    await interaction.editReply({ content: `<@${interaction.user.id}> 1차 분석 완료. 추가 분석을 진행합니다...`, embeds: [] });
-        
-                    console.log(`[/deep_research AI-2 Session: ${sessionId}] Sending to Flowise for critique/expansion (Prev. Analysis: ${analystResponseText.substring(0,100)}...)`);
+                    // 사용자에게 중간 진행 상황 알림 - 중요: deferReply 후 첫 editReply 이후에는 followUp 사용
+                    // 하지만 여기서는 AI1에서 문제가 없었다면 editReply가 아직 사용되지 않았거나, 오류메시지로 사용되었을 수 있음.
+                    // 명확성을 위해 AI1 성공 후엔 editReply로 중간 상태를 알리고, 최종은 followUp으로.
+                    // 만약 AI1에서 오류로 editReply를 이미 했다면, 이부분은 실행되지 않음.
+                    if (!interaction.replied && interaction.deferred) { // 아직 실제 응답(오류 아닌)이 나가지 않은 경우
+                        await interaction.editReply({ content: `<@${interaction.user.id}> 1차 분석 완료. 추가 분석을 진행합니다...`, embeds: [] });
+                    } else if (interaction.replied) { // AI1에서 오류 응답 등으로 이미 replied 상태라면 followUp으로 상태 알림
+                        await interaction.followUp({ content: `<@${interaction.user.id}> 1차 분석은 완료되었으나, 추가 분석을 진행합니다... (이전 메시지에 오류가 있었을 수 있습니다.)`, ephemeral: true, embeds: [] });
+                    }
+
+
+                    console.log(`[/deep_research AI-2 Session: ${sessionId}] Sending to Flowise for critique/expansion (Prev. Analysis: ${analystResponseText.substring(0, 100)}...)`);
                     const requestBodyAI2 = {
-                        // AI 2가 이전 분석 결과를 입력으로 받도록 Flowise Chatflow를 설계해야 합니다.
-                        // 예를 들어, question 필드에 이전 결과를 넣거나, overrideConfig를 통해 특정 변수로 전달합니다.
-                        question: `다음 분석 내용에 대해 비평하거나 확장된 의견을 제시해주세요: ${analystResponseText}`,
+                        question: `다음 분석 내용에 대해 비평하거나 확장된 의견을 제시해주세요: ${analystResponseText}`, // AI 1의 결과를 question으로 전달
                         overrideConfig: {
                             sessionId: sessionId,
                             vars: { bot_name: botName, previous_analysis: analystResponseText },
-                            // flowise_request_type: 'critic_ai_phase' // 예시 플래그
+                            // flowise_request_type: 'critic_ai_phase' // 필요시 Flowise에서 단계 구분을 위한 플래그
                         }
                     };
-        
-                    const responseAI2 = await fetch(flowiseEndpoint, { // 또는 flowiseEndpointForCriticAI
+
+                    const responseAI2 = await fetch(flowiseEndpoint, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', ...(flowiseApiKey ? { 'Authorization': `Bearer ${flowiseApiKey}` } : {}) },
                         body: JSON.stringify(requestBodyAI2)
                     });
-        
+
                     if (!responseAI2.ok) {
                         const errorData = await responseAI2.text();
                         console.error(`[/deep_research AI-2 Session: ${sessionId}] Flowise API Error: ${responseAI2.status} ${responseAI2.statusText}`, errorData);
-                        await interaction.followUp({content: `<@${interaction.user.id}> 죄송합니다, AI 2차 분석 중 오류가 발생했습니다. (Code: ${responseAI2.status})`, ephemeral: true});
+                        // 중간 상태 알림 후이므로 followUp 사용
+                        await interaction.followUp({ content: `<@${interaction.user.id}> 죄송합니다, AI 2차 분석 중 오류가 발생했습니다. (Code: ${responseAI2.status})`, ephemeral: true });
                         return;
                     }
                     const flowiseResponseAI2 = await responseAI2.json();
                     console.log(`[/deep_research AI-2 Session: ${sessionId}] Received from Flowise:`, flowiseResponseAI2);
                     criticResponseText = flowiseResponseAI2.text || "2차 분석 결과를 받지 못했습니다.";
-        
+
                 } catch (error) {
                     console.error(`[/deep_research AI-2 Session: ${sessionId}] Error processing Flowise request:`, error);
-                    await interaction.followUp({ content: `<@${interaction.user.id}> 죄송합니다, AI 2차 분석 요청 중 오류가 발생했습니다.`, ephemeral: true });
+                    // 중간 상태 알림 후이므로 followUp 사용
+                    try { await interaction.followUp({ content: `<@${interaction.user.id}> 죄송합니다, AI 2차 분석 요청 중 오류가 발생했습니다.`, ephemeral: true }); } catch (e) { console.error("FollowUp failed after AI-2 error:", e); }
                     return;
                 }
             }
-        
-            // --- 최종 결과 조합 및 전송 ---
-            const finalCombinedResponse = `**[AI 1차 분석 결과]:**\n${analystResponseText}\n\n**[AI 2차 추가 의견]:**\n${criticResponseText || "(추가 의견 없음)"}`;
-        
-            const finalEmbed = new EmbedBuilder()
-                .setTitle(`'${userQuestion}'에 대한 심층 분석 결과`)
-                .setDescription(finalCombinedResponse.length > 4096 ? finalCombinedResponse.substring(0, 4093) + '...' : finalCombinedResponse)
-                .setColor(0x00FA9A)
+
+            // --- 최종 결과 조합 ---
+            // AI 2의 응답(criticResponseText)에 요약과 본문이 모두 포함되어 있다고 가정
+            // 또는, AI 1과 AI 2의 텍스트를 합친 후, 그 합친 텍스트에 대해 Flowise가 요약을 생성하도록 유도
+            // 여기서는 criticResponseText (또는 이것이 비었다면 analystResponseText)를 fullText로 사용
+            const fullTextForSummaryAndFile = criticResponseText || analystResponseText; // AI 2의 결과가 우선, 없으면 AI 1 결과
+            const combinedForFile = `**[AI 1차 분석 결과]:**\n${analystResponseText}\n\n**[AI 2차 추가 의견]:**\n${criticResponseText || "(추가 의견 없음)"}`; // 파일에는 전체 히스토리
+
+            let summaryText = "심층 분석 요약을 가져오지 못했습니다.";
+            let mainContentForEmbed = fullTextForSummaryAndFile; // 임베드 설명용 (요약이 없을 경우)
+
+            const summaryStartMarker = "SUMMARY_START";
+            const summaryEndMarker = "SUMMARY_END";
+            const summaryStartIndex = fullTextForSummaryAndFile.indexOf(summaryStartMarker);
+            const summaryEndIndex = fullTextForSummaryAndFile.indexOf(summaryEndMarker);
+
+            if (summaryStartIndex !== -1 && summaryEndIndex !== -1 && summaryStartIndex < summaryEndIndex) {
+                summaryText = fullTextForSummaryAndFile.substring(summaryStartIndex + summaryStartMarker.length, summaryEndIndex).trim();
+                // 임베드에는 요약을, 파일에는 전체 내용을 담는 원래 의도대로라면, mainContentForEmbed는 요약 후 본문이 될 수 있음
+                // 하지만 여기서는 심플하게 요약만 추출하고, 파일에는 combinedForFile 전체를 넣기로 함
+                console.log(`[/deep_research Session: ${sessionId}] Summary extracted: ${summaryText}`);
+            } else {
+                console.log(`[/deep_research Session: ${sessionId}] Summary markers not found in final response. Using first 200 chars for summary.`);
+                summaryText = mainContentForEmbed.length > 200 ? mainContentForEmbed.substring(0, 197) + "..." : mainContentForEmbed;
+                if (mainContentForEmbed === "1차 분석 결과를 받지 못했습니다." && mainContentForEmbed === "2차 분석 결과를 받지 못했습니다.") {
+                    summaryText = "AI로부터 응답을 받지 못했습니다.";
+                }
+            }
+
+            const replyEmbeds = [];
+            const filesToSend = [];
+
+            const summaryEmbed = new EmbedBuilder()
+                .setTitle(`'${userQuestion}'에 대한 심층 분석 요약`)
+                .setDescription(summaryText.length > 4096 ? summaryText.substring(0, 4093) + '...' : summaryText)
+                .setColor(0x00BFFF) // Deep research 색상 변경
                 .setTimestamp()
-                .setFooter({ text: '해당 결과는 여러 AI의 협력을 통해 생성되었으며, 항상 정확한 결과를 도출하지 않습니다.' });
-        
-            // deferReply 후에는 editReply 또는 followUp 사용
-            await interaction.editReply({ content: `<@${interaction.user.id}>`, embeds: [finalEmbed], components: [] });
-        
+                .setFooter({ text: '전체 분석 내용은 첨부된 파일을 확인해주세요.' });
+            replyEmbeds.push(summaryEmbed);
+
+            const fileNameSafe = `deep_research_${sessionId}_${Date.now()}.txt`.replace(/[^a-z0-9_.-]/gi, '_');
+            const filePath = path.join(__dirname, fileNameSafe); // 또는 /tmp 사용 권장 (서버 환경)
+
+            try {
+                await fs.writeFile(filePath, combinedForFile); // 파일에는 AI1 + AI2 전체 내용을 저장
+                filesToSend.push({ attachment: filePath, name: `deep_research_full_report.txt` });
+                console.log(`[/deep_research Session: ${sessionId}] Full report saved to file: ${filePath}`);
+            } catch (fileError) {
+                console.error(`[/deep_research Session: ${sessionId}] Error writing to file:`, fileError);
+                const errorEmbed = new EmbedBuilder().setDescription("⚠️ 전체 내용을 파일로 저장하는 중 오류가 발생했습니다.").setColor(0xFFCC00);
+                replyEmbeds.push(errorEmbed);
+            }
+
+            // --- 최종 응답 전송 (followUp 사용) ---
+            try {
+                // AI 2 호출 전에 editReply로 중간 상태를 알렸으므로, 최종 결과는 followUp으로 전송
+                await interaction.followUp({
+                    content: `<@${interaction.user.id}> 심층 분석이 완료되었습니다.`,
+                    embeds: replyEmbeds,
+                    files: filesToSend.length > 0 ? filesToSend : undefined
+                });
+            } catch (replyError) {
+                console.error(`[/deep_research Session: ${sessionId}] Error sending final followUp:`, replyError);
+                try {
+                    await interaction.followUp({ content: `<@${interaction.user.id}> 응답을 전송하는 중 문제가 발생했습니다.`, ephemeral: true });
+                } catch (finalError) {
+                    console.error(`[/deep_research Session: ${sessionId}] Critical error: Failed to send even a basic followUp.`, finalError);
+                }
+            } finally {
+                if (filesToSend.length > 0) {
+                    try {
+                        await fs.unlink(filePath);
+                        console.log(`[/deep_research Session: ${sessionId}] Temporary file deleted: ${filePath}`);
+                    } catch (deleteError) {
+                        console.error(`[/deep_research Session: ${sessionId}] Error deleting temporary file:`, deleteError);
+                    }
+                }
+            }
         }
             // *** 수정 끝 ***
     
