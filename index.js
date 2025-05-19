@@ -268,7 +268,7 @@ client.on(Events.InteractionCreate, async interaction => {
                     await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, AI 1차 분석 중 오류가 발생했습니다. (Code: ${responseAI1.status})`);
                     return;
                 }
-const flowiseResponse = await response.json();
+                const flowiseResponse = await response.json();
                 console.log(`[/chat Session: ${sessionId}] Received from Flowise:`, flowiseResponse);
 
                 let fullText = flowiseResponse.text || "AI로부터 응답을 받지 못했습니다.";
@@ -297,8 +297,7 @@ const flowiseResponse = await response.json();
 
 
                 // --- 이제 summaryText와 mainContent를 사용 ---
-
-const filesToSend = []; // 파일 첨부를 위한 배열
+                const filesToSend = []; // 파일 첨부를 위한 배열
 
                 // 1. 요약 임베드 생성
                 const summaryEmbed = new EmbedBuilder()
