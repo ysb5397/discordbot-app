@@ -357,8 +357,14 @@ client.on(Events.InteractionCreate, async interaction => {
             const replyEmbeds = [];
             const filesToSend = [];
 
+            // Embed Title 길이 제한 처리
+            let embedTitle = `'${userQuestion}'에 대한 심층 분석 요약`;
+            if (embedTitle.length > 256) {
+                embedTitle = embedTitle.substring(0, 253) + '...'; // 256자 제한에 맞춤
+            }
+
             const summaryEmbed = new EmbedBuilder()
-                .setTitle(`'${userQuestion}'에 대한 심층 분석 요약`)
+                .setTitle(embedTitle)
                 .setDescription(summaryText.length > 4096 ? summaryText.substring(0, 4093) + '...' : summaryText)
                 .setColor(0x00BFFF) // Deep research 색상 변경
                 .setTimestamp()
