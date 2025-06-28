@@ -12,6 +12,7 @@ const dotenv = require('dotenv');
 const fs = require('fs').promises; // 비동기 파일 작업을 위해 promises API 사용
 const path = require('path');      // 경로 관련 작업을 위해 추가 (선택 사항이지만 유용)
 const { JSDOM } = require('jsdom');
+const cron = require('node-cron');
 dotenv.config(); // .env 파일 로드
 
 // v14 Intents 사용
