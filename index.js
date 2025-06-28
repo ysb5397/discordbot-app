@@ -226,25 +226,54 @@ async function checkEarthquakeAndNotify() {
 }
 
 /**
+ * 지진 진도(로마 숫자)에 따라 지정된 색상 코드를 반환하는 함수
+ * @param {string} intensityString - 파싱된 진도 문자열 (예: "Ⅰ", "Ⅱ", "Ⅴ")
+ * @returns {number} - 16진수 색상 코드
+ */
+function getColorByIntensity(intensityString) {
+    const intensity = intensityString.trim();
+    switch (intensity) {
+        case 'Ⅰ': return 0xFFFFFF; // 흰색
+        case 'Ⅱ': return 0xADE8FF; // 연한 파랑
+        case 'Ⅲ': return 0x92D050; // 연한 초록
+        case 'Ⅳ': return 0xFFFF00; // 노랑
+        case 'Ⅴ': return 0xFFC000; // 주황
+        case 'Ⅵ': return 0xFF0000; // 빨강
+        case 'Ⅶ': return 0xA32977; // 보라
+        case 'Ⅷ': return 0x632523; // 갈색
+        case 'Ⅸ': return 0x4C2600; // 진한 갈색
+        case 'Ⅹ+': return 0x000000; // 검정
+        default: return 0x808080; // 정보 없음 또는 기타 (회색)
+    }
+}
+
+/**
  * 파싱된 지진 정보를 받아 Discord Embed 메시지로 만들어 전송하는 함수
  * @param {Element} item - 파싱된 'item' XML 요소
  */
 async function sendEarthquakeAlert(item) {
-    // ❗❗❗ 알림을 보낼 디스코드 채널 ID를 여기에 입력하세요 ❗❗❗
-    const targetChannelId = '1388443793589538899';
+    const targetChannelId = '여기에_채널_ID를_입력하세요'; // ❗ 채널 ID 확인 필요
+
+    const rawIntensity = item.querySelector("inT")?.textContent || "정보 없음";
+    
+    // ✨[추가]✨ 진도 문자열에서 로마 숫자 부분만 추출 (예: "Ⅴ(경북)" -> "Ⅴ")
+    const intensityValue = rawIntensity.split('(')[0]; 
+
+    // ✨[추가]✨ 위에서 만든 함수를 호출하여 진도에 맞는 색상 가져오기
+    const embedColor = getColorByIntensity(intensityValue);
 
     const rawTime = item.querySelector("tmEqk")?.textContent || "정보 없음";
     const formattedTime = `${rawTime.substring(0,4)}년 ${rawTime.substring(4,6)}월 ${rawTime.substring(6,8)}일 ${rawTime.substring(8,10)}시 ${rawTime.substring(10,12)}분`;
 
     const embed = new EmbedBuilder()
-        .setColor(0xFF0000) // 붉은색
+        .setColor(embedColor) // ✨[수정]✨ 하드코딩된 색상 대신 변수를 사용
         .setTitle('📢 실시간 국내 지진 정보')
         .setDescription(item.querySelector("rem")?.textContent || "상세 정보 없음")
         .addFields(
             { name: '📍 진원지', value: item.querySelector("loc")?.textContent || "정보 없음", inline: true },
             { name: '⏳ 발생시각', value: formattedTime, inline: true },
             { name: '📏 규모', value: `M ${item.querySelector("mt")?.textContent || "정보 없음"}`, inline: true },
-            { name: '💥 최대진도', value: item.querySelector("inT")?.textContent || "정보 없음", inline: true },
+            { name: '💥 최대진도', value: rawIntensity, inline: true }, // 전체 진도 정보 표시
             { name: ' 깊이', value: `${item.querySelector("dep")?.textContent || "?"}km`, inline: true }
         )
         .setTimestamp()
