@@ -11,7 +11,7 @@ const fetch = require('node-fetch');
 const dotenv = require('dotenv');
 const fs = require('fs').promises; // 비동기 파일 작업을 위해 promises API 사용
 const path = require('path');      // 경로 관련 작업을 위해 추가 (선택 사항이지만 유용)
-// const { JSDOM } = require('jsdom');
+const { JSDOM } = require('jsdom');
 dotenv.config(); // .env 파일 로드
 
 // v14 Intents 사용
@@ -958,23 +958,22 @@ client.on(Events.InteractionCreate, async interaction => {
             }
         }
     }
+    console.log('Bot is ready and schedulers are being set up.');
+
+    // --- 기존 Cron Job (매일 오전 9시 알림) ---
+    cron.schedule('0 9 * * *', async () => {
+        // ... (이전 코드 내용) ...
+    }, {
+        scheduled: true,
+        timezone: "Asia/Seoul"
+    });
+
+    // ✨✨✨ [추가] 1분마다 지진 정보를 확인하는 Cron Job ✨✨✨
+    cron.schedule('* * * * *', checkEarthquakeAndNotify, {
+        scheduled: true,
+        timezone: "Asia/Seoul"
+    });
 });
-// console.log('Bot is ready and schedulers are being set up.');
-
-//     // --- 기존 Cron Job (매일 오전 9시 알림) ---
-//     cron.schedule('0 9 * * *', async () => {
-//         // ... (이전 코드 내용) ...
-//     }, {
-//         scheduled: true,
-//         timezone: "Asia/Seoul"
-//     });
-
-//     // ✨✨✨ [추가] 1분마다 지진 정보를 확인하는 Cron Job ✨✨✨
-//     cron.schedule('* * * * *', checkEarthquakeAndNotify, {
-//         scheduled: true,
-//         timezone: "Asia/Seoul"
-//     });
-// });
 
 // --- 기존 메시지 기반 명령어 처리 (주석 처리 또는 제거 권장) ---
 /*
