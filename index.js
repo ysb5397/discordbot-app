@@ -252,7 +252,7 @@ function getColorByIntensity(intensityString) {
  * @param {Element} item - 파싱된 'item' XML 요소
  */
 async function sendEarthquakeAlert(item) {
-    const targetChannelId = '여기에_채널_ID를_입력하세요'; // ❗ 채널 ID 확인 필요
+    const targetChannelId = '1388443793589538899'; // ❗ 채널 ID 확인 필요
 
     const rawIntensity = item.querySelector("inT")?.textContent || "정보 없음";
     
