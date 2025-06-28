@@ -958,7 +958,7 @@ client.on(Events.InteractionCreate, async interaction => {
             }
         }
     }
-
+});
 // console.log('Bot is ready and schedulers are being set up.');
 
 //     // --- 기존 Cron Job (매일 오전 9시 알림) ---
