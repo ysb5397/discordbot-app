@@ -226,24 +226,45 @@ async function checkEarthquakeAndNotify() {
 }
 
 /**
- * 지진 진도(로마 숫자)에 따라 지정된 색상 코드를 반환하는 함수
- * @param {string} intensityString - 파싱된 진도 문자열 (예: "Ⅰ", "Ⅱ", "Ⅴ")
+ * 지진 진도 문자열을 분석하여 지정된 색상 코드를 유연하게 반환하는 함수
+ * @param {string} rawIntensityString - API에서 받은 원본 진도 문자열 (예: "Ⅴ(경북)", "진도 4")
  * @returns {number} - 16진수 색상 코드
  */
-function getColorByIntensity(intensityString) {
-    const intensity = intensityString.trim();
-    switch (intensity) {
-        case 'Ⅰ': return 0xFFFFFF; // 흰색
-        case 'Ⅱ': return 0xADE8FF; // 연한 파랑
-        case 'Ⅲ': return 0x92D050; // 연한 초록
-        case 'Ⅳ': return 0xFFFF00; // 노랑
-        case 'Ⅴ': return 0xFFC000; // 주황
-        case 'Ⅵ': return 0xFF0000; // 빨강
-        case 'Ⅶ': return 0xA32977; // 보라
-        case 'Ⅷ': return 0x632523; // 갈색
-        case 'Ⅸ': return 0x4C2600; // 진한 갈색
-        case 'Ⅹ+': return 0x000000; // 검정
-        default: return 0x808080; // 정보 없음 또는 기타 (회색)
+function getColorByIntensity(rawIntensityString) {
+    // 입력값이 없거나 비어있으면 기본 회색 반환
+    if (!rawIntensityString) {
+        console.log(`[Color] Received empty or null intensity string.`);
+        return 0x808080;
+    }
+
+    // 대소문자 구분 없이 비교하기 위해 모두 대문자로 변경
+    const upperIntensity = rawIntensityString.toUpperCase();
+
+    // 진도 10부터 1까지 순서대로 확인 (높은 숫자 우선)
+    if (upperIntensity.includes('Ⅹ+') || upperIntensity.includes('10')) {
+        return 0x000000; // 검정
+    } else if (upperIntensity.includes('Ⅸ') || upperIntensity.includes('IX') || upperIntensity.includes('9')) {
+        return 0x4C2600; // 진한 갈색
+    } else if (upperIntensity.includes('Ⅷ') || upperIntensity.includes('VIII') || upperIntensity.includes('8')) {
+        return 0x632523; // 갈색
+    } else if (upperIntensity.includes('Ⅶ') || upperIntensity.includes('VII') || upperIntensity.includes('7')) {
+        return 0xA32977; // 보라
+    } else if (upperIntensity.includes('Ⅵ') || upperIntensity.includes('VI') || upperIntensity.includes('6')) {
+        return 0xFF0000; // 빨강
+    } else if (upperIntensity.includes('Ⅴ') || upperIntensity.includes('V') || upperIntensity.includes('5')) {
+        return 0xFFC000; // 주황
+    } else if (upperIntensity.includes('Ⅳ') || upperIntensity.includes('IV') || upperIntensity.includes('4')) {
+        return 0xFFFF00; // 노랑
+    } else if (upperIntensity.includes('Ⅲ') || upperIntensity.includes('III') || upperIntensity.includes('3')) {
+        return 0x92D050; // 연한 초록
+    } else if (upperIntensity.includes('Ⅱ') || upperIntensity.includes('II') || upperIntensity.includes('2')) {
+        return 0xADE8FF; // 연한 파랑
+    } else if (upperIntensity.includes('Ⅰ') || upperIntensity.includes('I') || upperIntensity.includes('1')) {
+        return 0xFFFFFF; // 흰색
+    } else {
+        // 어떤 진도 값과도 일치하지 않을 경우
+        console.log(`[Color] Unknown intensity value received: '${rawIntensityString}'`);
+        return 0x808080; // 기본 회색
     }
 }
 
