@@ -17,7 +17,7 @@ services:
     
     # 봇 실행에 필요한 패키지들을 설치하는 명령어입니다.
     # 기존 'yarn' 설정을 반영하고, cron-job에 필요한 패키지를 추가합니다.
-    install: yarn add discord.js@14 node-fetch@2 dotenv node-cron jsdom
+    install: yarn install
 
     # 설치가 끝난 후 서비스를 시작하는 명령어입니다. (기존 설정 반영)
     start: yarn start
