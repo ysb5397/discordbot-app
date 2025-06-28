@@ -230,7 +230,7 @@ async function checkEarthquakeAndNotify() {
  */
 async function sendEarthquakeAlert(item) {
     // ❗❗❗ 알림을 보낼 디스코드 채널 ID를 여기에 입력하세요 ❗❗❗
-    const targetChannelId = 'https://discordapp.com/api/webhooks/1388443854180585552/nAeW2g3ZGgzQcAjp5vGynGAyBxayIHaVr8THEcXque-E7Mv6Am4bwarYodBaLQujpzni';
+    const targetChannelId = '1388443793589538899';
 
     const rawTime = item.querySelector("tmEqk")?.textContent || "정보 없음";
     const formattedTime = `${rawTime.substring(0,4)}년 ${rawTime.substring(4,6)}월 ${rawTime.substring(6,8)}일 ${rawTime.substring(8,10)}시 ${rawTime.substring(10,12)}분`;
@@ -270,6 +270,23 @@ async function sendEarthquakeAlert(item) {
 // --- 이벤트 핸들러 ---
 client.on(Events.ClientReady, () => {
     console.log(`Logged in as ${client.user.tag}.`);
+
+    console.log('Bot is ready and schedulers are being set up.');
+
+    // --- 기존 Cron Job (매일 오전 9시 알림) ---
+    cron.schedule('0 9 * * *', async () => {
+        // ... (이전 코드 내용) ...
+    }, {
+        scheduled: true,
+        timezone: "Asia/Seoul"
+    });
+
+    // ✨✨✨ [추가] 1분마다 지진 정보를 확인하는 Cron Job ✨✨✨
+    cron.schedule('* * * * *', checkEarthquakeAndNotify, {
+        scheduled: true,
+        timezone: "Asia/Seoul"
+    });
+
     // 봇 준비 완료 시 봇 이름 업데이트
     if (client.user && client.user.username) {
         botName = client.user.username;
@@ -958,21 +975,6 @@ client.on(Events.InteractionCreate, async interaction => {
             }
         }
     }
-    console.log('Bot is ready and schedulers are being set up.');
-
-    // --- 기존 Cron Job (매일 오전 9시 알림) ---
-    cron.schedule('0 9 * * *', async () => {
-        // ... (이전 코드 내용) ...
-    }, {
-        scheduled: true,
-        timezone: "Asia/Seoul"
-    });
-
-    // ✨✨✨ [추가] 1분마다 지진 정보를 확인하는 Cron Job ✨✨✨
-    cron.schedule('* * * * *', checkEarthquakeAndNotify, {
-        scheduled: true,
-        timezone: "Asia/Seoul"
-    });
 });
 
 // --- 기존 메시지 기반 명령어 처리 (주석 처리 또는 제거 권장) ---
