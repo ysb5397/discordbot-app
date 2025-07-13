@@ -40,17 +40,13 @@ for (const file of eventFiles) {
     const filePath = path.join(eventsPath, file);
     const event = require(filePath);
     if (event.once) {
-        client.once(event.name, (...args) => event.execute(...args));
+        // 'client' 객체를 이벤트 핸들러로 전달
+        client.once(event.name, (...args) => event.execute(...args, client));
     } else {
-        client.on(event.name, (...args) => event.execute(...args));
+        // 'client' 객체를 이벤트 핸들러로 전달
+        client.on(event.name, (...args) => event.execute(...args, client));
     }
 }
-
-// --- 명령어 등록 로직 (별도 파일로 분리하는 것을 권장) ---
-// (기존의 REST, Routes를 사용한 명령어 등록 코드는 deploy-commands.js 같은
-//  별도 파일로 옮겨서 필요할 때만 실행하는 것이 좋습니다.
-//  우선은 여기서 삭제하지 않고 그대로 두어도 동작은 합니다.)
-
 
 // 봇 로그인
 client.login(process.env.DISCORD_BOT_TOKEN);

@@ -4,11 +4,11 @@ const { Events } = require('discord.js');
 
 module.exports = {
     name: Events.InteractionCreate,
-    async execute(interaction) {
-        // 슬래시 명령어 상호작용인 경우에만 처리
+    // client를 마지막 인자로 받도록 수정
+    async execute(interaction, client) {
         if (!interaction.isChatInputCommand()) return;
 
-        const command = interaction.client.commands.get(interaction.commandName);
+        const command = client.commands.get(interaction.commandName);
 
         if (!command) {
             console.error(`'${interaction.commandName}'에 해당하는 명령어를 찾을 수 없습니다.`);
@@ -16,8 +16,10 @@ module.exports = {
         }
 
         try {
+            // interaction 객체만 넘겨줌 (command 파일에서는 interaction.client로 접근 가능)
             await command.execute(interaction);
         } catch (error) {
+            console.error(`Error executing ${interaction.commandName}`);
             console.error(error);
             if (interaction.replied || interaction.deferred) {
                 await interaction.followUp({ content: '명령어 실행 중 오류가 발생했습니다!', ephemeral: true });
