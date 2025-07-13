@@ -1,6 +1,7 @@
 // commands/delete_event.js
 
-const { SlashCommandBui_eventlder, PermissionsBitField } = require('discord.js');
+// 'SlashCommandBuilder'의 오타를 수정했습니다.
+const { SlashCommandBuilder, PermissionsBitField } = require('discord.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
