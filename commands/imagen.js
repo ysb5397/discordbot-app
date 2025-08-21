@@ -66,12 +66,16 @@ module.exports = {
             const geminiResponse = await response.json();
 
 
-            const imageData = geminiResponse.images[0].image;
-            const buffer = Buffer.from(imageData, 'base64');
+            const imageData = geminiResponse.candidates[0].content.parts;
+            const imageBase64 = imageData[1].inlineData.data;
+
+            const buffer = Buffer.from(imageBase64, 'base64');
+            fs.writeFileSync('gemini-image.png', buffer);
 
             const replyEmbed = new EmbedBuilder()
                 .setColor(0x4A90E2)
                 .setTitle(`"${prompt}"`)
+                .setDescription(`"${imageData[0].text}"`)
                 .setImage('attachment://gemini-image.png')
                 .setTimestamp()
                 .setFooter({ text: `Requested by ${interaction.user.tag}` });
