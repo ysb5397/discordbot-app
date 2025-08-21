@@ -13,6 +13,7 @@ module.exports = {
             .setDescription('사용 가능한 명령어 목록입니다.')
             .addFields(
                 { name: '/chat [question] [file?]', value: 'AI와 대화합니다. (파일 첨부 가능)' },
+                { name: '/imagen [prompt] [file?]', value: 'AI에게 이미지 생성을 요청합니다.' },
                 { name: '/deep_research [question]', value: 'AI에게 심층 리서치를 요청합니다.' },
                 { name: '/create_event [...]', value: '서버 이벤트를 생성합니다.' },
                 { name: '/edit_event [...]', value: '서버 이벤트를 수정합니다.' },

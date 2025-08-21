@@ -10,7 +10,7 @@ const geminiKey = process.env.GEMINI_API_KEY;
 module.exports = {
     // 1. 명령어 설정
     data: new SlashCommandBuilder()
-        .setName('imagine')
+        .setName('imagen')
         .setDescription('AI에게 이미지 생성을 요청합니다.')
         .addUserOption(option =>
             option.setName('prompt')
@@ -61,7 +61,7 @@ module.exports = {
 
             if (!response.ok) {
                 const errorData = await response.text();
-                console.error(`[/chat Session: ${sessionId}] Gemini API Error: ${response.status}`, errorData);
+                console.error(`[/imagen Session: ${sessionId}] Gemini API Error: ${response.status}`, errorData);
                 await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, AI 이미지 생성 중 오류가 발생했습니다. (Code: ${response.status})`);
                 return;
             }
@@ -84,7 +84,7 @@ module.exports = {
             await interaction.editReply({ content: `<@${interaction.user.id}>`, embeds: [replyEmbed] });
 
         } catch (error) {
-            console.error(`[/chat Session: ${sessionId}] Error processing gemini request:`, error);
+            console.error(`[/imagen Session: ${sessionId}] Error processing gemini request:`, error);
             try { await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, 요청 처리 중 오류가 발생했습니다.`); } catch (e) { console.error("Edit reply failed:", e); }
         }
     },
