@@ -2,10 +2,10 @@
 
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const fetch = require('node-fetch');
-const fs = require('fs'); // <--- 1. fs 모듈 추가 (파일 저장 테스트용이지만, 실제로는 필요 없음)
+const fs = require('fs');
 
 // Gemini 이미지 생성 API 관련 환경 변수
-const imagenEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/image-generation-001:generateImages`;
+const imagenEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent`;
 const geminiKey = process.env.GEMINI_API_KEY;
 
 module.exports = {
