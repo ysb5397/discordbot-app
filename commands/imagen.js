@@ -17,7 +17,7 @@ module.exports = {
             option.setName('prompt')
                 .setDescription('AI에게 요청할 이미지 프롬프트 내용 (영어로 작성 권장)')
                 .setRequired(true)),
-        
+
 
     // 2. 명령어 실행 로직
     async execute(interaction) {
@@ -36,19 +36,23 @@ module.exports = {
         const prompt = interaction.options.getString('prompt');
         const sessionId = interaction.user.id;
 
-        
+
         const requestBody = {
-            "prompt": prompt,
-            "number_of_images": 1,
+            "contents": [{
+                "parts": [
+                    { "text": prompt }
+                ]
+            }],
+            "generationConfig": { "responseModalities": ["TEXT", "IMAGE"] }
         };
 
         console.log(`[/imagen Session: ${sessionId}] Sending to Gemini API... Prompt: ${prompt}`);
 
         try {
-            
+
             const response = await fetch(imagenEndpoint, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
                 body: JSON.stringify(requestBody)
             });
 
@@ -60,8 +64,8 @@ module.exports = {
             }
 
             const geminiResponse = await response.json();
-            
-            
+
+
             const imageData = geminiResponse.images[0].image;
             const buffer = Buffer.from(imageData, 'base64');
 
@@ -71,7 +75,7 @@ module.exports = {
                 .setImage('attachment://gemini-image.png')
                 .setTimestamp()
                 .setFooter({ text: `Requested by ${interaction.user.tag}` });
-            
+
             await interaction.editReply({
                 content: `<@${interaction.user.id}>`,
                 embeds: [replyEmbed],
