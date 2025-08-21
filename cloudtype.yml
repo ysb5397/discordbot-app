@@ -45,3 +45,6 @@ services:
 
       - name: EQK_API_KEY
         secret: discord-bot-secrets:EQK_API_KEY
+
+      - name: GEMINI_API_KEY
+        secret: discord-bot-secrets:GEMINI_API_KEY

@@ -12,12 +12,12 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName('imagine')
         .setDescription('AI에게 이미지 생성을 요청합니다.')
-        .addStringOption(option =>
+        .addUserOption(option =>
             option.setName('prompt')
                 .setDescription('AI에게 요청할 이미지 프롬프트 내용')
                 .setRequired(true))
         .addAttachmentOption(option =>
-            option.setName('imageFile')
+            option.setName('file')
                 .setDescription('AI에게 보여줄 이미지를 첨부하세요')
                 .setRequired(false)),
 
@@ -26,9 +26,9 @@ module.exports = {
         if (interaction.deferred || interaction.replied) return;
         try { await interaction.deferReply(); } catch (e) { console.error("Defer failed:", e); return; }
 
-        const userQuestion = interaction.options.getString('prompt');
+        const userQuestion = interaction.options.getUser('prompt');
         const sessionId = interaction.user.id;
-        const attachment = interaction.options.getAttachment('imageFile');
+        const attachment = interaction.options.getAttachment('file');
         const botName = interaction.client.user.username; // client 객체에서 봇 이름 가져오기
 
         const requestBody = {
