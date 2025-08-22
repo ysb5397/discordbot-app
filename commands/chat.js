@@ -40,8 +40,8 @@ module.exports = {
             const images = [];
 
             for (var i = 0; i < requestBody.uploads.length; i++) {
-               images[i] = Buffer.to(requestBody.uploads[i], 'base64');
-               fs.writeFileSync('gemini-image.png', images[i]);
+               images[i] = windows.btoa(requestBody.uploads[i]);
+               fs.writeFileSync('upload-image.png', images[i]);
             }
 
             requestBody.uploads = images;
