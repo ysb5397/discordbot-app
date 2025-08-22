@@ -60,7 +60,7 @@ module.exports = {
         try {
     const response = await fetch(imagenEndpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' /* 'x-goog-api-key' is usually not needed if key is in URL */ },
+        headers: { 'Content-Type': 'application/json' , 'x-goog-api-key': geminiKey},
         body: JSON.stringify(requestBody)
     });
 
