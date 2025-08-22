@@ -17,10 +17,12 @@ module.exports = {
             option.setName('prompt')
                 .setDescription('AI에게 요청할 이미지 프롬프트 내용 (영어로 작성 권장)')
                 .setRequired(true))
-        .addNumberOption(option => 
-            option.setName('imageCount')
-                .setDescription('AI가 만드는 이미지의 갯수를 설정합니다.')
-                .setRequired(false)),
+        .addIntegerOption(option => // <-- .addNumberOption을 .addIntegerOption으로 변경
+            option.setName('imagecount') // Discord에서는 옵션 이름이 소문자여야 합니다.
+                .setDescription('AI가 만드는 이미지의 개수를 설정합니다. (기본: 1, 최대: 8)')
+                .setRequired(false)
+                .setMinValue(1) // 최소값 설정
+                .setMaxValue(4)),
 
 
     // 2. 명령어 실행 로직
