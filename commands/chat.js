@@ -36,15 +36,18 @@ module.exports = {
             overrideConfig: { sessionId: sessionId, vars: { bot_name: botName } }
         };
         if (attachment) {
-            requestBody.uploads = [{ type: 'url', name: attachment.name, mime: attachment.contentType || 'application/octet-stream', data: attachment.url }];
-            const images = [];
-
-            for (var i = 0; i < requestBody.uploads.length; i++) {
-               images[i] = windows.btoa(requestBody.uploads[i]);
-               fs.writeFileSync('upload-image.png', images[i]);
+            const response = await fetch(attachment.url);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch image: ${response.statusText}`);
             }
 
-            requestBody.uploads = images;
+            // 2. 응답을 Buffer(데이터 덩어리) 형태로 변환
+            const imageBuffer = await response.buffer();
+
+            // 3. Buffer를 base64 문자열로 인코딩
+            const base64Data = imageBuffer.toString('base64');
+
+            requestBody.uploads = base64Data;
         }
 
         console.log(`[/chat Session: ${sessionId}] Sending to Flowise...`);
