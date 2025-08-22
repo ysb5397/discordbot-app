@@ -5,7 +5,7 @@ const fetch = require('node-fetch');
 const fs = require('fs');
 
 // Gemini 이미지 생성 API 관련 환경 변수
-const imagenEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent`;
+const imagenEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict`;
 const geminiKey = process.env.GEMINI_API_KEY;
 
 module.exports = {
@@ -16,7 +16,11 @@ module.exports = {
         .addStringOption(option =>
             option.setName('prompt')
                 .setDescription('AI에게 요청할 이미지 프롬프트 내용 (영어로 작성 권장)')
-                .setRequired(true)),
+                .setRequired(true))
+        .addNumberOption(option => 
+            option.setName('imageCount')
+                .setDescription('AI가 만드는 이미지의 갯수를 설정합니다.')
+                .setRequired(false)),
 
 
     // 2. 명령어 실행 로직
@@ -34,68 +38,85 @@ module.exports = {
         }
 
         const prompt = interaction.options.getString('prompt');
+        const imageCount = interaction.option.getNumber('imageCount');
         const sessionId = interaction.user.id;
 
 
         const requestBody = {
-            "contents": [{
-                "parts": [
-                    { "text": prompt }
-                ]
-            }],
-            "generationConfig": { "responseModalities": ["TEXT", "IMAGE"] }
+            "instances": [
+                {
+                "prompt": prompt
+                }
+            ],
+            "parameters": {
+                "sampleCount": imageCount
+            }
         };
 
         console.log(`[/imagen Session: ${sessionId}] Sending to Gemini API... Prompt: ${prompt}`);
 
         try {
+    const response = await fetch(imagenEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' /* 'x-goog-api-key' is usually not needed if key is in URL */ },
+        body: JSON.stringify(requestBody)
+    });
 
-            const response = await fetch(imagenEndpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
-                body: JSON.stringify(requestBody)
-            });
+    if (!response.ok) {
+        const errorData = await response.json();
+        console.error(`[/imagen Session: ${sessionId}] Gemini API Error: ${response.status}`, errorData);
+        await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, AI 이미지 생성 중 오류가 발생했습니다.\n> Error: ${errorData.error.message}`);
+        return;
+    }
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                console.error(`[/imagen Session: ${sessionId}] Gemini API Error: ${response.status}`, errorData);
-                await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, AI 이미지 생성 중 오류가 발생했습니다.\n> Error: ${errorData.error.message}`);
-                return;
-            }
+    const geminiResponse = await response.json();
+    const predictions = geminiResponse.predictions;
 
-            const geminiResponse = await response.json();
+    if (!predictions || predictions.length === 0) {
+        return interaction.editReply(`<@${interaction.user.id}> AI로부터 이미지를 생성하지 못했습니다.`);
+    }
 
+    // 1. 여러 개의 첨부 파일을 담을 배열을 준비합니다.
+    const attachments = [];
 
-            const imageData = geminiResponse.candidates[0].content.parts;
-            const imageBase64 = imageData[1].inlineData.data;
+    // 2. forEach 반복문을 사용해 각 예측 결과를 순회합니다.
+    predictions.forEach((prediction, index) => {
+        // 3. 각 이미지의 Base64 데이터를 올바르게 추출합니다.
+        const imageBase64 = prediction.bytesBase64Encoded;
+        
+        // 4. Base64를 Buffer로 변환합니다.
+        const buffer = Buffer.from(imageBase64, 'base64');
+        
+        // 5. 각 이미지를 AttachmentBuilder를 사용해 첨부 파일 객체로 만듭니다.
+        attachments.push({
+            attachment: buffer,
+            name: `gemini-image-${index + 1}.png` // (예: gemini-image-1.png)
+        });
+    });
 
-            const buffer = Buffer.from(imageBase64, 'base64');
-            fs.writeFileSync('gemini-image.png', buffer);
+    // 6. 첫 번째 이미지를 썸네일로 보여줄 Embed를 만듭니다.
+    const replyEmbed = new EmbedBuilder()
+        .setColor(0x4A90E2)
+        .setTitle(`"${prompt}"`)
+        .setDescription(`${attachments.length}개의 이미지가 생성되었습니다.`)
+        .setImage(`attachment://${attachments[0].name}`) // 첫 번째 이미지 이름을 참조
+        .setTimestamp()
+        .setFooter({ text: `Requested by ${interaction.user.tag}` });
 
-            const replyEmbed = new EmbedBuilder()
-                .setColor(0x4A90E2)
-                .setTitle(`"${prompt}"`)
-                .setDescription(`"${imageData[0].text}"`)
-                .setImage('attachment://gemini-image.png')
-                .setTimestamp()
-                .setFooter({ text: `Requested by ${interaction.user.tag}` });
+    // 7. 생성된 모든 첨부 파일을 'files' 배열에 담아 한 번에 전송합니다.
+    await interaction.editReply({
+        content: `<@${interaction.user.id}>`,
+        embeds: [replyEmbed],
+        files: attachments
+    });
 
-            await interaction.editReply({
-                content: `<@${interaction.user.id}>`,
-                embeds: [replyEmbed],
-                files: [{
-                    attachment: buffer,
-                    name: 'gemini-image.png'
-                }]
-            });
-
-        } catch (error) {
-            console.error(`[/imagen Session: ${sessionId}] Error processing Gemini request:`, error);
-            try {
-                await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, 요청 처리 중 오류가 발생했습니다.`);
-            } catch (e) {
-                console.error("Edit reply failed:", e);
-            }
-        }
+} catch (error) {
+    console.error(`[/imagen Session: ${sessionId}] Error processing Gemini request:`, error);
+    try {
+        await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, 요청 처리 중 오류가 발생했습니다.`);
+    } catch (e) {
+        console.error("Edit reply failed:", e);
+    }
+}
     },
 };
