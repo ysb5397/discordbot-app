@@ -33,7 +33,7 @@ module.exports = {
 
          const requestBody = {
             question: userQuestion,
-            overrideConfig: { sessionId: sessionId, vars: { bot_name: botName } };
+            overrideConfig: { sessionId: sessionId, vars: { bot_name: botName } }
                 
         if (attachment) {
             const response = await fetch(attachment.url);
