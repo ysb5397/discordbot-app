@@ -31,9 +31,13 @@ module.exports = {
         const attachment = interaction.options.getAttachment('file');
         const botName = interaction.client.user.username; // client 객체에서 봇 이름 가져오기
 
-        const requestBody = {
-            question: userQuestion,
-            overrideConfig: { sessionId: sessionId, vars: { bot_name: botName } }
+         const requestBody = {
+            "contents": [{
+                "parts": [
+                    { "text": userQuestion }
+                ]
+            }],
+            "generationConfig": { "responseModalities": ["TEXT"] }
         };
         if (attachment) {
             const response = await fetch(attachment.url);
