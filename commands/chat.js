@@ -39,7 +39,7 @@ module.exports = {
             requestBody.uploads = [{ type: 'url', name: attachment.name, mime: attachment.contentType || 'application/octet-stream', data: attachment.url }];
             const images = [];
 
-            for (int i = 0; i < requestBody.uploads.length; i++) {
+            for (var i = 0; i < requestBody.uploads.length; i++) {
                images[i] = Buffer.to(requestBody.uploads[i], 'base64');
                fs.writeFileSync('gemini-image.png', images[i]);
             }
