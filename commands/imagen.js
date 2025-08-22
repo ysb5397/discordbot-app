@@ -40,7 +40,7 @@ module.exports = {
         }
 
         const prompt = interaction.options.getString('prompt');
-        const imageCount = interaction.option.getNumber('imageCount');
+        const imageCount = interaction.option.getInteger('imageCount');
         const sessionId = interaction.user.id;
 
 
