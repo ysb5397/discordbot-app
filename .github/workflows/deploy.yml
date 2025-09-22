@@ -27,7 +27,7 @@ jobs:
           stage: main
           yaml: |
             name: discordbot-app
-            app: node@22
+            app: node@20
             options:
               env:
                 - name: DISCORD_BOT_TOKEN
