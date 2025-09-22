@@ -27,25 +27,25 @@ jobs:
           stage: main
           yaml: |
             name: discordbot-bot
-              options:
-                preset: node
-                env:
-                  - name: DISCORD_BOT_TOKEN
-                    secret: DISCORD_BOT_TOKEN
-                  - name: FLOWISE_ENDPOINT
-                    value: "https://flowise-flowise-m9sgwbay02179a7c.sel4.cloudtype.app/api/v1/prediction/90dba798-7c36-415e-b768-53c337e14494"
-                  - name: FLOWISE_API_KEY
-                    secret: FLOWISE_API_KEY
-                  - name: DISCORD_CLIENT_ID
-                    secret: DISCORD_CLIENT_ID
-                  - name: DISCORD_GUILD_ID
-                    secret: DISCORD_GUILD_ID
-                  - name: EQK_API_KEY
-                    secret: my_kor_eq_api
-                  - name: GEMINI_API_KEY
-                    secret: GEMINI_API_KEY
-                  - name: GCP_CREDENTIALS_JSON
-                    secret: GCP_CREDENTIALS_JSON
-                git:
-                  url: git@github.com:${{ github.repository }}.git
-                  ref: ${{ github.ref }}
+            options:
+              preset: node
+              env:
+                - name: DISCORD_BOT_TOKEN
+                  secret: DISCORD_BOT_TOKEN
+                - name: FLOWISE_ENDPOINT
+                  value: "https://flowise-flowise-m9sgwbay02179a7c.sel4.cloudtype.app/api/v1/prediction/90dba798-7c36-415e-b768-53c337e14494"
+                - name: FLOWISE_API_KEY
+                  secret: FLOWISE_API_KEY
+                - name: DISCORD_CLIENT_ID
+                  secret: DISCORD_CLIENT_ID
+                - name: DISCORD_GUILD_ID
+                  secret: DISCORD_GUILD_ID
+                - name: EQK_API_KEY
+                  secret: my_kor_eq_api
+                - name: GEMINI_API_KEY
+                  secret: GEMINI_API_KEY
+                - name: GCP_CREDENTIALS_JSON
+                  secret: GCP_CREDENTIALS_JSON
+              git:
+                url: git@github.com:${{ github.repository }}.git
+                ref: ${{ github.ref }}
