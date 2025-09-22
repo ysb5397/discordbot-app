@@ -2,7 +2,7 @@ const { Client, GatewayIntentBits, ChannelType } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection, VoiceConnectionStatus } = require('@discordjs/voice');
 
 // --- 설정해야 할 부분 ---
-const BOT_TOKEN = env.DISCORD_BOT_TOKEN;
+const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const TARGET_CHANNEL_ID = "1353292092016693282";
 // ---------------------
 
