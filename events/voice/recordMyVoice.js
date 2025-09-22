@@ -33,8 +33,19 @@ module.exports = {
         
         audioStream.pipe(pcmStream).pipe(writeStream);
 
-        writeStream.on('finish', () => {
-             message.reply(`녹음이 끝났어! 'output_${message.author.id}.pcm' 파일이 생성됐을 거야.`);
+        writeStream.on('finish', async () => { // async 키워드 추가!
+            const filePath = `output_${message.author.id}.pcm`;
+            
+            // 기존의 텍스트 응답 대신, 파일을 직접 전송!
+            try {
+                await message.reply({
+                    content: "녹음이 끝났어! 🎙️",
+                    files: [filePath] // 파일 경로를 배열에 담아 전달
+                });
+            } catch (error) {
+                console.error("파일 전송 중 오류 발생:", error);
+                message.reply("파일을 전송하는 데 실패했어... 😢 (파일 첨부 권한이 없는지 확인해봐!)");
+            }
         });
     },
 };
