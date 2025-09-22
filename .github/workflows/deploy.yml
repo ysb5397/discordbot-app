@@ -27,8 +27,8 @@ jobs:
           stage: main
           yaml: |
             name: discordbot-bot
+            app: node@20
             options:
-              preset: node
               env:
                 - name: DISCORD_BOT_TOKEN
                   secret: DISCORD_BOT_TOKEN
