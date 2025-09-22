@@ -1,21 +1,33 @@
-// events/ready.js
-
-const { Events } = require('discord.js');
+const { Events, ChannelType } = require('discord.js');
 const cron = require('node-cron');
 const { checkEarthquakeAndNotify } = require('../utils/earthquake');
+const { joinVoiceChannel } = require('@discordjs/voice');
+
+const TARGET_CHANNEL_ID = "1353292092016693282";
 
 module.exports = {
     name: Events.ClientReady,
     once: true,
-    // client를 마지막 인자로 받도록 수정
-    execute(client) {
+    async execute(client) {
         console.log(`Logged in as ${client.user.tag}.`);
         console.log('Bot is ready and schedulers are being set up.');
 
-        // 1분마다 지진 정보 확인, client 객체 전달
         cron.schedule('* * * * *', () => checkEarthquakeAndNotify(client), {
             scheduled: true,
             timezone: "Asia/Seoul"
         });
+
+        const targetChannel = await client.channels.fetch(TARGET_CHANNEL_ID).catch(() => null);
+        if (targetChannel && targetChannel.type === ChannelType.GuildVoice) {
+            const humanMembers = targetChannel.members.filter(member => !member.user.bot);
+            if (humanMembers.size > 0) {
+                console.log(`'${targetChannel.name}' 채널에 이미 유저가 있어서 접속할게!`);
+                joinVoiceChannel({
+                    channelId: targetChannel.id,
+                    guildId: targetChannel.guild.id,
+                    adapterCreator: targetChannel.guild.voiceAdapterCreator,
+                });
+            }
+        }
     },
 };
