@@ -17,6 +17,7 @@ const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 // ----------------
 
 client.on('messageCreate', async message => {
+    console.log(`[메시지 수신] 보낸 사람: ${message.author.tag}, 내용: "${message.content}"`);
     if (message.author.bot) return;
 
     if (message.content === '!녹음시작') {
