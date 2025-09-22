@@ -26,8 +26,8 @@ jobs:
           project: ysb5397/flowise
           stage: main
           yaml: |
-            services:
-              discordbot-js:
+            name: discordbot-js
+              options:
                 preset: node
                 env:
                   - name: DISCORD_BOT_TOKEN
