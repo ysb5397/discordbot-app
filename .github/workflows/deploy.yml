@@ -44,8 +44,8 @@ jobs:
                   secret: my_kor_eq_api
                 - name: GEMINI_API_KEY
                   secret: GEMINI_API_KEY
-                - name: GCP_CREDENTIALS_JSON
-                  secret: GCP_CREDENTIALS_JSON
+                - name: DISCORD_CREDENTIALS_JSON
+                  secret: DISCORD_CREDENTIALS_JSON
               git:
                 url: git@github.com:${{ github.repository }}.git
                 ref: ${{ github.ref }}
