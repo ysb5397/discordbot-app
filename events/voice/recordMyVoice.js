@@ -1,5 +1,5 @@
 const { Events } = require('discord.js');
-const { getVoiceConnection, EndBehaviorType } = require('@discordjs/voice');
+const { getVoiceConnection, EndBehaviorType, createAudioPlayer, createAudioResource, NoSubscriberBehavior } = require('@discordjs/voice');
 const prism = require('prism-media');
 
 // 1. Google Cloud Speech 클라이언트 라이브러리 추가
