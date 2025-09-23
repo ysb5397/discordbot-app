@@ -4,6 +4,10 @@ const prism = require('prism-media');
 
 // 1. Google Cloud Speech 클라이언트 라이브러리 추가
 const speech = require('@google-cloud/speech');
+const { GoogleGenerativeAI } = require('@google/generative-ai'); // Gemini 라이브러리 추가
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 // 2. Google Cloud 인증 설정
 // 네가 다운로드한 JSON 키 파일 경로를 정확하게 적어줘야 해!
@@ -40,12 +44,30 @@ module.exports = {
                 interimResults: false, // 중간 결과는 받지 않음
             })
             .on('error', console.error)
-            .on('data', data => {
+            .on('data', async data => {
                 // 4. Google로부터 최종 텍스트 결과를 받으면 콘솔에 출력
                 const transcript = data.results[0]?.alternatives[0]?.transcript;
                 if (transcript) {
-                    console.log(`[최종 결과] ${transcript}`);
-                    message.channel.send(`"${transcript}" 라고 말했네!`);
+                    console.log(`[STT 최종 결과] ${transcript}`);
+                    
+                    // ★★★★★ 새로 추가된 부분 ★★★★★
+                    try {
+                        // 1. STT 결과를 Gemini로 전송
+                        const result = await model.generateContent(transcript);
+                        const response = await result.response;
+                        const text = response.text();
+
+                        // 2. Gemini의 답변을 콘솔에 출력
+                        console.log(`[Gemini 답변] ${text}`);
+                        
+                        // 임시로 채팅 채널에도 답변을 보내서 확인
+                        message.channel.send(`**나:** ${transcript}\n**봇:** ${text}`);
+
+                    } catch (error) {
+                        console.error("Gemini API 호출 중 오류:", error);
+                        message.channel.send("Gemini에게 물어보는 중에 문제가 생겼어... 😢");
+                    }
+                    // ★★★★★★★★★★★★★★★★★★★★★
                 }
             });
 
