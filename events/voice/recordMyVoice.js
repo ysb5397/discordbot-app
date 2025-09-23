@@ -49,7 +49,7 @@ module.exports = {
             // ffmpeg 변환 시작!
             ffmpeg(pcmFilePath)
                 .inputFormat('s16le')
-                .audioFrequency(4800T00)
+                .audioFrequency(48000)
                 .audioChannels(1)
                 .toFormat('mp3')
                 .on('end', async () => {
