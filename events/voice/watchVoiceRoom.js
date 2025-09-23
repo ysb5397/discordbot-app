@@ -52,7 +52,7 @@ function startListening(connection) {
                     recognizeStream.destroy();
 
                     try {
-                        const systemInstruction = "너는 친한 친구와 음성으로 대화하는 AI 비서야. 답변은 항상 마크다운이나 특수기호 없이, 실제 대화처럼 짧고 간결하게 해줘.";
+                        const systemInstruction = "너는 친구와 음성으로 대화하는 AI 비서야. 답변은 항상 마크다운이나 특수기호 없이, 실제 대화처럼 유연하게 해줘.";
                         const result = await model.generateContent([systemInstruction, transcript]);
                         const response = await result.response;
                         const text = response.text();
