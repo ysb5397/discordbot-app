@@ -61,7 +61,9 @@ module.exports = {
                         console.log(`[Gemini 답변] ${text}`);
                         
                         // 임시로 채팅 채널에도 답변을 보내서 확인
-                        message.channel.send(`**나:** ${transcript}\n**봇:** ${text}`);
+                        message.channel.send(`**나:** ${transcript}\n**봇:** ${text}`).catch(e => {
+                            console.error("메시지 전송 중 오류가 발생했습니다: ", e);
+                        });
 
                     } catch (error) {
                         console.error("Gemini API 호출 중 오류:", error);
