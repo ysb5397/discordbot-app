@@ -6,13 +6,11 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const textToSpeech = require('@google-cloud/text-to-speech');
 const { Readable } = require('stream');
 
-// --- Gemini & Google Cloud 설정 ---
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 const credentials = JSON.parse(process.env.DISCORD_CREDENTIALS_JSON);
 const speechClient = new speech.SpeechClient({ credentials });
 const ttsClient = new textToSpeech.TextToSpeechClient({ credentials });
-// --- --- ---
 
 const TARGET_CHANNEL_ID = "1353292092016693282";
 let isListening = false;
@@ -51,7 +49,7 @@ function startListening(connection) {
                 const transcript = data.results[0]?.alternatives[0]?.transcript;
                 if (transcript) {
                     console.log(`[STT 결과] ${transcript}`);
-                    recognizeStream.destroy(); // STT 스트림은 이제 그만 듣기
+                    recognizeStream.destroy();
 
                     try {
                         const systemInstruction = "너는 친한 친구와 음성으로 대화하는 AI 비서야. 답변은 항상 마크다운이나 특수기호 없이, 실제 대화처럼 짧고 간결하게 해줘.";
@@ -62,7 +60,7 @@ function startListening(connection) {
 
                         const [ttsResponse] = await ttsClient.synthesizeSpeech({
                             input: { text: text },
-                            voice: { languageCode: 'ko-KR', name: 'ko-KR-Wavenet-D' },
+                            voice: { languageCode: 'ko-KR', name: 'ko-KR-Chirp3-HD-Sulafat' },
                             audioConfig: { audioEncoding: 'MP3' },
                         });
 
