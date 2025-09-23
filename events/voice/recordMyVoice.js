@@ -9,6 +9,9 @@ const { GoogleGenerativeAI } = require('@google/generative-ai'); // Gemini 라�
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
+const textToSpeech = require('@google-cloud/text-to-speech');
+const { Readable } = require('stream');
+
 // 2. Google Cloud 인증 설정
 // 네가 다운로드한 JSON 키 파일 경로를 정확하게 적어줘야 해!
 const credentials = JSON.parse(process.env.DISCORD_CREDENTIALS_JSON);
@@ -17,6 +20,8 @@ const credentials = JSON.parse(process.env.DISCORD_CREDENTIALS_JSON);
 const speechClient = new speech.SpeechClient({
     credentials,
 });
+
+const ttsClient = new textToSpeech.TextToSpeechClient({ credentials });
 
 module.exports = {
     name: Events.MessageCreate,
@@ -45,31 +50,43 @@ module.exports = {
             })
             .on('error', console.error)
             .on('data', async data => {
-                // 4. Google로부터 최종 텍스트 결과를 받으면 콘솔에 출력
                 const transcript = data.results[0]?.alternatives[0]?.transcript;
                 if (transcript) {
                     console.log(`[STT 최종 결과] ${transcript}`);
                     
-                    // ★★★★★ 새로 추가된 부분 ★★★★★
                     try {
-                        // 1. STT 결과를 Gemini로 전송
+                        // Gemini에게 답변 생성 요청
                         const result = await model.generateContent(transcript);
                         const response = await result.response;
                         const text = response.text();
-
-                        // 2. Gemini의 답변을 콘솔에 출력
                         console.log(`[Gemini 답변] ${text}`);
-                        
-                        // 임시로 채팅 채널에도 답변을 보내서 확인
-                        message.channel.send(`**나:** ${transcript}\n**봇:** ${text}`).catch(e => {
-                            console.error("메시지 전송 중 오류가 발생했습니다: ", e);
+
+                        // 3. Gemini의 텍스트 답변을 Google TTS로 보내 음성 데이터로 변환
+                        const [ttsResponse] = await ttsClient.synthesizeSpeech({
+                            input: { text: text },
+                            voice: { languageCode: 'ko-KR', ssmlGender: 'FEMALE' },
+                            audioConfig: { audioEncoding: 'MP3' },
                         });
 
+                        // 4. 받은 음성 데이터를 디스코드에서 재생 가능한 형태로 변환
+                        const audioBuffer = ttsResponse.audioContent;
+                        const audioStream = new Readable({
+                            read() {
+                                this.push(audioBuffer);
+                                this.push(null); // 스트림의 끝을 알림
+                            }
+                        });
+                        const audioResource = createAudioResource(audioStream);
+                        const player = createAudioPlayer();
+
+                        // 5. 음성 채널에 오디오 플레이어를 연결하고 재생!
+                        const connection = getVoiceConnection(message.guild.id);
+                        connection.subscribe(player);
+                        player.play(audioResource);
+
                     } catch (error) {
-                        console.error("Gemini API 호출 중 오류:", error);
-                        message.channel.send("Gemini에게 물어보는 중에 문제가 생겼어... 😢");
+                        console.error("최종 단계에서 오류 발생:", error);
                     }
-                    // ★★★★★★★★★★★★★★★★★★★★★
                 }
             });
 

@@ -192,6 +192,13 @@
     stream-events "^1.0.5"
     uuid "^11.1.0"
 
+"@google-cloud/text-to-speech@^6.3.0":
+  version "6.3.0"
+  resolved "https://registry.npmjs.org/@google-cloud/text-to-speech/-/text-to-speech-6.3.0.tgz"
+  integrity sha512-Yy3+vKYFs1/oGWWDQoonvaUc8beDObcZFl+HCMjSu5+Okld2Bk8gjNekv37f5posRlQSN65xF7h5m8r2jmXJZg==
+  dependencies:
+    google-gax "^5.0.0"
+
 "@google/generative-ai@^0.24.1":
   version "0.24.1"
   resolved "https://registry.npmjs.org/@google/generative-ai/-/generative-ai-0.24.1.tgz"
