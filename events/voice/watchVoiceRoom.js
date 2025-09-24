@@ -37,7 +37,9 @@ async function setupLiveListeners(connection) {
                 },
                 callbacks: {
                     onmessage: (message) => {
+                        console.log("Gemini로부터 메시지 받음:", message);
                         if (message.data) {
+                            console.log("오디오 데이터 수신! 크기:", message.data.length);
                             geminiAudioStream.push(Buffer.from(message.data, 'base64'));
                         }
                         if (message.serverContent?.turnComplete) {
