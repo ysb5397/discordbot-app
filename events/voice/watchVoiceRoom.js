@@ -29,11 +29,15 @@ async function setupLiveListeners(connection) {
             const geminiAudioStream = new Readable({ read() {} });
 
             console.log('Gemini Live 세션 연결을 시도합니다...');
-            const session = await ai.live.connect({
+
+            const model = ai.getGenerativeModel({ 
                 model: modelName,
+                systemInstruction: "너는 음성으로 대화하는 AI 비서야. 답변은 항상 대화처럼 유연하게 해줘.",
+            });
+
+            const session = await model.startAudioSession({
                 config: {
                     responseModalities: [Modality.AUDIO],
-                    systemInstruction: "너는 음성으로 대화하는 AI 비서야. 답변은 항상 대화처럼 유연하게 해줘.",
                 },
                 callbacks: {
                     onmessage: (message) => {
