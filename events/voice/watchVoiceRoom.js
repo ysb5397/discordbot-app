@@ -35,29 +35,27 @@ async function setupLiveListeners(connection) {
                 systemInstruction: "너는 음성으로 대화하는 AI 비서야. 답변은 항상 대화처럼 유연하게 해줘.",
             });
 
-            const session = await model.connect({
-                config: {
-                    responseModalities: ["AUDIO"],
-                },
-                callbacks: {
-                    onmessage: (message) => {
-                        console.log("Gemini로부터 메시지 받음:", message);
-                        if (message.data) {
-                            console.log("오디오 데이터 수신! 크기:", message.data.length);
-                            geminiAudioStream.push(Buffer.from(message.data, 'base64'));
-                        }
-                        if (message.serverContent?.turnComplete) {
-                            console.log("Gemini의 응답 턴이 종료되었습니다.");
-                            geminiAudioStream.push(null);
-                        }
-                    },
-                    onerror: (e) => console.error('Live API 세션 오류:', e.message),
-                    onclose: () => console.log('Live API 세션이 닫혔습니다.'),
-                }
+            const chat = model.startChat({
+                history: [],
             });
-            console.log('Gemini Live 세션 연결 성공!');
-            currentSession = session;
-            
+
+            currentSession = chat;
+
+            chat.sendMessageStream("").then(async (streamResult) => {
+                for await (const chunk of streamResult.stream) {
+                    // 응답에 오디오 데이터가 포함되어 있는지 확인
+                    const audioData = chunk.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+                    if (audioData) {
+                        geminiAudioStream.push(Buffer.from(audioData, 'base64'));
+                    }
+                }
+                // Gemini의 응답이 모두 끝나면 스트림을 종료
+                geminiAudioStream.push(null); 
+            }).catch(error => {
+                console.error("Gemini 응답 스트림 오류:", error);
+                geminiAudioStream.push(null);
+            });
+
             connection.subscribe(player);
             const resource = createAudioResource(geminiAudioStream);
             player.play(resource);
@@ -78,18 +76,22 @@ async function setupLiveListeners(connection) {
                 .outputFormat('s16le').outputOptions(['-ar 16000', '-ac 1'])
                 .on('error', (err) => console.error('FFmpeg 오류:', err));
 
+            let audioChunks = [];
             ffmpegProcess.stream().on('data', (chunk) => {
-                const base64Audio = chunk.toString('base64');
-                if (session && !session.isClosed) {
-                    session.sendRealtimeInput({ audio: { data: base64Audio, mimeType: "audio/pcm;rate=16000" } });
-                }
+                audioChunks.push(chunk);
             });
 
-            opusStream.on('end', () => {
-                console.log('사용자 음성 스트림이 종료되어 세션을 닫습니다.');
-                if (session && !session.isClosed) session.close();
-                currentSession = null;
-            });
+            opusStream.on('end', async () => {
+            console.log('사용자 음성 스트림이 종료되어 Gemini에게 전송합니다.');
+            if (chat && audioChunks.length > 0) {
+                const audioBuffer = Buffer.concat(audioChunks);
+                await chat.sendMessageStream([
+                    { inlineData: { mimeType: "audio/pcm;rate=16000", data: audioBuffer.toString('base64') } }
+                ]);
+                audioChunks = []; // 청크 초기화
+            }
+            currentSession = null;
+        });
 
         } catch (error) {
             console.error("Live API 세션 시작 중 오류:", error);
