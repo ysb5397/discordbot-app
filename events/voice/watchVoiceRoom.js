@@ -35,7 +35,7 @@ async function setupLiveListeners(connection) {
                 systemInstruction: "너는 음성으로 대화하는 AI 비서야. 답변은 항상 대화처럼 유연하게 해줘.",
             });
 
-            const session = await model.startAudioSession({
+            const session = await model.connect({
                 config: {
                     responseModalities: ["AUDIO"],
                 },
