@@ -1,7 +1,7 @@
 const { Events, ChannelType } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection, EndBehaviorType, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
 const prism = require('prism-media');
-const { GoogleGenAI, Modality } = require('@google/genai');
+const { GoogleGenerativeAI, Modality } = require('@google/generative-ai');
 const { Readable } = require('stream');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegStatic = require('ffmpeg-static');

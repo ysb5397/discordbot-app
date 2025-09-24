@@ -199,14 +199,6 @@
   dependencies:
     google-gax "^5.0.0"
 
-"@google/genai@^1.20.0":
-  version "1.20.0"
-  resolved "https://registry.npmjs.org/@google/genai/-/genai-1.20.0.tgz"
-  integrity sha512-QdShxO9LX35jFogy3iKprQNqgKKveux4H2QjOnyIvyHRuGi6PHiz3fjNf8Y0VPY8o5V2fHqR2XqiSVoz7yZs0w==
-  dependencies:
-    google-auth-library "^9.14.2"
-    ws "^8.18.0"
-
 "@google/generative-ai@^0.24.1":
   version "0.24.1"
   resolved "https://registry.npmjs.org/@google/generative-ai/-/generative-ai-0.24.1.tgz"
@@ -950,17 +942,6 @@ gauge@^3.0.0:
     strip-ansi "^6.0.1"
     wide-align "^1.1.2"
 
-gaxios@^6.0.0, gaxios@^6.1.1:
-  version "6.7.1"
-  resolved "https://registry.npmjs.org/gaxios/-/gaxios-6.7.1.tgz"
-  integrity sha512-LDODD4TMYx7XXdpwxAVRAIAuB0bzv0s+ywFonY46k126qzQHT9ygyoa9tncmOiQmmDrik65UYsEkv3lbfqQ3yQ==
-  dependencies:
-    extend "^3.0.2"
-    https-proxy-agent "^7.0.1"
-    is-stream "^2.0.0"
-    node-fetch "^2.6.9"
-    uuid "^9.0.1"
-
 gaxios@^7.0.0:
   version "7.1.2"
   resolved "https://registry.npmjs.org/gaxios/-/gaxios-7.1.2.tgz"
@@ -969,15 +950,6 @@ gaxios@^7.0.0:
     extend "^3.0.2"
     https-proxy-agent "^7.0.1"
     node-fetch "^3.3.2"
-
-gcp-metadata@^6.1.0:
-  version "6.1.1"
-  resolved "https://registry.npmjs.org/gcp-metadata/-/gcp-metadata-6.1.1.tgz"
-  integrity sha512-a4tiq7E0/5fTjxPAaH4jpjkSv/uCaU2p5KC6HVGrvl0cDjA8iBZv4vv1gyzlmK0ZUKqwpOyQMKzZQe3lTit77A==
-  dependencies:
-    gaxios "^6.1.1"
-    google-logging-utils "^0.0.2"
-    json-bigint "^1.0.0"
 
 gcp-metadata@^7.0.0:
   version "7.0.1"
@@ -1049,18 +1021,6 @@ google-auth-library@^10.0.0-rc.1, google-auth-library@^10.1.0:
     gtoken "^8.0.0"
     jws "^4.0.0"
 
-google-auth-library@^9.14.2:
-  version "9.15.1"
-  resolved "https://registry.npmjs.org/google-auth-library/-/google-auth-library-9.15.1.tgz"
-  integrity sha512-Jb6Z0+nvECVz+2lzSMt9u98UsoakXxA2HGHMCxh+so3n90XgYWkq5dur19JAJV7ONiJY22yBTyJB1TSkvPq9Ng==
-  dependencies:
-    base64-js "^1.3.0"
-    ecdsa-sig-formatter "^1.0.11"
-    gaxios "^6.1.1"
-    gcp-metadata "^6.1.0"
-    gtoken "^7.0.0"
-    jws "^4.0.0"
-
 google-gax@^5.0.0:
   version "5.0.3"
   resolved "https://registry.npmjs.org/google-gax/-/google-gax-5.0.3.tgz"
@@ -1078,11 +1038,6 @@ google-gax@^5.0.0:
     protobufjs "^7.5.3"
     retry-request "^8.0.0"
 
-google-logging-utils@^0.0.2:
-  version "0.0.2"
-  resolved "https://registry.npmjs.org/google-logging-utils/-/google-logging-utils-0.0.2.tgz"
-  integrity sha512-NEgUnEcBiP5HrPzufUkBzJOD/Sxsco3rLNo1F1TNf7ieU8ryUzBhqba8r756CjLX7rn3fHl6iLEwPYuqpoKgQQ==
-
 google-logging-utils@^1.0.0, google-logging-utils@^1.1.1:
   version "1.1.1"
   resolved "https://registry.npmjs.org/google-logging-utils/-/google-logging-utils-1.1.1.tgz"
@@ -1092,14 +1047,6 @@ gopd@^1.2.0:
   version "1.2.0"
   resolved "https://registry.npmjs.org/gopd/-/gopd-1.2.0.tgz"
   integrity sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==
-
-gtoken@^7.0.0:
-  version "7.1.0"
-  resolved "https://registry.npmjs.org/gtoken/-/gtoken-7.1.0.tgz"
-  integrity sha512-pCcEwRi+TKpMlxAQObHDQ56KawURgyAf6jtIY046fJ5tIv3zDe/LEIubckAO8fj6JnAxLdmWkUfNyulQ2iKdEw==
-  dependencies:
-    gaxios "^6.0.0"
-    jws "^4.0.0"
 
 gtoken@^8.0.0:
   version "8.0.0"
@@ -1270,11 +1217,6 @@ is-promise@^4.0.0:
   version "4.0.0"
   resolved "https://registry.npmjs.org/is-promise/-/is-promise-4.0.0.tgz"
   integrity sha512-hvpoI6korhJMnej285dSg6nu1+e6uxs7zG3BYAm5byqDsgJNWwxzM6z6iZiAgQR4TJ30JmBTOwqZUw3WlyH3AQ==
-
-is-stream@^2.0.0:
-  version "2.0.1"
-  resolved "https://registry.npmjs.org/is-stream/-/is-stream-2.0.1.tgz"
-  integrity sha512-hFoiJiTl63nn+kstHGBtewWSKnQLpyb155KHheA1l39uvtO9nWIop1p3udqPcUd/xbF1VLMO4n7OI6p7RbngDg==
 
 isexe@^2.0.0:
   version "2.0.0"
@@ -1452,7 +1394,7 @@ node-domexception@^1.0.0:
   resolved "https://registry.npmjs.org/node-domexception/-/node-domexception-1.0.0.tgz"
   integrity sha512-/jKZoMpw0F8GRwl4/eLROPA3cfcXtLApP0QzLmUT/HuPCZWyB7IY9ZrMeKw2O/nFIqPQB3PVM9aYm0F312AXDQ==
 
-node-fetch@^2.6.7, node-fetch@^2.6.9, node-fetch@2:
+node-fetch@^2.6.7, node-fetch@2:
   version "2.7.0"
   resolved "https://registry.npmjs.org/node-fetch/-/node-fetch-2.7.0.tgz"
   integrity sha512-c4FRfUm/dbcWZ7U+1Wq0AwCyFL+3nt2bEw05wfxSz+DWpWsitgmSgYmy2dQdWyKC1694ELPqMs/YzUSNozLt8A==
@@ -2027,11 +1969,6 @@ uuid@^11.1.0:
   version "11.1.0"
   resolved "https://registry.npmjs.org/uuid/-/uuid-11.1.0.tgz"
   integrity sha512-0/A9rDy9P7cJ+8w1c9WD9V//9Wj15Ce2MPz8Ri6032usz+NfePxx5AcN3bN+r6ZL6jEo066/yNYB3tn4pQEx+A==
-
-uuid@^9.0.1:
-  version "9.0.1"
-  resolved "https://registry.npmjs.org/uuid/-/uuid-9.0.1.tgz"
-  integrity sha512-b+1eJOlsR9K8HJpow9Ok3fiWOWSIcIzXodvv0rQjVoOVNpWMpxf1wZNpt4y9h10odCNrqnYp1OBzRktckBe3sA==
 
 vary@^1.1.2:
   version "1.1.2"
