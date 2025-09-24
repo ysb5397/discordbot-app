@@ -34,15 +34,19 @@ async function setupLiveListeners(connection) {
                     responseModalities: [Modality.AUDIO],
                     systemInstruction: "너는 친한 친구와 음성으로 대화하는 AI 비서야. 답변은 항상 실제 대화처럼 짧고 간결하게 해줘.",
                 },
-                onmessage: (message) => {
-                    if (message.data) geminiAudioStream.push(Buffer.from(message.data, 'base64'));
-                    if (message.serverContent?.turnComplete) {
-                        console.log("Gemini의 응답 턴이 종료되었습니다.");
-                        geminiAudioStream.push(null);
-                    }
-                },
-                onerror: (e) => console.error('Live API 세션 오류:', e.message),
-                onclose: () => console.log('Live API 세션이 닫혔습니다.'),
+                callbacks: {
+                    onmessage: (message) => {
+                        if (message.data) {
+                            geminiAudioStream.push(Buffer.from(message.data, 'base64'));
+                        }
+                        if (message.serverContent?.turnComplete) {
+                            console.log("Gemini의 응답 턴이 종료되었습니다.");
+                            geminiAudioStream.push(null);
+                        }
+                    },
+                    onerror: (e) => console.error('Live API 세션 오류:', e.message),
+                    onclose: () => console.log('Live API 세션이 닫혔습니다.'),
+                }
             });
             currentSession = session;
             
