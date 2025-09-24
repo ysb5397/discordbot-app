@@ -1,7 +1,7 @@
 const { Events, ChannelType } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection, EndBehaviorType, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
 const prism = require('prism-media');
-const { GoogleGenerativeAI, Modality } = require('@google/generative-ai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { Readable } = require('stream');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegStatic = require('ffmpeg-static');
@@ -37,7 +37,7 @@ async function setupLiveListeners(connection) {
 
             const session = await model.startAudioSession({
                 config: {
-                    responseModalities: [Modality.AUDIO],
+                    responseModalities: ["AUDIO"],
                 },
                 callbacks: {
                     onmessage: (message) => {
