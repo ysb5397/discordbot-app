@@ -7,7 +7,7 @@ const ffmpeg = require('fluent-ffmpeg');
 const ffmpegStatic = require('ffmpeg-static');
 
 // --- 클라이언트 및 설정 초기화 ---
-const ai = new GoogleGenAI(process.env.GEMINI_API_KEY);
+const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const modelName = "gemini-2.5-flash-native-audio-preview-09-2025";
 const TARGET_CHANNEL_ID = "1353292092016693282";
 
