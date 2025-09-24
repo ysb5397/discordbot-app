@@ -28,11 +28,12 @@ async function setupLiveListeners(connection) {
             const player = createAudioPlayer();
             const geminiAudioStream = new Readable({ read() {} });
 
+            console.log('Gemini Live 세션 연결을 시도합니다...');
             const session = await ai.live.connect({
                 model: modelName,
                 config: {
                     responseModalities: [Modality.AUDIO],
-                    systemInstruction: "너는 친한 친구와 음성으로 대화하는 AI 비서야. 답변은 항상 실제 대화처럼 짧고 간결하게 해줘.",
+                    systemInstruction: "너는 음성으로 대화하는 AI 비서야. 답변은 항상 대화처럼 유연하게 해줘.",
                 },
                 callbacks: {
                     onmessage: (message) => {
@@ -48,6 +49,7 @@ async function setupLiveListeners(connection) {
                     onclose: () => console.log('Live API 세션이 닫혔습니다.'),
                 }
             });
+            console.log('Gemini Live 세션 연결 성공!');
             currentSession = session;
             
             connection.subscribe(player);
