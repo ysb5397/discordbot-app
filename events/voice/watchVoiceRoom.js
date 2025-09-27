@@ -18,10 +18,17 @@ async function setupLiveListeners(connection) {
     ffmpeg.setFfmpegPath(ffmpegStatic);
 
     connection.receiver.speaking.on('start', async (userId) => {
-        if (isBotSpeaking || activeSessionUserId) {
-            if(activeSessionUserId) console.log(`[${userId}] 님이 말을 시작했지만, 현재 [${activeSessionUserId}] 님의 음성을 처리 중이라 무시합니다.`);
+        // 봇이 말하는 중이면 모든 입력을 무시
+        if (isBotSpeaking) return;
+
+        // 다른 사용자의 세션이 이미 활성화되어 있으면, 새로운 사용자의 입력을 무시
+        if (activeSessionUserId && activeSessionUserId !== userId) {
+            console.log(`[${userId}] 님이 말을 시작했지만, 현재 [${activeSessionUserId}] 님의 음성을 처리 중이라 무시합니다.`);
             return;
         }
+
+        // 같은 사용자의 speaking 이벤트가 중복 발생한 경우 무시 (이미 세션이 시작됨)
+        if (activeSessionUserId === userId) return;
 
         activeSessionUserId = userId;
         console.log(`[${userId}] 님이 말을 시작했습니다. 음성 녹음을 시작합니다.`);
