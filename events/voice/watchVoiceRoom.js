@@ -2,14 +2,14 @@ const { Events } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection, EndBehaviorType, createAudioPlayer, createAudioResource, AudioPlayerStatus, StreamType } = require('@discordjs/voice');
 const prism = require('prism-media');
 const { GoogleGenerativeAI } = require('@google/generative-ai'); // 텍스트 변환용 (신버전)
-const { GenAI, Modality } = require('@google/genai'); // 음성 답변용 (구버전)
+const { GoogleGenAI, Modality } = require('@google/genai'); // 음성 답변용 (구버전)
 const { Readable } = require('stream');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegStatic = require('ffmpeg-static');
 const { Interaction } = require('../../utils/database');
 const { generateMongoFilter } = require('../../utils/aiHelper.js');
 
-const ai_live = new GenAI({apiKey: process.env.GEMINI_API_KEY});
+const ai_live = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY});
 const ai_text = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const modelName = "gemini-2.5-flash-native-audio-preview-09-2025";
