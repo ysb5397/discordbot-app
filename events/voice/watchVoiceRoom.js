@@ -111,9 +111,9 @@ async function setupLiveListeners(connection) {
 
                         const inputAudioStream = Readable.from(combinedAudioBuffer);
                         
-                        // 24kHz 오디오를 디스코드가 이해하는 48kHz로 리샘플링
+                        // 16kHz 오디오를 디스코드가 이해하는 48kHz로 리샘플링
                         const ffmpegOutput = ffmpeg(inputAudioStream)
-                            .inputFormat('s16le').inputOptions(['-ar 24000', '-ac 1']) // 입력: 24kHz
+                            .inputFormat('s16le').inputOptions(['-ar 16000', '-ac 1']) // 입력: 24kHz
                             .outputFormat('s16le').outputOptions(['-ar 48000', '-ac 1']) // 출력: 48kHz
                             .on('error', (err) => console.error('AI 음성 리샘플링 중 오류:', err))
                             .stream();
