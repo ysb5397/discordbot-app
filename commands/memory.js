@@ -1,51 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
 const { Interaction } = require('../utils/database.js');
-const fetch = require('node-fetch');
-
-const flowiseEndpoint = process.env.FLOWISE_ENDPOINT;
-const flowiseApiKey = process.env.FLOWISE_API_KEY;
-
-async function generateMongoFilter(query, userId) {
-    const prompt = `
-    You are a MongoDB query filter generator. A user wants to find an entry in their interaction history to modify or delete it. 
-    Based on their request, create a JSON filter for a MongoDB 'find' operation. 
-    
-    - The user's ID is: "${userId}"
-    - The user's natural language query is: "${query}"
-    - The current date is: "${new Date().toISOString()}" 
-    
-    - The schema has these fields: 'userId', 'type', 'content', 'timestamp', 'channelId'.
-    - The 'type' can be 'MESSAGE' or 'MENTION'. Only search for these types.
-    - For dates, use ISO 8601 format (e.g., {"$gte": "YYYY-MM-DDTHH:mm:ss.sssZ"}).
-    - For text matching, use the '$regex' operator with '$options: "i"' for case-insensitivity.
-    
-    Respond ONLY with the raw JSON filter object. Do not include any other text or markdown.
-    `;
-
-    const response = await fetch(flowiseEndpoint, {
-        method: 'POST',
-        headers: { 
-            'Content-Type': 'application/json', 
-            ...(flowiseApiKey ? { 'Authorization': `Bearer ${flowiseApiKey}` } : {}) 
-        },
-        body: JSON.stringify({ question: prompt, overrideConfig: { sessionId: `mongo-filter-gen-${userId}` } })
-    });
-
-    if (!response.ok) {
-        throw new Error(`AI filter generation failed: ${response.statusText}`);
-    }
-
-    const aiResponse = await response.json();
-    try {
-        const filter = JSON.parse(aiResponse.text);
-        filter.userId = userId;
-        filter.type = { "$in": ["MESSAGE", "MENTION"] };
-        return filter;
-    } catch (e) {
-        console.error("Failed to parse AI-generated filter:", aiResponse.text);
-        throw new Error("AI가 생성한 필터를 분석하는데 실패했습니다.");
-    }
-}
+const { generateMongoFilter } = require('../utils/aiHelper.js'); // 공용 부품 가져오기
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -80,14 +35,10 @@ module.exports = {
             }
 
             const embed = new EmbedBuilder().setTitle('기억 관리').setColor(0xFFD700);
-            let description = `**요청 내용:** "${query}"
-                                **검색된 기억 ${results.length}개:**
-                                `;
+            let description = `**요청 내용:** "${query}"\n**검색된 기억 ${results.length}개:**\n\n`;
             results.forEach((doc, index) => {
                 const content = (doc.content && doc.content.length > 100) ? doc.content.substring(0, 100) + '...' : doc.content;
-                description += `**${index + 1}.** [메시지 바로가기](https://discord.com/channels/${interaction.guildId}/${doc.channelId}/${doc.interactionId}) "${content}"
-                                *(${new Date(doc.timestamp).toLocaleString('ko-KR')})*
-                                `;
+                description += `**${index + 1}.** [메시지 바로가기](https://discord.com/channels/${interaction.guildId}/${doc.channelId}/${doc.interactionId}) "${content}"\n*(${new Date(doc.timestamp).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })})*\n`;
             });
 
             const row = new ActionRowBuilder();

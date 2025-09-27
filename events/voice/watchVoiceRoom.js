@@ -5,6 +5,8 @@ const { GoogleGenAI, Modality } = require('@google/genai');
 const { Readable } = require('stream');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegStatic = require('ffmpeg-static');
+const { Interaction } = require('../../utils/database');
+const { generateMongoFilter } = require('../../utils/aiHelper.js');
 
 const ai = new GoogleGenAI({ apiKey: process.env.GENAI_API_KEY });
 const modelName = "gemini-2.5-flash-native-audio-preview-09-2025";
@@ -13,17 +15,25 @@ const TARGET_CHANNEL_ID = "1353292092016693282";
 let isBotSpeaking = false;
 let activeSessionUserId = null;
 
+// 사용자의 음성을 텍스트로 변환하는 함수
+async function getTranscript(audioBuffer) {
+    try {
+        const model = ai.getGenerativeModel({ model: "gemini-pro-vision" });
+        const audioPart = { inlineData: { data: audioBuffer.toString('base64'), mimeType: "audio/pcm;rate=16000" } };
+        const result = await model.generateContent(["Transcribe this audio in Korean.", audioPart]);
+        return result.response.text();
+    } catch (error) {
+        console.error("음성 텍스트 변환 중 오류:", error);
+        return null;
+    }
+}
+
 async function setupLiveListeners(connection) {
     console.log("음성 감지 리스너를 활성화합니다.");
     ffmpeg.setFfmpegPath(ffmpegStatic);
 
     connection.receiver.speaking.on('start', async (userId) => {
-        if (isBotSpeaking) return;
-        if (activeSessionUserId && activeSessionUserId !== userId) {
-            console.log(`[${userId}] 님이 말을 시작했지만, 현재 [${activeSessionUserId}] 님의 음성을 처리 중이라 무시합니다.`);
-            return;
-        }
-        if (activeSessionUserId === userId) return;
+        if (isBotSpeaking || (activeSessionUserId && activeSessionUserId !== userId) || (activeSessionUserId === userId)) return;
 
         activeSessionUserId = userId;
         console.log(`[${userId}] 님이 말을 시작했습니다. 음성 녹음을 시작합니다.`);
@@ -39,10 +49,7 @@ async function setupLiveListeners(connection) {
             const ffmpegProcess = ffmpeg(pcmStream)
                 .inputFormat('s16le').inputOptions(['-ar 48000', '-ac 1'])
                 .outputFormat('s16le').outputOptions(['-ar 16000', '-ac 1'])
-                .on('error', (err) => {
-                    console.error(`[${userId}] FFmpeg 처리 중 오류 발생:`, err);
-                    activeSessionUserId = null;
-                });
+                .on('error', (err) => { console.error(`[${userId}] FFmpeg 처리 중 오류 발생:`, err); activeSessionUserId = null; });
 
             let audioChunks = [];
             ffmpegProcess.stream().on('data', (chunk) => audioChunks.push(chunk));
@@ -58,99 +65,96 @@ async function setupLiveListeners(connection) {
                     const audioBuffer = Buffer.concat(audioChunks);
                     audioChunks = [];
     
-                    console.log(`[${userId}] 님의 음성 스트림 종료. 오디오 버퍼 크기: ${audioBuffer.length}. Gemini Live API에 연결을 시작합니다.`);
+                    console.log(`[${userId}] 님의 음성을 텍스트로 변환합니다...`);
+                    const userTranscript = await getTranscript(audioBuffer);
 
-                    const responseQueue = [];
-                    async function waitMessage() {
-                        while (true) {
-                            const message = responseQueue.shift();
-                            if (message) return message;
-                            await new Promise((resolve) => setTimeout(resolve, 100));
-                        }
+                    if (!userTranscript) {
+                        console.log("음성 인식에 실패하여 대화를 이어갈 수 없습니다.");
+                        activeSessionUserId = null;
+                        return;
+                    }
+                    console.log(`[${userId}] 인식된 텍스트: "${userTranscript}"`);
+
+                    let searchResults = [];
+                    try {
+                        const filter = await generateMongoFilter(userTranscript, userId);
+                        searchResults = await Interaction.find(filter).limit(3);
+                        if(searchResults.length > 0) console.log(`DB에서 ${searchResults.length}개의 관련 기억을 찾았습니다.`);
+                    } catch (error) {
+                        console.error("음성 대화 중 기억 검색 실패:", error);
                     }
 
-                    async function handleTurn() {
+                    let finalPrompt = `The user just said: "${userTranscript}".`;
+                    if (searchResults.length > 0) {
+                        const memories = searchResults.map((r, i) => `Memory ${i+1}: ${r.content}`).join('\n');
+                        finalPrompt += `\nI found these related past memories:\n${memories}\nPlease use this context in your response.`;
+                    }
+                    finalPrompt += "\nNow, provide a helpful and friendly audio response in Korean.";
+
+                    console.log("최종 프롬프트를 바탕으로 AI 음성 답변을 요청합니다...");
+
+                    const responseQueue = [];
+                    const waitMessage = () => new Promise(resolve => {
+                        const check = () => {
+                            const msg = responseQueue.shift();
+                            if (msg) resolve(msg); else setTimeout(check, 100);
+                        }; check();
+                    });
+                    const handleTurn = async () => {
                         const turns = [];
                         while (true) {
                             const message = await waitMessage();
                             turns.push(message);
-                            if (message.serverContent && message.serverContent.turnComplete) {
-                                return turns;
-                            }
+                            if (message.serverContent && message.serverContent.turnComplete) return turns;
                         }
-                    }
+                    };
 
                     session = await ai.live.connect({
                         model: modelName,
-                        callbacks: {
-                            onmessage: (message) => responseQueue.push(message),
-                            onerror: (e) => console.error('Live API Error:', e.message),
-                            onclose: (e) => console.log('Live API Close:', e.reason),
-                        },
-                        config: {
-                            responseModalities: [Modality.AUDIO],
-                            systemInstruction: "You are a helpful assistant and answer in a friendly tone. Answer in Korean."
-                        },
-                    });
-
-                    session.sendRealtimeInput({
-                        audio: {
-                            data: audioBuffer.toString('base64'),
-                            mimeType: "audio/pcm;rate=16000"
-                        }
+                        callbacks: { onmessage: (m) => responseQueue.push(m), onerror: (e) => console.error('Live API Error:', e.message), onclose: (e) => console.log('Live API Close:', e.reason) },
+                        config: { responseModalities: [Modality.AUDIO, Modality.TEXT], systemInstruction: finalPrompt },
                     });
 
                     const turns = await handleTurn();
+                    const audioBuffers = turns.map(t => t.data ? Buffer.from(t.data, 'base64') : null).filter(Boolean);
+                    const aiTranscript = turns.map(t => t.text).filter(Boolean).join(' ');
 
-                    const audioBuffers = turns
-                        .map(turn => turn.data ? Buffer.from(turn.data, 'base64') : null)
-                        .filter(Boolean);
+                    if (aiTranscript) {
+                        const user = await connection.client.users.fetch(userId);
+                        const newVoiceInteraction = new Interaction({ interactionId: `${userId}-${Date.now()}`, channelId: connection.joinConfig.channelId, userId, userName: user.username, type: 'VOICE', content: userTranscript, botResponse: aiTranscript });
+                        await newVoiceInteraction.save();
+                        console.log(`[${userId}] 님의 음성 대화를 DB에 저장했습니다.`);
+                    }
 
                     if (audioBuffers.length > 0) {
-                        const combinedAudioBuffer = Buffer.concat(audioBuffers); // AI가 보낸 24kHz 오디오 데이터
-
+                        const combinedAudioBuffer = Buffer.concat(audioBuffers);
                         const inputAudioStream = Readable.from(combinedAudioBuffer);
-                        
-                        // 16kHz 오디오를 디스코드가 이해하는 48kHz로 리샘플링
-                        const ffmpegOutput = ffmpeg(inputAudioStream)
-                            .inputFormat('s16le').inputOptions(['-ar 16000', '-ac 1']) // 입력: 24kHz
-                            .outputFormat('s16le').outputOptions(['-ar 48000', '-ac 1']) // 출력: 48kHz
-                            .on('error', (err) => console.error('AI 음성 리샘플링 중 오류:', err))
-                            .stream();
-
+                        const ffmpegOutput = ffmpeg(inputAudioStream).inputFormat('s16le').inputOptions(['-ar 16000', '-ac 1']).outputFormat('s16le').outputOptions(['-ar 48000', '-ac 1']).on('error', console.error).stream();
                         const resource = createAudioResource(ffmpegOutput, { inputType: StreamType.Raw });
                         connection.subscribe(player);
                         player.play(resource);
                     } else {
                         console.log("Gemini로부터 받은 오디오 데이터가 없습니다.");
-                        isBotSpeaking = false;
-                        activeSessionUserId = null;
-                        if (session) session.close();
+                        isBotSpeaking = false; activeSessionUserId = null; if (session) session.close();
                     }
 
                 } catch (error) {
                     console.error(`[${userId}] Gemini 응답 처리 중 심각한 오류 발생:`, error);
-                    activeSessionUserId = null;
-                    if (session) session.close();
+                    activeSessionUserId = null; if (session) session.close();
                 }
             });
 
             player.on('stateChange', (oldState, newState) => {
-                if (oldState.status !== AudioPlayerStatus.Playing && newState.status === AudioPlayerStatus.Playing) {
-                    console.log('봇의 TTS 재생이 시작되었습니다.');
-                    isBotSpeaking = true;
-                } else if (oldState.status !== AudioPlayerStatus.Idle && newState.status === AudioPlayerStatus.Idle) {
-                    console.log('봇의 TTS 재생이 완료되었습니다. 다시 들을 준비가 되었습니다.');
-                    isBotSpeaking = false;
-                    activeSessionUserId = null;
-                    if (session) session.close();
+                if (newState.status === AudioPlayerStatus.Playing) isBotSpeaking = true;
+                else if (newState.status === AudioPlayerStatus.Idle && oldState.status !== AudioPlayerStatus.Idle) {
+                    console.log('봇의 TTS 재생이 완료되었습니다.');
+                    isBotSpeaking = false; activeSessionUserId = null; if (session) session.close();
                 }
             });
 
         } catch (error) {
             console.error(`[${userId}] 음성 처리 세션 시작 중 오류 발생:`, error);
-            isBotSpeaking = false;
-            activeSessionUserId = null;
+            isBotSpeaking = false; activeSessionUserId = null;
         }
     });
 }
@@ -159,33 +163,22 @@ module.exports = {
     name: Events.VoiceStateUpdate,
     async execute(oldState, newState) {
         if (newState.member.user.bot) return;
-
         const connection = getVoiceConnection(newState.guild.id);
-
         if (newState.channelId === TARGET_CHANNEL_ID && !connection) {
             try {
                 const targetChannel = await newState.client.channels.fetch(TARGET_CHANNEL_ID);
                 console.log(`사용자가 '${targetChannel.name}' 채널에 입장하여 봇이 참가합니다.`);
-                const newConnection = joinVoiceChannel({
-                    channelId: targetChannel.id,
-                    guildId: targetChannel.guild.id,
-                    adapterCreator: targetChannel.guild.voiceAdapterCreator,
-                    selfDeaf: false,
-                });
+                const newConnection = joinVoiceChannel({ channelId: targetChannel.id, guildId: targetChannel.guild.id, adapterCreator: targetChannel.guild.voiceAdapterCreator, selfDeaf: false });
                 setupLiveListeners(newConnection);
             } catch (error) {
                 console.error("음성 채널 참가 또는 리스너 설정 중 오류:", error);
             }
-        }
-
-        if (oldState.channelId === TARGET_CHANNEL_ID && connection) {
+        } else if (oldState.channelId === TARGET_CHANNEL_ID && connection) {
             try {
                 const channel = await oldState.guild.channels.fetch(oldState.channelId);
                 if (channel.members.filter(m => !m.user.bot).size === 0) {
                     console.log(`'${channel.name}' 채널에 아무도 없어 봇이 퇴장합니다.`);
-                    connection.destroy();
-                    isBotSpeaking = false;
-                    activeSessionUserId = null;
+                    connection.destroy(); isBotSpeaking = false; activeSessionUserId = null;
                 }
             } catch (error) {
                 console.error("채널 상태 확인 또는 퇴장 중 오류:", error);
