@@ -18,7 +18,7 @@ let activeSessionUserId = null;
 // 사용자의 음성을 텍스트로 변환하는 함수
 async function getTranscript(audioBuffer) {
     try {
-        const model = ai.getGenerativeModel({ model: "gemini-pro-vision" });
+        const model = ai.getGenerativeModel({ model: "gemini-2.5-pro" });
         const audioPart = { inlineData: { data: audioBuffer.toString('base64'), mimeType: "audio/pcm;rate=16000" } };
         const result = await model.generateContent(["Transcribe this audio in Korean.", audioPart]);
         return result.response.text();
