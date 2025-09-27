@@ -4,8 +4,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const dotenv = require('dotenv');
+const { connectDB } = require('./utils/database');
 
 dotenv.config();
+
+// MongoDB 연결
+connectDB();
 
 // 봇 클라이언트 생성
 const client = new Client({
