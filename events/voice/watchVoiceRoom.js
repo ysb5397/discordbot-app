@@ -8,7 +8,7 @@ const ffmpegStatic = require('ffmpeg-static');
 const { Interaction } = require('../../utils/database');
 const { generateMongoFilter } = require('../../utils/aiHelper.js');
 
-const ai = new GoogleGenerativeAI({ apiKey: process.env.GENAI_API_KEY });
+const ai = new GoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
 const modelName = "gemini-2.5-flash-native-audio-preview-09-2025";
 const TARGET_CHANNEL_ID = "1353292092016693282";
 
