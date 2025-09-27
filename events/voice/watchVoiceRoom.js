@@ -17,27 +17,12 @@ let activeSessionUserId = null;
 
 async function getTranscript(audioBuffer) {
     try {
-        const audioPart = {
-            inlineData: {
-                data: audioBuffer.toString('base64'),
-                mimeType: "audio/pcm"
-            }
-        };
-
         const model = ai.getGenerativeModel({ model: "gemini-2.5-pro" });
-
-        const contents = [{
-            role: "user",
-            parts: [
-                { text: "Transcribe this audio in Korean." },
-                audioPart
-            ]
-        }];
-
-        const result = await model.generateContent({ contents });
-        const transcript = result.response.text();
-        return transcript;
-
+        const chat = model.startChat();
+        const audioPart = { inlineData: { data: audioBuffer.toString('base64'), mimeType: "audio/pcm;rate=16000" } };
+        const result = await chat.sendMessage(["Transcribe this audio in Korean.", audioPart]);
+        const response = result.response;
+        return response.text();
     } catch (error) {
         console.error("음성 텍스트 변환 중 오류:", error);
         return null;
