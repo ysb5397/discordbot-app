@@ -2,115 +2,171 @@
 
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const fetch = require('node-fetch');
-const { Interaction } = require('../utils/database.js'); // DB 모델 가져오기
+const { Interaction } = require('../utils/database.js');
 
-// Flowise 관련 환경 변수
 const flowiseEndpoint = process.env.FLOWISE_ENDPOINT;
 const flowiseApiKey = process.env.FLOWISE_API_KEY;
 
+async function generateMongoFilter(query, userId) {
+    const prompt = `
+    You are a MongoDB query filter generator. A user wants to find an entry in their interaction history. 
+    Based on their request, create a JSON filter for a MongoDB 'find' operation. 
+    
+    - The user's ID is: "${userId}"
+    - The user's natural language query is: "${query}"
+    - The current date is: "${new Date().toISOString()}" 
+    
+    - The schema has these fields: 'userId', 'type', 'content', 'timestamp', 'channelId'.
+    - The 'type' can be 'MESSAGE', 'MENTION', or 'EARTHQUAKE'. Search all these types.
+    - For text matching, use the '$regex' operator with '$options: "i"' for case-insensitivity.
+    
+    Respond ONLY with the raw JSON filter object. Do not include any other text or markdown.
+    `;
+
+    const response = await fetch(flowiseEndpoint, {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json', 
+            ...(flowiseApiKey ? { 'Authorization': `Bearer ${flowiseApiKey}` } : {}) 
+        },
+        body: JSON.stringify({ question: prompt, overrideConfig: { sessionId: `mongo-filter-gen-${userId}` } })
+    });
+
+    if (!response.ok) throw new Error(`AI filter generation failed: ${response.statusText}`);
+
+    const aiResponse = await response.json();
+    try {
+        const filter = JSON.parse(aiResponse.text);
+        filter.userId = userId;
+        return filter;
+    } catch (e) {
+        console.error("Failed to parse AI-generated filter:", aiResponse.text);
+        throw new Error("AI가 생성한 필터를 분석하는데 실패했습니다.");
+    }
+}
+
 module.exports = {
-    // 1. 명령어 설정
     data: new SlashCommandBuilder()
         .setName('chat')
-        .setDescription('AI와 대화합니다.')
+        .setDescription('AI와 대화하거나, 저장된 기억을 검색합니다.')
         .addStringOption(option =>
             option.setName('question')
-                .setDescription('AI에게 할 질문 내용')
+                .setDescription('AI에게 할 질문 또는 검색할 내용')
                 .setRequired(true))
         .addAttachmentOption(option =>
             option.setName('file')
                 .setDescription('AI에게 보여줄 파일을 첨부하세요 (이미지, 코드 등).')
                 .setRequired(false)),
     
-    // 2. 명령어 실행 로직
     async execute(interaction) {
-        if (interaction.deferred || interaction.replied) return;
-        try { await interaction.deferReply(); } catch (e) { console.error("Defer failed:", e); return; }
+        await interaction.deferReply();
 
         const userQuestion = interaction.options.getString('question');
         const sessionId = interaction.user.id;
         const attachment = interaction.options.getAttachment('file');
         const botName = interaction.client.user.username;
 
-        // --- DB에서 대화 기록 검색 ---
-        let history = [];
+        // 1. DB 검색 먼저 시도
+        let searchResults = [];
         try {
-            const recentInteractions = await Interaction.find({
-                userId: interaction.user.id,
-                type: { $in: ['MESSAGE', 'MENTION'] } // 사용자의 메시지와 봇과의 대화만
-            })
-            .sort({ timestamp: -1 }) // 최신 순으로 정렬
-            .limit(10); // 최근 10개 가져오기
-
-            // AI에게 전달할 형식으로 변환 (오래된 메시지가 먼저 오도록 순서 뒤집기)
-            history = recentInteractions.reverse().map(doc => {
-                // doc.content가 문자열인지 확인 (Mongoose의 Mixed 타입은 객체일 수 있음)
-                const userMessage = typeof doc.content === 'string' ? doc.content : JSON.stringify(doc.content);
-                const historyItem = { role: 'user', content: userMessage };
-                
-                if (doc.type === 'MENTION' && doc.botResponse) {
-                    return [historyItem, { role: 'assistant', content: doc.botResponse }];
-                }
-                return historyItem;
-            }).flat();
-
-            console.log(`[/chat Session: ${sessionId}] Found ${history.length} items in conversation history.`);
-
-        } catch (dbError) {
-            console.error(`[/chat Session: ${sessionId}] Failed to retrieve conversation history:`, dbError);
-            // DB 오류가 발생해도 AI 호출은 계속 진행
+            const filter = await generateMongoFilter(userQuestion, sessionId);
+            searchResults = await Interaction.find(filter).sort({ timestamp: -1 }).limit(5);
+        } catch (error) {
+            console.error("Memory search failed:", error);
         }
 
-        // --- Flowise 요청 본문 생성 ---
-        const requestBody = {
-            question: userQuestion,
-            overrideConfig: { sessionId: sessionId, vars: { bot_name: botName } },
-            history: history // 검색된 대화 기록 추가
-        };
-                
-        if (attachment) {
-            const response = await fetch(attachment.url);
-            if (!response.ok) {
-                throw new Error(`Failed to fetch image: ${response.statusText}`);
-            }
-            const imageBuffer = await response.buffer();
-            const base64Data = imageBuffer.toString('base64');
-            requestBody.uploads = [{ data: base64Data, type: 'file' }];
-        }
-
-        console.log(`[/chat Session: ${sessionId}] Sending to Flowise...`);
-
-        // --- Flowise API 호출 ---
-        try {
-            const response = await fetch(flowiseEndpoint, {
+        // 2. 검색 결과에 따라 분기
+        if (searchResults.length > 0) {
+            // --- DB에서 결과를 찾았을 경우 ---
+            const conversationalAiPromise = fetch(flowiseEndpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...(flowiseApiKey ? { 'Authorization': `Bearer ${flowiseApiKey}` } : {}) },
-                body: JSON.stringify(requestBody)
+                body: JSON.stringify({ question: `The user asked to find something and I found it. The user's query was: "${userQuestion}". Now, provide a short, conversational comment about this.`, overrideConfig: { sessionId } })
+            }).then(res => res.json());
+
+            const flowiseResponse = await conversationalAiPromise;
+
+            const embed = new EmbedBuilder()
+                .setTitle('혹시 이 기억들을 찾고 있었어? 🤔')
+                .setColor(0xFFD700);
+
+            let description = ``;
+            searchResults.forEach((doc, index) => {
+                const content = (typeof doc.content === 'string' && doc.content.length > 100) ? doc.content.substring(0, 100) + '...' : (typeof doc.content === 'string' ? doc.content : `[${doc.type}] ${(doc.content.rem || '내용 없음')}`.substring(0, 100));
+                description += `**${index + 1}.** [메시지 바로가기](https://discord.com/channels/${interaction.guildId}/${doc.channelId}/${doc.interactionId}) "${content}"
+*(${new Date(doc.timestamp).toLocaleString('ko-KR')})*
+`;
             });
+            embed.setDescription(description);
 
-            if (!response.ok) {
-                const errorData = await response.text();
-                console.error(`[/chat Session: ${sessionId}] Flowise API Error: ${response.status}`, errorData);
-                await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, AI 응답 생성 중 오류가 발생했습니다. (Code: ${response.status})`);
-                return;
+            if (flowiseResponse.text) {
+                embed.addFields({ name: "AI의 추가 의견", value: flowiseResponse.text });
             }
 
-            const flowiseResponse = await response.json();
-            const replyEmbed = new EmbedBuilder()
-                .setColor(0x00FA9A)
-                .setDescription(flowiseResponse.text || 'AI로부터 답변을 받지 못했습니다.')
-                .setTimestamp()
-                .setFooter({ text: '해당 결과는 AI에 의해 생성되었으며, 항상 정확한 결과를 도출하지 않습니다.' });
+            await interaction.editReply({ content: `<@${sessionId}>`, embeds: [embed] });
 
-            if (flowiseResponse.imageUrl) {
-                replyEmbed.setImage(flowiseResponse.imageUrl);
+        } else {
+            // --- DB에서 결과를 찾지 못했을 경우 (기존 로직) ---
+            let history = [];
+            try {
+                const recentInteractions = await Interaction.find({ userId: sessionId, type: { $in: ['MESSAGE', 'MENTION'] } }).sort({ timestamp: -1 }).limit(10);
+                history = recentInterInteractions.reverse().map(doc => {
+                    const userMessage = typeof doc.content === 'string' ? doc.content : JSON.stringify(doc.content);
+                    const historyItem = { role: 'user', content: userMessage };
+                    if (doc.type === 'MENTION' && doc.botResponse) {
+                        return [historyItem, { role: 'assistant', content: doc.botResponse }];
+                    }
+                    return historyItem;
+                }).flat();
+            } catch (dbError) {
+                console.error(`History retrieval failed:`, dbError);
             }
 
-            await interaction.editReply({ content: `<@${interaction.user.id}>`, embeds: [replyEmbed] });
+            const requestBody = {
+                question: userQuestion,
+                overrideConfig: { sessionId, vars: { bot_name: botName } },
+                history: history
+            };
+                    
+            if (attachment) {
+                const response = await fetch(attachment.url);
+                if (!response.ok) throw new Error(`Failed to fetch attachment: ${response.statusText}`);
+                const imageBuffer = await response.buffer();
+                const base64Data = imageBuffer.toString('base64');
+                requestBody.uploads = [{ data: base64Data, type: 'file' }];
+            }
 
-        } catch (error) {
-            console.error(`[/chat Session: ${sessionId}] Error processing Flowise request:`, error);
-            try { await interaction.editReply(`<@${interaction.user.id}> 죄송합니다, 요청 처리 중 오류가 발생했습니다.`); } catch (e) { console.error("Edit reply failed:", e); }
+            try {
+                const response = await fetch(flowiseEndpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...(flowiseApiKey ? { 'Authorization': `Bearer ${flowiseApiKey}` } : {}) },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.text();
+                    console.error(`Flowise API Error: ${response.status}`, errorData);
+                    await interaction.editReply(`<@${sessionId}> 죄송합니다, AI 응답 생성 중 오류가 발생했습니다. (Code: ${response.status})`);
+                    return;
+                }
+
+                const flowiseResponse = await response.json();
+                const replyEmbed = new EmbedBuilder()
+                    .setColor(0x00FA9A)
+                    .setDescription(flowiseResponse.text || 'AI로부터 답변을 받지 못했습니다.')
+                    .setTimestamp()
+                    .setFooter({ text: '해당 결과는 AI에 의해 생성되었으며, 항상 정확한 결과를 도출하지 않습니다.' });
+
+                if (flowiseResponse.imageUrl) {
+                    replyEmbed.setImage(flowiseResponse.imageUrl);
+                }
+
+                await interaction.editReply({ content: `<@${sessionId}>`, embeds: [replyEmbed] });
+
+            } catch (error) {
+                console.error(`Error processing Flowise request:`, error);
+                await interaction.editReply(`<@${sessionId}> 죄송합니다, 요청 처리 중 오류가 발생했습니다.`);
+            }
         }
     },
 };
