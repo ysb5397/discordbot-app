@@ -14,7 +14,7 @@ async function generateMongoFilter(query, userId) {
     
     - The user's ID is: "${userId}"
     - The user's natural language query is: "${query}"
-    - The current date is: "${new Date().toISOString()}" 
+    - The current date is: "${new Date().toISOString()}"
     
     - The schema has these fields: 'userId', 'type', 'content', 'timestamp', 'channelId'.
     - The 'type' can be 'MESSAGE', 'MENTION', or 'EARTHQUAKE'. Search all these types.
@@ -36,7 +36,11 @@ async function generateMongoFilter(query, userId) {
 
     const aiResponse = await response.json();
     try {
-        const filter = JSON.parse(aiResponse.text);
+        let jsonString = aiResponse.text.trim();
+        if (jsonString.startsWith('```json')) {
+            jsonString = jsonString.substring(7, jsonString.length - 3).trim();
+        }
+        const filter = JSON.parse(jsonString);
         filter.userId = userId;
         return filter;
     } catch (e) {
@@ -66,7 +70,6 @@ module.exports = {
         const attachment = interaction.options.getAttachment('file');
         const botName = interaction.client.user.username;
 
-        // 1. DB 검색 먼저 시도
         let searchResults = [];
         try {
             const filter = await generateMongoFilter(userQuestion, sessionId);
@@ -75,9 +78,7 @@ module.exports = {
             console.error("Memory search failed:", error);
         }
 
-        // 2. 검색 결과에 따라 분기
         if (searchResults.length > 0) {
-            // --- DB에서 결과를 찾았을 경우 ---
             const conversationalAiPromise = fetch(flowiseEndpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...(flowiseApiKey ? { 'Authorization': `Bearer ${flowiseApiKey}` } : {}) },
@@ -106,11 +107,10 @@ module.exports = {
             await interaction.editReply({ content: `<@${sessionId}>`, embeds: [embed] });
 
         } else {
-            // --- DB에서 결과를 찾지 못했을 경우 (기존 로직) ---
             let history = [];
             try {
                 const recentInteractions = await Interaction.find({ userId: sessionId, type: { $in: ['MESSAGE', 'MENTION'] } }).sort({ timestamp: -1 }).limit(10);
-                history = recentInterInteractions.reverse().map(doc => {
+                history = recentInteractions.reverse().map(doc => {
                     const userMessage = typeof doc.content === 'string' ? doc.content : JSON.stringify(doc.content);
                     const historyItem = { role: 'user', content: userMessage };
                     if (doc.type === 'MENTION' && doc.botResponse) {
