@@ -1,12 +1,12 @@
 const { Events } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection, EndBehaviorType, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
 const prism = require('prism-media');
-const { GoogleGenerativeAI, Modality } = require('@google/generative-ai');
+const { GoogleGenAI } = require('@google/genai');
 const { Readable } = require('stream');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegStatic = require('ffmpeg-static');
 
-const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const ai = new GoogleGenAI({ apiKey: process.env.GENAI_API_KEY });
 const modelName = "gemini-2.5-flash-native-audio-preview-09-2025";
 const TARGET_CHANNEL_ID = "1353292092016693282";
 
