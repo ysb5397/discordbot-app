@@ -46,7 +46,6 @@ async function setupLiveListeners(connection) {
             opusStream.pipe(pcmStream);
             
             // Discord의 Opus 오디오를 PCM으로 디코딩 -> Gemini가 요구하는 형식으로 변환
-            const pcmStream = new prism.opus.Decoder({ frameSize: 960, channels: 1, rate: 48000 });
             const ffmpegProcess = ffmpeg(pcmStream)
                 .inputFormat('s16le').inputOptions(['-ar 48000', '-ac 1']) // 입력: 48kHz, 1채널 PCM
                 .outputFormat('s16le').outputOptions(['-ar 16000', '-ac 1']) // 출력: 16kHz, 1채널 PCM
