@@ -10,8 +10,9 @@ async function generateSmartReply(userMessage) {
     return Promise.resolve(`네가 "${userMessage}" 라고 말했구나! 나는 그걸 기억할게.`);
 }
 
-async function generateImageDescription(attachment) {
+async function generateImageDescription(message) {
     try {
+        const attachment = message.attachments.first();
         const visionModel = ai.getGenerativeModel({ model: "gemini-2.5-pro" });
         const prompt = "Describe this image for use as a searchable database entry. Be concise and factual. Answer in Korean.";
         
@@ -27,6 +28,7 @@ async function generateImageDescription(attachment) {
         return description;
     } catch (error) {
         console.error('AI 이미지 설명 생성 중 오류:', error);
+        message.reply("미안, 이미지를 이해하는데 문제가 생긴 것 같아... 😵, 대신 DB에 파일명으로 저장할게.");
         return `AI가 파일을 분석하는 데 실패했어. 파일명: ${attachment.name}`;
     }
 }
@@ -75,7 +77,7 @@ module.exports = {
                 // 이미지만 처리 (동영상, 기타 파일은 일단 파일명으로 저장)
                 if (attachment.contentType?.startsWith('image/')) {
                     await message.react('🤔'); // 생각 중이라는 표시
-                    contentToSave = await generateImageDescription(attachment);
+                    contentToSave = await generateImageDescription(message);
                     await message.reactions.cache.get('🤔')?.remove();
                     await message.react('✅'); // 처리 완료 표시
                 } else {
