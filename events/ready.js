@@ -1,6 +1,5 @@
 const { Events, ChannelType } = require('discord.js');
-const cron = require('node-cron');
-const { checkEarthquakeAndNotify } = require('../utils/earthquake');
+const { startEarthquakeMonitor } = require('../utils/earthquake');
 const { joinVoiceChannel } = require('@discordjs/voice');
 
 const TARGET_CHANNEL_ID = "1353292092016693282";
@@ -10,12 +9,10 @@ module.exports = {
     once: true,
     async execute(client) {
         console.log(`Logged in as ${client.user.tag}.`);
-        console.log('Bot is ready and schedulers are being set up.');
+        console.log('Bot is ready and background tasks are starting.');
 
-        cron.schedule('* * * * *', () => checkEarthquakeAndNotify(client), {
-            scheduled: true,
-            timezone: "Asia/Seoul"
-        });
+        // 지진 정보 모니터링 시작 (내부 스케줄러 사용)
+        startEarthquakeMonitor(client);
 
         const targetChannel = await client.channels.fetch(TARGET_CHANNEL_ID).catch(() => null);
         if (targetChannel && targetChannel.type === ChannelType.GuildVoice) {

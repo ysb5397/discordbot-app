@@ -2,6 +2,7 @@
 
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const fetch = require('node-fetch');
+const { Interaction } = require('../utils/database.js'); // DB 모델 가져오기
 
 // Flowise 관련 환경 변수
 const flowiseEndpoint = process.env.FLOWISE_ENDPOINT;
@@ -29,11 +30,42 @@ module.exports = {
         const userQuestion = interaction.options.getString('question');
         const sessionId = interaction.user.id;
         const attachment = interaction.options.getAttachment('file');
-        const botName = interaction.client.user.username; // client 객체에서 봇 이름 가져오기
+        const botName = interaction.client.user.username;
 
-         const requestBody = {
+        // --- DB에서 대화 기록 검색 ---
+        let history = [];
+        try {
+            const recentInteractions = await Interaction.find({
+                userId: interaction.user.id,
+                type: { $in: ['MESSAGE', 'MENTION'] } // 사용자의 메시지와 봇과의 대화만
+            })
+            .sort({ timestamp: -1 }) // 최신 순으로 정렬
+            .limit(10); // 최근 10개 가져오기
+
+            // AI에게 전달할 형식으로 변환 (오래된 메시지가 먼저 오도록 순서 뒤집기)
+            history = recentInteractions.reverse().map(doc => {
+                // doc.content가 문자열인지 확인 (Mongoose의 Mixed 타입은 객체일 수 있음)
+                const userMessage = typeof doc.content === 'string' ? doc.content : JSON.stringify(doc.content);
+                const historyItem = { role: 'user', content: userMessage };
+                
+                if (doc.type === 'MENTION' && doc.botResponse) {
+                    return [historyItem, { role: 'assistant', content: doc.botResponse }];
+                }
+                return historyItem;
+            }).flat();
+
+            console.log(`[/chat Session: ${sessionId}] Found ${history.length} items in conversation history.`);
+
+        } catch (dbError) {
+            console.error(`[/chat Session: ${sessionId}] Failed to retrieve conversation history:`, dbError);
+            // DB 오류가 발생해도 AI 호출은 계속 진행
+        }
+
+        // --- Flowise 요청 본문 생성 ---
+        const requestBody = {
             question: userQuestion,
-            overrideConfig: { sessionId: sessionId, vars: { bot_name: botName } }
+            overrideConfig: { sessionId: sessionId, vars: { bot_name: botName } },
+            history: history // 검색된 대화 기록 추가
         };
                 
         if (attachment) {
@@ -41,18 +73,14 @@ module.exports = {
             if (!response.ok) {
                 throw new Error(`Failed to fetch image: ${response.statusText}`);
             }
-
-            // 2. 응답을 Buffer(데이터 덩어리) 형태로 변환
             const imageBuffer = await response.buffer();
-
-            // 3. Buffer를 base64 문자열로 인코딩
             const base64Data = imageBuffer.toString('base64');
-
-            requestBody.uploads = base64Data;
+            requestBody.uploads = [{ data: base64Data, type: 'file' }];
         }
 
         console.log(`[/chat Session: ${sessionId}] Sending to Flowise...`);
 
+        // --- Flowise API 호출 ---
         try {
             const response = await fetch(flowiseEndpoint, {
                 method: 'POST',
