@@ -19,7 +19,7 @@ async function getTranscript(audioBuffer) {
     try {
         const audioPart = { inlineData: { data: audioBuffer.toString('base64'), mimeType: "audio/pcm;rate=16000" } };
         const contents = [{ role: "user", parts: [{ text: "Transcribe this audio in Korean." }, audioPart] }];
-        const result = await ai.models.getGenerativeModel({ model: "gemini-2.5-pro" }).generateContent(contents);
+        const result = await ai.models.get({ model: "gemini-2.5-pro" }).generateContent(contents);
         return result.response.text();
 
     } catch (error) {
