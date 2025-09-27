@@ -28,6 +28,8 @@ async function setupLiveListeners(connection) {
 
         try {
             const player = createAudioPlayer();
+            let session = null; // 세션을 더 넓은 범위에서 관리
+
             const opusStream = connection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 1200 } });
             const pcmStream = new prism.opus.Decoder({ frameSize: 960, channels: 1, rate: 48000 });
             opusStream.pipe(pcmStream);
@@ -57,7 +59,6 @@ async function setupLiveListeners(connection) {
                     console.log(`[${userId}] 님의 음성 스트림 종료. 오디오 버퍼 크기: ${audioBuffer.length}. Gemini Live API에 연결을 시작합니다.`);
 
                     const responseQueue = [];
-
                     async function waitMessage() {
                         while (true) {
                             const message = responseQueue.shift();
@@ -77,7 +78,7 @@ async function setupLiveListeners(connection) {
                         }
                     }
 
-                    const session = await ai.live.connect({
+                    session = await ai.live.connect({
                         model: modelName,
                         callbacks: {
                             onmessage: (message) => responseQueue.push(message),
@@ -118,13 +119,13 @@ async function setupLiveListeners(connection) {
                         console.log("Gemini로부터 받은 오디오 데이터가 없습니다.");
                         isBotSpeaking = false;
                         activeSessionUserId = null;
+                        if (session) session.close(); // 오디오 없을 때도 세션 닫기
                     }
-
-                    session.close();
 
                 } catch (error) {
                     console.error(`[${userId}] Gemini 응답 처리 중 심각한 오류 발생:`, error);
                     activeSessionUserId = null;
+                    if (session) session.close(); // 에러 발생 시에도 세션 닫기
                 }
             });
 
@@ -136,6 +137,7 @@ async function setupLiveListeners(connection) {
                     console.log('봇의 TTS 재생이 완료되었습니다. 다시 들을 준비가 되었습니다.');
                     isBotSpeaking = false;
                     activeSessionUserId = null;
+                    if (session) session.close(); // 재생이 모두 끝나면 세션 닫기
                 }
             });
 
