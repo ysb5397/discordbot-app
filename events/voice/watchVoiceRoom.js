@@ -1,14 +1,14 @@
 const { Events } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection, EndBehaviorType, createAudioPlayer, createAudioResource, AudioPlayerStatus, StreamType } = require('@discordjs/voice');
 const prism = require('prism-media');
-const { GoogleGenAI, Modality } = require('@google/genai');
+const { GoogleGenerativeAI, Modality } = require('@google/generative-ai');
 const { Readable } = require('stream');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegStatic = require('ffmpeg-static');
 const { Interaction } = require('../../utils/database');
 const { generateMongoFilter } = require('../../utils/aiHelper.js');
 
-const ai = new GoogleGenAI({ apiKey: process.env.GENAI_API_KEY });
+const ai = new GoogleGenerativeAI({ apiKey: process.env.GENAI_API_KEY });
 const modelName = "gemini-2.5-flash-native-audio-preview-09-2025";
 const TARGET_CHANNEL_ID = "1353292092016693282";
 
