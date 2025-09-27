@@ -1,5 +1,5 @@
 const { Events } = require('discord.js');
-const { joinVoiceChannel, getVoiceConnection, EndBehaviorType, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
+const { joinVoiceChannel, getVoiceConnection, EndBehaviorType, createAudioPlayer, createAudioResource, AudioPlayerStatus, StreamType } = require('@discordjs/voice');
 const prism = require('prism-media');
 const { GoogleGenAI, Modality } = require('@google/genai');
 const { Readable } = require('stream');
@@ -18,16 +18,11 @@ async function setupLiveListeners(connection) {
     ffmpeg.setFfmpegPath(ffmpegStatic);
 
     connection.receiver.speaking.on('start', async (userId) => {
-        // 봇이 말하는 중이면 모든 입력을 무시
         if (isBotSpeaking) return;
-
-        // 다른 사용자의 세션이 이미 활성화되어 있으면, 새로운 사용자의 입력을 무시
         if (activeSessionUserId && activeSessionUserId !== userId) {
             console.log(`[${userId}] 님이 말을 시작했지만, 현재 [${activeSessionUserId}] 님의 음성을 처리 중이라 무시합니다.`);
             return;
         }
-
-        // 같은 사용자의 speaking 이벤트가 중복 발생한 경우 무시 (이미 세션이 시작됨)
         if (activeSessionUserId === userId) return;
 
         activeSessionUserId = userId;
@@ -35,7 +30,7 @@ async function setupLiveListeners(connection) {
 
         try {
             const player = createAudioPlayer();
-            let session = null; // 세션을 더 넓은 범위에서 관리
+            let session = null;
 
             const opusStream = connection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 1200 } });
             const pcmStream = new prism.opus.Decoder({ frameSize: 960, channels: 1, rate: 48000 });
@@ -107,32 +102,27 @@ async function setupLiveListeners(connection) {
 
                     const turns = await handleTurn();
 
-                    const combinedAudio = turns.reduce((acc, turn) => {
-                        if (turn.data) {
-                            const buffer = Buffer.from(turn.data, 'base64');
-                            const intArray = new Int16Array(buffer.buffer, buffer.byteOffset, buffer.byteLength / Int16Array.BYTES_PER_ELEMENT);
-                            return acc.concat(Array.from(intArray));
-                        }
-                        return acc;
-                    }, []);
+                    const audioBuffers = turns
+                        .map(turn => turn.data ? Buffer.from(turn.data, 'base64') : null)
+                        .filter(Boolean);
 
-                    if (combinedAudio.length > 0) {
-                        const audioOutputBuffer = Buffer.from(new Int16Array(combinedAudio).buffer);
-                        const readableStream = Readable.from(audioOutputBuffer);
-                        const resource = createAudioResource(readableStream);
+                    if (audioBuffers.length > 0) {
+                        const combinedAudioBuffer = Buffer.concat(audioBuffers);
+                        const readableStream = Readable.from(combinedAudioBuffer);
+                        const resource = createAudioResource(readableStream, { inputType: StreamType.Raw });
                         connection.subscribe(player);
                         player.play(resource);
                     } else {
                         console.log("Gemini로부터 받은 오디오 데이터가 없습니다.");
                         isBotSpeaking = false;
                         activeSessionUserId = null;
-                        if (session) session.close(); // 오디오 없을 때도 세션 닫기
+                        if (session) session.close();
                     }
 
                 } catch (error) {
                     console.error(`[${userId}] Gemini 응답 처리 중 심각한 오류 발생:`, error);
                     activeSessionUserId = null;
-                    if (session) session.close(); // 에러 발생 시에도 세션 닫기
+                    if (session) session.close();
                 }
             });
 
@@ -144,7 +134,7 @@ async function setupLiveListeners(connection) {
                     console.log('봇의 TTS 재생이 완료되었습니다. 다시 들을 준비가 되었습니다.');
                     isBotSpeaking = false;
                     activeSessionUserId = null;
-                    if (session) session.close(); // 재생이 모두 끝나면 세션 닫기
+                    if (session) session.close();
                 }
             });
 
