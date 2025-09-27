@@ -20,7 +20,7 @@ async function getTranscript(audioBuffer) {
     try {
         const model = ai.models.get({ model: "gemini-2.5-pro" });
         const audioPart = { inlineData: { data: audioBuffer.toString('base64'), mimeType: "audio/pcm;rate=16000" } };
-        const result = await model.generateContent(["Transcribe this audio in Korean.", audioPart]);
+        const result = await model.generateContent({ contents: [{ parts: [{ text: "Transcribe this audio in Korean." }, audioPart] }] });
         return result.response.text();
     } catch (error) {
         console.error("음성 텍스트 변환 중 오류:", error);
