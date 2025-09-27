@@ -46,6 +46,8 @@ jobs:
                   secret: GEMINI_API_KEY
                 - name: DISCORD_CREDENTIALS_JSON
                   secret: DISCORD_CREDENTIALS_JSON
+                - name: MONGODB_URI
+                  secret: MONGODB_URI
               git:
                 url: git@github.com:${{ github.repository }}.git
                 ref: ${{ github.ref }}
