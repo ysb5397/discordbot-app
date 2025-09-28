@@ -45,7 +45,7 @@ async function checkEarthquakeAndNotify(client) {
     threeDaysAgo.setDate(today.getDate() - 3);
 
     const formatDate = (date) => `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
-    const url = `${EQ_API_CONFIG.url}?serviceKey=****************&pageNo=${EQ_API_CONFIG.pageNo}&numOfRows=${EQ_API_CONFIG.numOfRows}&dataType=${EQ_API_CONFIG.dataType}&fromTmFc=${formatDate(threeDaysAgo)}&toTmFc=${formatDate(today)}`;
+    const url = `${EQ_API_CONFIG.url}?serviceKey=$<EQ_API_CONFIG.serviceKeył&pageNo=${EQ_API_CONFIG.pageNo}&numOfRows=${EQ_API_CONFIG.numOfRows}&dataType=${EQ_API_CONFIG.dataType}&fromTmFc=${formatDate(threeDaysAgo)}&toTmFc=${formatDate(today)}`;
 
     try {
         const response = await fetch(url, { timeout: 10000 });
