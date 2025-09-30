@@ -42,7 +42,7 @@
 ```bash
 # 1. 프로젝트를 컴퓨터로 복제합니다.
 git clone [https://github.com/깃허브-ID/저장소-이름.git](https://github.com/깃허브-ID/저장소-이름.git)
-cd 너의-저장소-이름
+cd 저장소-이름
 
 # 2. 필요한 패키지를 설치합니다.
 yarn install
