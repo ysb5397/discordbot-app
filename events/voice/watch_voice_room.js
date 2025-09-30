@@ -7,7 +7,7 @@ const { Readable } = require('stream');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegStatic = require('ffmpeg-static');
 const { Interaction } = require('../../utils/database');
-const { generateMongoFilter } = require('../../utils/aiHelper.js');
+const { generateMongoFilter } = require('../../utils/ai_helper.js');
 
 const ai_live = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY});
 const ai_text = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);

@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
 const { Interaction } = require('../utils/database.js');
-const { generateMongoFilter } = require('../utils/aiHelper.js'); // 공용 부품 가져오기
+const { generateMongoFilter } = require('../utils/ai_helper.js'); // 공용 부품 가져오기
 
 module.exports = {
     data: new SlashCommandBuilder()
