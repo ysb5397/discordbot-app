@@ -12,6 +12,8 @@ module.exports = {
             .setTitle('🤖 봇 도움말')
             .setDescription('사용 가능한 명령어 목록입니다.')
             .addFields(
+                { name: '/memory delete [query]', value: 'DB의 내용과 디스코드 메시지를 삭제합니다' },
+                { name: '/memory update [query] [new content]', value: 'DB의 내용을 수정하고, 해당하는 원본 디스코드 메시지에 새로운 내용을 답글로 보냅니다' },
                 { name: '/chat [question] [file?]', value: 'AI와 대화합니다. (파일 첨부 가능)' },
                 { name: '/imagen [prompt] [file?]', value: 'AI에게 이미지 생성을 요청합니다.' },
                 { name: '/deep_research [question]', value: 'AI에게 심층 리서치를 요청합니다.' },
