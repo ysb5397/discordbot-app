@@ -1,10 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const fetch = require('node-fetch');
 const { Interaction } = require('../utils/database.js');
-const { generateMongoFilter } = require('../utils/aiHelper.js'); // 공용 부품 가져오기
-
-const flowiseEndpoint = process.env.FLOWISE_ENDPOINT;
-const flowiseApiKey = process.env.FLOWISE_API_KEY;
+const { generateMongoFilter } = require('../utils/ai_helper.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
