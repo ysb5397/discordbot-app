@@ -3,6 +3,9 @@ const fetch = require('node-fetch');
 const { Interaction } = require('../utils/database.js');
 const { generateMongoFilter } = require('../utils/ai_helper.js');
 
+const flowiseEndpoint = process.env.FLOWISE_ENDPOINT;
+const flowiseApiKey = process.env.FLOWISE_API_KEY;
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('chat')
