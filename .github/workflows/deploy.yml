@@ -48,6 +48,10 @@ jobs:
                   secret: DISCORD_CREDENTIALS_JSON
                 - name: MONGODB_URI
                   secret: MONGODB_URI
+                - name: GOOGLE_SEARCH_API
+                  secret: GOOGLE_SEARCH_API
+                - name: GOOGLE_SEARCH_ENGINE_ID
+                  secret: GOOGLE_SEARCH_ENGINE_ID
               git:
                 url: git@github.com:${{ github.repository }}.git
                 ref: ${{ github.ref }}

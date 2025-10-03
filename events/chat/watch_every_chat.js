@@ -10,14 +10,13 @@ async function generateSmartReply(userMessage) {
     return Promise.resolve(`네가 "${userMessage}" 라고 말했구나! 나는 그걸 기억할게.`);
 }
 
-async function generateImageDescription(message) {
+async function generateImageDescription(attachment) {
     try {
-        const attachment = message.attachments.first();
-        const visionModel = ai.getGenerativeModel({ model: "gemini-2.5-pro" });
+        const visionModel = ai.getGenerativeModel({ model: "gemini-pro-vision" });
         const prompt = "Describe this image for use as a searchable database entry. Be concise and factual. Answer in Korean.";
         
         const imageResponse = await fetch(attachment.url);
-        if (!imageResponse.ok) return `파일을 불러오는데 실패했어: ${imageResponse.statusText}`;
+        if (!imageResponse.ok) return `(파일 불러오기 실패: ${imageResponse.statusText})`;
         
         const imageBuffer = await imageResponse.buffer();
         const base64Data = imageBuffer.toString('base64');
@@ -28,8 +27,29 @@ async function generateImageDescription(message) {
         return description;
     } catch (error) {
         console.error('AI 이미지 설명 생성 중 오류:', error);
-        message.reply("미안, 이미지를 이해하는데 문제가 생긴 것 같아... 😵, 대신 DB에 파일명으로 저장할게.");
-        return `AI가 파일을 분석하는 데 실패했어. 파일명: ${attachment.name}`;
+        return `(AI 분석 실패: ${attachment.name})`;
+    }
+}
+
+async function generateTextFileDescription(attachment) {
+    try {
+        const textModel = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const prompt = "Summarize this file content for a searchable database entry. Be concise and factual, and answer in Korean.";
+
+        const response = await fetch(attachment.url);
+        if (!response.ok) return `(파일 불러오기 실패: ${response.statusText})`;
+
+        const fileContent = await response.text();
+        
+        // 파일 내용이 너무 길 경우를 대비하여 일부만 사용 (예: 앞 4000자)
+        const truncatedContent = fileContent.substring(0, 4000);
+
+        const result = await textModel.generateContent([prompt, truncatedContent]);
+        const description = result.response.text();
+        return `[텍스트 파일: ${attachment.name}]\n${description}`;
+    } catch (error) {
+        console.error('AI 텍스트 파일 분석 중 오류:', error);
+        return `(AI 분석 실패: ${attachment.name})`;
     }
 }
 
@@ -71,30 +91,45 @@ module.exports = {
         } else {
             let contentToSave = message.content;
 
-            // 텍스트 없이 파일만 있는 경우
+            // --- 첨부파일 처리 로직 ---
             if (message.attachments.size > 0 && message.content.trim() === '') {
-                const attachment = message.attachments.first();
-                // 이미지만 처리 (동영상, 기타 파일은 일단 파일명으로 저장)
-                if (attachment.contentType?.startsWith('image/')) {
-                    await message.react('🤔'); // 생각 중이라는 표시
-                    contentToSave = await generateImageDescription(message);
-                    await message.reactions.cache.get('🤔')?.remove();
-                    await message.react('✅'); // 처리 완료 표시
-                } else {
-                    contentToSave = `[파일] ${attachment.name}`;
+                if (message.attachments.size >= 5) {
+                    await message.react('❌');
+                    await message.reply('파일 분석은 한 번에 4개까지만 가능해! 😵');
+                    return;
                 }
+
+                await message.react('🤔');
+
+                const attachmentPromises = message.attachments.map(att => {
+                    if (att.contentType?.startsWith('image/')) {
+                        return generateImageDescription(att);
+                    } else if (att.contentType?.startsWith('text/') || att.name.match(/\.(txt|md|js|json|html|css|py|java|c|cpp|h|hpp|cs|xml|yaml|log)$/i)) {
+                        return generateTextFileDescription(att);
+                    } else {
+                        return Promise.resolve(`[기타 파일] ${att.name}`);
+                    }
+                });
+
+                const results = await Promise.all(attachmentPromises);
+                contentToSave = results.join('\n\n');
+                
+                await message.reactions.cache.get('🤔')?.remove();
+                await message.react('✅');
             }
 
-            const newMessage = new Interaction({
-                interactionId: message.id,
-                channelId: message.channel.id,
-                userId: message.author.id,
-                userName: message.author.username,
-                type: 'MESSAGE',
-                content: contentToSave
-            });
-            await newMessage.save();
-            console.log(`'${message.author.username}'의 메시지를 저장했어: "${contentToSave}"`);
+            if (contentToSave.trim() !== '') {
+                const newMessage = new Interaction({
+                    interactionId: message.id,
+                    channelId: message.channel.id,
+                    userId: message.author.id,
+                    userName: message.author.username,
+                    type: 'MESSAGE',
+                    content: contentToSave
+                });
+                await newMessage.save();
+                console.log(`'${message.author.username}'의 메시지를 저장했어: "${contentToSave}"`);
+            }
         }
     },
 };

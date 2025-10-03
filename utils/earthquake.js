@@ -20,6 +20,7 @@ const BACKOFF_FACTOR = 2; // 오류 발생 시 주기 증가 배수
 // --- 상태 변수 ---
 let currentDelay = INITIAL_DELAY;
 let timeoutId = null;
+let earthquakeMonitorStatus = '초기화 중...';
 
 // --- XML 항목을 JS 객체로 변환하는 헬퍼 함수 ---
 function parseEqItemToObject(item) {
@@ -109,11 +110,13 @@ async function checkEarthquakeAndNotify(client) {
 async function scheduleCheck(client) {
     try {
         await checkEarthquakeAndNotify(client);
+        earthquakeMonitorStatus = '정상'; // 성공 시 상태 업데이트
         if (currentDelay !== INITIAL_DELAY) {
             console.log(`[EQK] 지진 정보 확인 성공. 확인 주기를 ${INITIAL_DELAY / 1000}초로 초기화합니다.`);
             currentDelay = INITIAL_DELAY;
         }
     } catch (error) {
+        earthquakeMonitorStatus = error.message.includes('상태 코드:') ? `오류 ${error.message.split(' ').pop()}` : '오프라인'; // 실패 시 상태 업데이트
         currentDelay = Math.min(currentDelay * BACKOFF_FACTOR, MAX_DELAY);
         console.warn(`[EQK] 지진 정보 확인 실패. 다음 확인까지 ${currentDelay / 1000}초 대기합니다.`);
     } finally {
@@ -179,9 +182,9 @@ function getColorByIntensity(rawIntensityString) {
     return 0x808080;
 }
 
-// --- 외부 노출 함수 ---
 function startEarthquakeMonitor(client) {
     if (!process.env.EQK_API_KEY) {
+        earthquakeMonitorStatus = '키 없음';
         console.warn('[EQK] EQK_API_KEY가 설정되지 않아 지진 정보 모니터링을 시작할 수 없습니다.');
         return;
     }
@@ -190,5 +193,8 @@ function startEarthquakeMonitor(client) {
 }
 
 module.exports = {
-    startEarthquakeMonitor
+    startEarthquakeMonitor,
+    get earthquakeMonitorStatus() {
+        return earthquakeMonitorStatus;
+    }
 };
