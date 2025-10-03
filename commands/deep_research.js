@@ -1,38 +1,12 @@
 // commands/deep_research.js
 
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const fetch = require('node-fetch');
 const { google } = require('googleapis');
+const { callFlowise } = require('../utils/ai_helper.js');
 const customsearch = google.customsearch('v1');
 
-const flowiseEndpoint = process.env.FLOWISE_ENDPOINT;
-const flowiseApiKey = process.env.FLOWISE_API_KEY;
 const googleApiKey = process.env.GOOGLE_SEARCH_API;
 const googleSearchEngineId = process.env.GOOGLE_SEARCH_ENGINE_ID;
-
-// Helper function to call the AI
-async function callGemini(prompt, sessionId, task) {
-    const response = await fetch(flowiseEndpoint, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            ...(flowiseApiKey ? { 'Authorization': `Bearer ${flowiseApiKey}` } : {}),
-        },
-        body: JSON.stringify({
-            question: prompt,
-            overrideConfig: {
-                sessionId: `deep-research-${task}-${sessionId}`, // Task-specific session
-            }
-        }),
-    });
-
-    if (!response.ok) {
-        throw new Error(`AI API call for task '${task}' failed: ${response.statusText}`);
-    }
-
-    const aiResponse = await response.json();
-    return aiResponse.text;
-}
 
 // New helper function to generate a search query
 async function generateSearchQuery(userQuestion, sessionId) {
@@ -44,7 +18,7 @@ async function generateSearchQuery(userQuestion, sessionId) {
         Optimized Google Search Query:
     `;
     // The AI is expected to return only the query string.
-    const query = await callGemini(prompt, sessionId, 'query-generation');
+    const query = await callFlowise(prompt, sessionId, 'query-generation');
     // Clean up the query just in case the AI adds quotes or other text
     return query.replace(/"/g, '').trim();
 }
@@ -103,7 +77,7 @@ module.exports = {
             
             const searchQuery = await generateSearchQuery(userQuestion, sessionId);
 
-            await interaction.editReply(`AI가 생성한 검색어(\`${searchQuery}\`)로 웹 검색을 시작합니다... 🕵️‍♂️`);
+            await interaction.editReply(`AI가 생성한 검색어(\"${searchQuery}\")로 웹 검색을 시작합니다... 🕵️‍♂️`);
 
             const searchResults = await searchWeb(searchQuery);
             if (searchResults.length === 0) {
@@ -127,7 +101,7 @@ module.exports = {
                 [Your In-depth Analysis]
             `;
 
-            const analysis = await callGemini(analysisPrompt, sessionId, 'analysis');
+            const analysis = await callFlowise(analysisPrompt, sessionId, 'analysis');
 
             const resultEmbed = new EmbedBuilder()
                 .setColor(0x0099FF)

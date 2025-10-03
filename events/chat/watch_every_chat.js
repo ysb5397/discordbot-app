@@ -1,56 +1,10 @@
 const { Events } = require('discord.js');
 const { Interaction } = require('../../utils/database');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const fetch = require('node-fetch');
-
-const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const { generateImageDescription, generateTextFileDescription } = require('../../utils/ai_helper');
 
 async function generateSmartReply(userMessage) {
     console.log(`답변 생성 시도: "${userMessage}"`);
     return Promise.resolve(`네가 "${userMessage}" 라고 말했구나! 나는 그걸 기억할게.`);
-}
-
-async function generateImageDescription(attachment) {
-    try {
-        const visionModel = ai.getGenerativeModel({ model: "gemini-pro-vision" });
-        const prompt = "Describe this image for use as a searchable database entry. Be concise and factual. Answer in Korean.";
-        
-        const imageResponse = await fetch(attachment.url);
-        if (!imageResponse.ok) return `(파일 불러오기 실패: ${imageResponse.statusText})`;
-        
-        const imageBuffer = await imageResponse.buffer();
-        const base64Data = imageBuffer.toString('base64');
-
-        const imagePart = { inlineData: { data: base64Data, mimeType: attachment.contentType } };
-        const result = await visionModel.generateContent([prompt, imagePart]);
-        const description = result.response.text();
-        return description;
-    } catch (error) {
-        console.error('AI 이미지 설명 생성 중 오류:', error);
-        return `(AI 분석 실패: ${attachment.name})`;
-    }
-}
-
-async function generateTextFileDescription(attachment) {
-    try {
-        const textModel = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
-        const prompt = "Summarize this file content for a searchable database entry. Be concise and factual, and answer in Korean.";
-
-        const response = await fetch(attachment.url);
-        if (!response.ok) return `(파일 불러오기 실패: ${response.statusText})`;
-
-        const fileContent = await response.text();
-        
-        // 파일 내용이 너무 길 경우를 대비하여 일부만 사용 (예: 앞 4000자)
-        const truncatedContent = fileContent.substring(0, 4000);
-
-        const result = await textModel.generateContent([prompt, truncatedContent]);
-        const description = result.response.text();
-        return `[텍스트 파일: ${attachment.name}]\n${description}`;
-    } catch (error) {
-        console.error('AI 텍스트 파일 분석 중 오류:', error);
-        return `(AI 분석 실패: ${attachment.name})`;
-    }
 }
 
 module.exports = {
