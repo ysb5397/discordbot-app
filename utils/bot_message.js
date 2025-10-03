@@ -5,7 +5,7 @@ const fetch = require('node-fetch');
 const { earthquakeMonitorStatus } = require('./earthquake.js');
 
 const flowiseEndpoint = process.env.FLOWISE_ENDPOINT;
-const geminiEndpoint = process.env.GEMINI_API_ENDPOINT; // 사용자가 설정해야 할 환경 변수
+const geminiEndpoint = process.env.GEMINI_API_KEY; // 사용자가 설정해야 할 환경 변수
 
 // --- 헬퍼 함수: 상태에 따른 이모티콘 반환 ---
 function getStatusEmoji(status) {

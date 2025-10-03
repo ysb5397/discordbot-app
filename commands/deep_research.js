@@ -137,7 +137,7 @@ module.exports = {
                 .setTimestamp()
                 .setFooter({ text: `Powered by Gemini & Google Search. Searched with: "${searchQuery}"` });
 
-            await interaction.editReply({ embeds: [resultEmbed] });
+            await interaction.editReply({ content: `'${userQuestion}'에 대한 심층 분석이 완료되었어요! ✨`, embeds: [resultEmbed] });
 
         } catch (error) {
             await handleError(interaction, error);
