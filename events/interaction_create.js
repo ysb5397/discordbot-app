@@ -4,7 +4,6 @@ const { Events } = require('discord.js');
 
 module.exports = {
     name: Events.InteractionCreate,
-    // client를 마지막 인자로 받도록 수정
     async execute(interaction, client) {
         if (!interaction.isChatInputCommand()) return;
 
@@ -16,7 +15,6 @@ module.exports = {
         }
 
         try {
-            // interaction 객체만 넘겨줌 (command 파일에서는 interaction.client로 접근 가능)
             await command.execute(interaction);
         } catch (error) {
             console.error(`Error executing ${interaction.commandName}`);

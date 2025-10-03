@@ -20,7 +20,7 @@ class VoiceManager {
         this.channel = channel;
         this.connection = null;
         this.player = createAudioPlayer();
-        this.activeSession = null; // { userId, liveSession }
+        this.activeSession = null;
 
         ffmpeg.setFfmpegPath(ffmpegStatic);
         this.#setupPlayerListeners();
@@ -47,15 +47,12 @@ class VoiceManager {
         if (!this.connection) return;
         this.connection.destroy();
         this.connection = null;
-        this.#endSession(); // 세션 정리
+        this.#endSession();
         console.log(`음성 채널 [${this.channel.name}]에서 퇴장했습니다.`);
     }
 
-    // --- Private Methods (내부 로직) ---
-
     #setupPlayerListeners() {
         this.player.on('stateChange', (oldState, newState) => {
-            // 봇의 오디오 재생이 끝나면 세션을 종료
             if (newState.status === AudioPlayerStatus.Idle && oldState.status !== AudioPlayerStatus.Idle) {
                 console.log('봇의 TTS 재생이 완료되었습니다.');
                 this.#endSession();
@@ -65,7 +62,6 @@ class VoiceManager {
     
     #startListening() {
         this.connection.receiver.speaking.on('start', (userId) => {
-            // 이미 세션이 진행 중이면 무시 (봇이 말하고 있거나 다른 유저가 말하는 중)
             if (this.activeSession) return;
 
             this.activeSession = { userId, liveSession: null };
@@ -89,14 +85,11 @@ class VoiceManager {
             }
             console.log(`인식된 텍스트: "${userTranscript}"`);
             
-            // AI 처리 로직
             const { audioBuffers, aiTranscript, session } = await this.#getAiResponse(userTranscript, userId);
-            this.activeSession.liveSession = session; // liveSession 업데이트
+            this.activeSession.liveSession = session;
 
-            // DB 저장
             await this.#saveInteraction(userId, userTranscript, aiTranscript);
 
-            // AI 오디오 재생
             if (audioBuffers && audioBuffers.length > 0) {
                 this.#playAiAudio(audioBuffers);
             } else {

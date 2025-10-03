@@ -1,9 +1,8 @@
 // utils/earthquake.js
 
 const { EmbedBuilder } = require('discord.js');
-const fetch = require('node-fetch');
 const { JSDOM } = require('jsdom');
-const { Interaction } = require('./database.js'); // DB 모델 가져오기
+const { Interaction } = require('./database.js');
 
 // --- 설정 변수 ---
 const EQ_API_CONFIG = {
@@ -73,16 +72,13 @@ async function checkEarthquakeAndNotify(client) {
                 return;
             }
 
-            // 1. DB에서 해당 지진 기록이 있는지 확인 (발생 시각을 고유 ID로 사용)
             const existingEq = await Interaction.findOne({ interactionId: eqTime, type: 'EARTHQUAKE' });
 
-            // 2. 이미 DB에 있다면, 로그만 남기고 종료
             if (existingEq) {
                 console.log(`[EQK] 이미 처리된 지진 정보입니다 (시각: ${eqTime}). 건너뜁니다.`);
                 return;
             }
 
-            // 3. DB에 없다면, 알림 보내고 DB에 저장
             await sendEarthquakeAlert(latestDomesticEqItem, client);
 
             const newEqData = parseEqItemToObject(latestDomesticEqItem);
@@ -110,7 +106,7 @@ async function checkEarthquakeAndNotify(client) {
 async function scheduleCheck(client) {
     try {
         await checkEarthquakeAndNotify(client);
-        earthquakeMonitorStatus = '정상'; // 성공 시 상태 업데이트
+        earthquakeMonitorStatus = '정상';
         if (currentDelay !== INITIAL_DELAY) {
             console.log(`[EQK] 지진 정보 확인 성공. 확인 주기를 ${INITIAL_DELAY / 1000}초로 초기화합니다.`);
             currentDelay = INITIAL_DELAY;
@@ -161,7 +157,6 @@ async function sendEarthquakeAlert(item, client) {
         }
     } catch (error) {
         console.error('[EQK] Discord 메시지 전송 중 오류 발생:', error);
-        // DB 저장을 막기 위해 에러를 다시 던짐
         throw error;
     }
 }
@@ -189,7 +184,7 @@ function startEarthquakeMonitor(client) {
         return;
     }
     console.log('[EQK] 지진 정보 모니터링을 시작합니다.');
-    scheduleCheck(client); // 첫 확인 시작
+    scheduleCheck(client);
 }
 
 module.exports = {

@@ -1,5 +1,3 @@
-// commands/event.js
-
 const { SlashCommandBuilder, PermissionsBitField, ChannelType, GuildScheduledEventPrivacyLevel, GuildScheduledEventEntityType } = require('discord.js');
 const { parseKSTDateTime } = require('../utils/time.js');
 
@@ -15,11 +13,9 @@ async function findEventByName(interaction, name) {
 }
 
 module.exports = {
-    // 1. data: 서브커맨드를 사용하여 명령어 구조를 통합
     data: new SlashCommandBuilder()
         .setName('event')
         .setDescription('서버 이벤트를 관리합니다.')
-        // 2. setDefaultMemberPermissions: 명령어 자체에 권한을 설정 (코드 중복 제거)
         .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageEvents)
         .addSubcommand(subcommand =>
             subcommand
@@ -49,9 +45,7 @@ module.exports = {
                 .addStringOption(option => option.setName('name').setDescription('삭제할 이벤트의 이름').setRequired(true))
         ),
 
-    // 3. execute: 서브커맨드에 따라 로직을 분기
     async execute(interaction) {
-        // 권한 확인 코드가 필요 없음! (setDefaultMemberPermissions가 이미 처리)
         
         const subcommand = interaction.options.getSubcommand();
 
@@ -99,7 +93,6 @@ module.exports = {
                     scheduledEndTime: interaction.options.getString('new_end_time') ? parseKSTDateTime(interaction.options.getString('new_end_time')) : undefined,
                 };
 
-                // 빈 객체는 edit을 호출하지 않도록 필터링
                 const filteredOptions = Object.fromEntries(Object.entries(editOptions).filter(([_, v]) => v !== undefined));
                 
                 if (Object.keys(filteredOptions).length === 0) {
@@ -122,7 +115,6 @@ module.exports = {
             }
         } catch (error) {
             console.error(`Error during /event ${subcommand}:`, error);
-            // 시간 파싱 에러를 잡기 위한 좀 더 친절한 메시지
             if (error.message.includes("Invalid time value")) {
                 return interaction.editReply("❌ 시간 형식이 잘못되었습니다. 'YYYY-MM-DD HH:MM' 형식으로 입력해주세요.");
             }

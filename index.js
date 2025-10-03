@@ -1,5 +1,3 @@
-// index.js
-
 const fs = require('node:fs');
 const path = require('node:path');
 const { Client, GatewayIntentBits, Collection } = require('discord.js');
@@ -8,17 +6,15 @@ const { connectDB } = require('./utils/database');
 
 dotenv.config();
 
-// MongoDB 연결
 connectDB();
 
-// 봇 클라이언트 생성
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildScheduledEvents,
-        GatewayIntentBits.GuildVoiceStates // 음성 상태 감지를 위한 Intent 추가
+        GatewayIntentBits.GuildVoiceStates
     ]
 });
 
@@ -46,7 +42,7 @@ const loadEvents = (dir) => {
     for (const file of eventFiles) {
         const filePath = path.join(dir, file);
         const event = require(filePath);
-        if (event.name) { // 이벤트 이름이 있는지 확인
+        if (event.name) {
             if (event.once) {
                 client.once(event.name, (...args) => event.execute(...args, client));
             } else {

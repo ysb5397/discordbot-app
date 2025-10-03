@@ -1,9 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { Interaction } = require('../utils/database.js');
-// 변경점 1: ai_helper에서 이제 callFlowise도 가져와서 사용
 const { generateMongoFilter, callFlowise } = require('../utils/ai_helper.js');
-
-// --- Helper Functions ---
 
 /**
  * 검색된 기억(interaction document)의 내용을 보기 좋게 축약하는 함수
@@ -14,7 +11,6 @@ function formatMemoryContent(doc) {
     if (typeof doc.content === 'string') {
         return doc.content.length > 100 ? doc.content.substring(0, 100) + '...' : doc.content;
     }
-    // 문자열이 아닌 경우 (예: 다른 타입의 상호작용 데이터)
     const summary = doc.content.rem || '내용 없음';
     return `[${doc.type}] ${summary}`.substring(0, 100);
 }
@@ -28,7 +24,6 @@ async function handleMemoryFound(interaction, searchResults) {
     const userQuestion = interaction.options.getString('question');
     const sessionId = interaction.user.id;
     
-    // AI에게 검색 결과에 대한 간단한 코멘트를 요청
     const commentPrompt = `사용자가 "${userQuestion}" 라고 질문해서 관련 기억을 찾았어. 이 상황에 대해 짧고 자연스러운 코멘트를 해줘.`;
     const aiComment = await callFlowise(commentPrompt, sessionId, 'memory-comment');
 
@@ -41,7 +36,7 @@ async function handleMemoryFound(interaction, searchResults) {
         const messageLink = `https://discord.com/channels/${interaction.guildId}/${doc.channelId}/${doc.interactionId}`;
         const timestamp = new Date(doc.timestamp).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
         return `**${index + 1}.** [메시지 바로가기](${messageLink}) "${content}"\n*(${timestamp})*`;
-    }).join('\n\n'); // 각 항목 사이에 줄바꿈을 추가해서 가독성 향상
+    }).join('\n\n');
     
     embed.setDescription(description);
 
@@ -62,7 +57,6 @@ async function handleRegularConversation(interaction) {
     const attachment = interaction.options.getAttachment('file');
     const botName = interaction.client.user.username;
 
-    // 최근 대화 기록 가져오기
     const recentInteractions = await Interaction.find({ 
         userId: sessionId, 
         type: { $in: ['MESSAGE', 'MENTION'] } 
@@ -83,18 +77,15 @@ async function handleRegularConversation(interaction) {
         history: history
     };
 
-    // 첨부 파일 처리
     if (attachment) {
-        // 변경점 3: 네이티브 fetch를 사용하도록 수정
         const response = await fetch(attachment.url);
         if (!response.ok) throw new Error(`첨부파일을 가져오는 데 실패했습니다: ${response.statusText}`);
-        const imageBuffer = Buffer.from(await response.arrayBuffer()); // .buffer() -> .arrayBuffer()
+        const imageBuffer = Buffer.from(await response.arrayBuffer());
         requestBody.uploads = [{ data: imageBuffer.toString('base64'), type: 'file' }];
     }
 
-    // 변경점 1 (재사용): 범용적인 Flowise 호출 함수 사용
     const aiResponseText = await callFlowise(requestBody, sessionId, 'chat-conversation');
-    const flowiseResponse = JSON.parse(aiResponseText); // Flowise 응답이 JSON 문자열일 경우 파싱
+    const flowiseResponse = JSON.parse(aiResponseText);
 
     const replyEmbed = new EmbedBuilder()
         .setColor(0x00FA9A)
@@ -108,9 +99,6 @@ async function handleRegularConversation(interaction) {
 
     await interaction.editReply({ content: `<@${sessionId}>`, embeds: [replyEmbed] });
 }
-
-
-// --- Main Command Logic ---
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -131,11 +119,9 @@ module.exports = {
         const sessionId = interaction.user.id;
 
         try {
-            // 1. 먼저 기억 검색 시도
             const filter = await generateMongoFilter(userQuestion, sessionId);
             const searchResults = await Interaction.find(filter).sort({ timestamp: -1 }).limit(5);
 
-            // 2. 검색 결과 유무에 따라 다른 함수 호출
             if (searchResults.length > 0) {
                 await handleMemoryFound(interaction, searchResults);
             } else {

@@ -1,26 +1,22 @@
 const mongoose = require('mongoose');
 
-// 모든 종류의 상호작용을 저장하기 위한 통합 스키마
 const interactionSchema = new mongoose.Schema({
-    // 상호작용 ID (메시지 ID, 음성 세션 ID 등)
     interactionId: { type: String, required: true, unique: true },
-    channelId: { type: String }, // 메시지가 발생한 채널 ID
-    // 사용자 정보
+    channelId: { type: String },
     userId: { type: String, required: true },
     userName: { type: String, required: true },
-    // 상호작용 타입
     type: {
         type: String,
         enum: ['MESSAGE', 'MENTION', 'VOICE', 'ERROR', 'EARTHQUAKE'],
         required: true
     },
-    // 상호작용 내용 (객체 저장을 위해 Mixed 타입으로 변경)
     content: { type: mongoose.Schema.Types.Mixed, required: true },
-    // 봇의 응답 (있을 경우)
     botResponse: { type: String },
-    // 발생 시간
     timestamp: { type: Date, default: Date.now }
 });
+
+interactionSchema.index({ userId: 1, type: 1, timestamp: -1 });
+
 
 const Interaction = mongoose.model('Interaction', interactionSchema);
 

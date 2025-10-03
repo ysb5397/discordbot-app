@@ -1,5 +1,3 @@
-// commands/deep_research.js
-
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { google } = require('googleapis');
 const { callFlowise } = require('../utils/ai_helper.js');
@@ -8,7 +6,6 @@ const customsearch = google.customsearch('v1');
 const googleApiKey = process.env.GOOGLE_SEARCH_API;
 const googleSearchEngineId = process.env.GOOGLE_SEARCH_ENGINE_ID;
 
-// New helper function to generate a search query
 async function generateSearchQuery(userQuestion, sessionId) {
     const prompt = `
         You are a search query optimization expert. Your task is to convert a user's natural language question into a highly effective, keyword-focused search query for Google. The query should be in English to maximize search results.
@@ -17,14 +14,11 @@ async function generateSearchQuery(userQuestion, sessionId) {
 
         Optimized Google Search Query:
     `;
-    // The AI is expected to return only the query string.
     const query = await callFlowise(prompt, sessionId, 'query-generation');
-    // Clean up the query just in case the AI adds quotes or other text
     return query.replace(/"/g, '').trim();
 }
 
 
-// Helper function for web search
 async function searchWeb(query) {
     const searchResponse = await customsearch.cse.list({
         auth: googleApiKey,
@@ -35,7 +29,6 @@ async function searchWeb(query) {
     return searchResponse.data.items || [];
 }
 
-// Helper function to format search results
 function formatSearchResults(items) {
     if (!items || items.length === 0) {
         return "웹 검색 결과가 없습니다.";
@@ -45,7 +38,6 @@ function formatSearchResults(items) {
     ).join('\n\n');
 }
 
-// Helper function for error handling
 async function handleError(interaction, error) {
     console.error(`[/deep_research] An error occurred:`, error);
     const errorMessage = `죄송합니다. 심층 분석 중 오류가 발생했습니다.\n오류: ${error.message}`;
@@ -107,7 +99,7 @@ module.exports = {
                 .setColor(0x0099FF)
                 .setTitle(`'${userQuestion}'에 대한 심층 분석 결과`)
                 .setDescription(analysis)
-                .addFields({ name: '출처 정보 (AI가 생성한 검색어 기준)', value: formattedResults.substring(0, 1024) }) // Limit field value size
+                .addFields({ name: '출처 정보 (AI가 생성한 검색어 기준)', value: formattedResults.substring(0, 1024) })
                 .setTimestamp()
                 .setFooter({ text: `Powered by Gemini & Google Search. Searched with: "${searchQuery}"` });
 
