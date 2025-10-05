@@ -40,8 +40,8 @@ jobs:
                   secret: DISCORD_CLIENT_ID
                 - name: DISCORD_GUILD_ID
                   secret: DISCORD_GUILD_ID
-                - name: EQK_API_KEY
-                  secret: my_kor_eq_api
+                - name: EQK_AUTH_KEY
+                  secret: EQK_AUTH_KEY
                 - name: GEMINI_API_KEY
                   secret: GEMINI_API_KEY
                 - name: DISCORD_CREDENTIALS_JSON
