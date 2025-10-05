@@ -1,51 +1,48 @@
-// utils/earthquake.js
-
 const { EmbedBuilder } = require('discord.js');
 const { JSDOM } = require('jsdom');
 const { Interaction } = require('./database.js');
 
 // --- 설정 변수 ---
 const EQ_API_CONFIG = {
-    serviceKey: process.env.EQK_API_KEY,
-    url: "http://apis.data.go.kr/1360000/EqkInfoService/getEqkMsg",
-    pageNo: 1,
-    numOfRows: 10,
-    dataType: "XML"
+    url: "https://apihub.kma.go.kr/api/typ09/url/eqk/urlNewNotiEqk.do",
+    authKey: process.env.EQK_AUTH_KEY,
+    orderTy: "xml",
+    orderCm: "L"
 };
 const INITIAL_DELAY = 60 * 1000; // 1분 (기본 주기)
 const MAX_DELAY = 30 * 60 * 1000; // 30분 (최대 주기)
 const BACKOFF_FACTOR = 2; // 오류 발생 시 주기 증가 배수
 
-// --- 상태 변수 ---
 let currentDelay = INITIAL_DELAY;
 let timeoutId = null;
 let earthquakeMonitorStatus = '초기화 중...';
 
-// --- XML 항목을 JS 객체로 변환하는 헬퍼 함수 ---
-function parseEqItemToObject(item) {
-    const getText = (selector) => item.querySelector(selector)?.textContent || null;
+// XML을 변환하는 헬퍼 함수
+function parseEqInfoToObject(info) {
+    const getText = (selector) => info.querySelector(selector)?.textContent || null;
     return {
-        tmEqk: getText("tmEqk"),
-        rem: getText("rem"),
-        loc: getText("loc"),
-        mt: getText("mt"),
-        inT: getText("inT"),
-        dep: getText("dep"),
-        img: getText("img"),
-        fcTp: getText("fcTp")
+        msgCode: getText("msgCode"),
+        cntDiv: getText("cntDiv"),
+        arDiv: getText("arDiv"),
+        eqArCdNm: getText("eqArCdNm"),
+        eqPt: getText("eqPt"),
+        nkDiv: getText("nkDiv"),
+        tmIssue: getText("tmIssue"),
+        eqDate: getText("eqDate"),
+        magMl: getText("magMl"),
+        magDiff: getText("magDiff"),
+        eqDt: getText("eqDt"),
+        eqLt: getText("eqLt"),
+        eqLn: getText("eqLn"),
+        jdLoc: getText("jdLoc"),
+        ReFer: getText("ReFer"),
     };
 }
 
-// --- 핵심 로직: 지진 정보 확인 및 알림 ---
 async function checkEarthquakeAndNotify(client) {
-    console.log('[EQK] 지진 정보 확인을 시작합니다...');
+    console.log('[EQK] 지진 정보 확인을 시작합니다 (기상청 직접 호출)...');
 
-    const today = new Date();
-    const threeDaysAgo = new Date();
-    threeDaysAgo.setDate(today.getDate() - 3);
-
-    const formatDate = (date) => `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
-    const url = `${EQ_API_CONFIG.url}?serviceKey=${EQ_API_CONFIG.serviceKey}&pageNo=${EQ_API_CONFIG.pageNo}&numOfRows=${EQ_API_CONFIG.numOfRows}&dataType=${EQ_API_CONFIG.dataType}&fromTmFc=${formatDate(threeDaysAgo)}&toTmFc=${formatDate(today)}`;
+    const url = `${EQ_API_CONFIG.url}?orderTy=${EQ_API_CONFIG.orderTy}&orderCm=${EQ_API_CONFIG.orderCm}&authKey=${EQ_API_CONFIG.authKey}`;
 
     try {
         const response = await fetch(url, { timeout: 10000 });
@@ -54,55 +51,53 @@ async function checkEarthquakeAndNotify(client) {
         }
         const xmlText = await response.text();
         const dom = new JSDOM(xmlText, { contentType: "application/xml" });
-        const items = dom.window.document.getElementsByTagName("item");
         
-        let latestDomesticEqItem = null;
-        for (const item of items) {
-            const fcTp = item.querySelector("fcTp")?.textContent;
-            if (fcTp === '3' || fcTp === '5') {
-                latestDomesticEqItem = item;
-                break;
-            }
+        const eqInfo = dom.window.document.querySelector("info");
+
+        if (!eqInfo) {
+            console.log('[EQK] 유효한 지진 정보(<info>)를 찾을 수 없습니다.');
+            return;
         }
 
-        if (latestDomesticEqItem) {
-            const eqTime = latestDomesticEqItem.querySelector("tmEqk")?.textContent;
-            if (!eqTime) {
-                console.log('[EQK] 지진 정보에 발생 시각이 없어 처리를 중단합니다.');
-                return;
-            }
-
-            const existingEq = await Interaction.findOne({ interactionId: eqTime, type: 'EARTHQUAKE' });
-
-            if (existingEq) {
-                console.log(`[EQK] 이미 처리된 지진 정보입니다 (시각: ${eqTime}). 건너뜁니다.`);
-                return;
-            }
-
-            await sendEarthquakeAlert(latestDomesticEqItem, client);
-
-            const newEqData = parseEqItemToObject(latestDomesticEqItem);
-            const newEqInteraction = new Interaction({
-                interactionId: eqTime, // 지진 발생 시각을 고유 ID로 사용
-                userId: client.user.id, // 봇의 ID
-                userName: client.user.username, // 봇의 이름
-                type: 'EARTHQUAKE',
-                content: newEqData, // 지진 정보 객체를 content에 저장
-                botResponse: 'Discord alert sent.'
-            });
-            await newEqInteraction.save();
-            console.log(`[EQK] 새로운 지진 정보를 DB에 저장했습니다 (시각: ${eqTime}).`);
-
-        } else {
-            console.log('[EQK] 최근 3일간 국내 지진 정보가 없습니다.');
+        const isDomestic = eqInfo.querySelector("cntDiv")?.textContent === 'Y';
+        if (!isDomestic) {
+            console.log('[EQK] 최신 정보가 국외 지진이므로 건너뜁니다.');
+            return;
         }
+
+        const eqTime = eqInfo.querySelector("eqDate")?.textContent;
+        if (!eqTime) {
+            console.log('[EQK] 지진 정보에 발생 시각이 없어 처리를 중단합니다.');
+            return;
+        }
+
+        const existingEq = await Interaction.findOne({ interactionId: eqTime, type: 'EARTHQUAKE' });
+
+        if (existingEq) {
+            console.log(`[EQK] 이미 처리된 지진 정보입니다 (시각: ${eqTime}). 건너뜁니다.`);
+            return;
+        }
+
+        await sendEarthquakeAlert(eqInfo, client);
+
+        const newEqData = parseEqInfoToObject(eqInfo);
+        const newEqInteraction = new Interaction({
+            interactionId: eqTime,
+            userId: client.user.id,
+            userName: client.user.username,
+            type: 'EARTHQUAKE',
+            content: newEqData,
+            botResponse: 'Discord alert sent.'
+        });
+        await newEqInteraction.save();
+        console.log(`[EQK] 새로운 지진 정보를 DB에 저장했습니다 (시각: ${eqTime}).`);
+
     } catch (error) {
         console.error('[EQK] 지진 정보 처리 중 오류 발생:', error.message);
         throw error;
     }
 }
 
-// --- 스케줄러 로직 ---
 async function scheduleCheck(client) {
     try {
         await checkEarthquakeAndNotify(client);
@@ -112,7 +107,7 @@ async function scheduleCheck(client) {
             currentDelay = INITIAL_DELAY;
         }
     } catch (error) {
-        earthquakeMonitorStatus = error.message.includes('상태 코드:') ? `오류 ${error.message.split(' ').pop()}` : '오프라인'; // 실패 시 상태 업데이트
+        earthquakeMonitorStatus = error.message.includes('상태 코드:') ? `오류 ${error.message.split(' ').pop()}` : '오프라인';
         currentDelay = Math.min(currentDelay * BACKOFF_FACTOR, MAX_DELAY);
         console.warn(`[EQK] 지진 정보 확인 실패. 다음 확인까지 ${currentDelay / 1000}초 대기합니다.`);
     } finally {
@@ -121,31 +116,26 @@ async function scheduleCheck(client) {
     }
 }
 
-// --- 부가 함수: 임베드 생성 및 전송 ---
-async function sendEarthquakeAlert(item, client) {
+async function sendEarthquakeAlert(info, client) {
     const targetChannelId = '1388443793589538899';
-    const rawIntensity = item.querySelector("inT")?.textContent || "정보 없음";
-    const intensityValue = rawIntensity.split('(')[0];
-    const embedColor = getColorByIntensity(intensityValue);
-    const rawTime = item.querySelector("tmEqk")?.textContent || "정보 없음";
+    const rawIntensity = info.querySelector("jdLoc")?.textContent || "정보 없음";
+    const embedColor = getColorByIntensity(rawIntensity);
+    const rawTime = info.querySelector("eqDate")?.textContent || "정보 없음"; // tmEqk -> eqDate
     const formattedTime = `${rawTime.substring(0, 4)}년 ${rawTime.substring(4, 6)}월 ${rawTime.substring(6, 8)}일 ${rawTime.substring(8, 10)}시 ${rawTime.substring(10, 12)}분`;
 
     const embed = new EmbedBuilder()
         .setColor(embedColor)
         .setTitle('📢 실시간 국내 지진 정보')
-        .setDescription(item.querySelector("rem")?.textContent || "상세 정보 없음")
+        .setDescription(info.querySelector("ReFer")?.textContent || "상세 정보 없음") // rem -> ReFer
         .addFields(
-            { name: '📍 진원지', value: item.querySelector("loc")?.textContent || "정보 없음", inline: true },
+            { name: '📍 진원지', value: info.querySelector("eqPt")?.textContent || "정보 없음", inline: true },
             { name: '⏳ 발생시각', value: formattedTime, inline: true },
-            { name: '📏 규모', value: `M ${item.querySelector("mt")?.textContent || "정보 없음"}`, inline: true },
+            { name: '📏 규모', value: `M ${info.querySelector("magMl")?.textContent || "정보 없음"}`, inline: true },
             { name: '💥 최대진도', value: rawIntensity, inline: true },
-            { name: ' 깊이', value: `${item.querySelector("dep")?.textContent || "?"}km`, inline: true }
+            { name: ' 깊이', value: `${info.querySelector("eqDt")?.textContent || "?"}km`, inline: true }
         )
         .setTimestamp()
         .setFooter({ text: '출처: 기상청' });
-
-    const imageUrl = item.querySelector("img")?.textContent;
-    if (imageUrl) embed.setImage(imageUrl);
 
     try {
         const channel = await client.channels.fetch(targetChannelId);
@@ -178,9 +168,9 @@ function getColorByIntensity(rawIntensityString) {
 }
 
 function startEarthquakeMonitor(client) {
-    if (!process.env.EQK_API_KEY) {
+    if (!process.env.EQK_AUTH_KEY) {
         earthquakeMonitorStatus = '키 없음';
-        console.warn('[EQK] EQK_API_KEY가 설정되지 않아 지진 정보 모니터링을 시작할 수 없습니다.');
+        console.warn('[EQK] EQK_AUTH_KEY가 설정되지 않아 지진 정보 모니터링을 시작할 수 없습니다.');
         return;
     }
     console.log('[EQK] 지진 정보 모니터링을 시작합니다.');
