@@ -316,6 +316,29 @@ async function checkVideoGenerationStatus(operationName) {
     return await response.json();
 }
 
+/**
+ * Veo API가 제공한 URI에서 실제 비디오 파일을 다운로드합니다.
+ * @param {string} videoUri - 다운로드할 비디오의 URI
+ *- returns {Promise<Buffer>} - 비디오 파일 데이터 버퍼
+ */
+async function downloadVideoFromUri(videoUri) {
+    console.log(`[디버그] 영상 다운로드를 시작합니다: ${videoUri}`);
+    const response = await fetch(videoUri, {
+        method: 'GET',
+        headers: {
+            'x-goog-api-key': process.env.GEMINI_API_KEY
+        }
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`영상 다운로드 실패: ${response.status} ${errorText}`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+}
+
 module.exports = {
     callFlowise,
     generateMongoFilter,
@@ -326,4 +349,5 @@ module.exports = {
     genAI,
     startVideoGeneration,
     checkVideoGenerationStatus,
+    downloadVideoFromUri,
 };
