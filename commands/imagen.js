@@ -1,5 +1,3 @@
-// commands/imagen.js
-
 const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const { generateImage } = require('../utils/ai_helper.js');
 

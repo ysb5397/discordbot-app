@@ -261,6 +261,61 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream) {
     return { audioBuffers, aiTranscript, session };
 }
 
+const VEO_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
+
+/**
+ * Veo 영상 생성 작업을 시작하고 작업 이름을 반환합니다.
+ * @param {string} prompt - 영상 생성을 위한 프롬프트
+ * @returns {Promise<string|null>} 작업 이름 (예: operations/...)
+ */
+async function startVideoGeneration(prompt) {
+    const endpoint = `${VEO_BASE_URL}/models/veo-3.0-generate-001:predictLongRunning`;
+    const requestBody = {
+        instances: [{ prompt: prompt }]
+    };
+
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': process.env.GEMINI_API_KEY
+        },
+        body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Veo API 작업 시작 실패: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json();
+    return data.name;
+}
+
+/**
+ * 영상 생성 작업의 현재 상태를 확인합니다.
+ * @param {string} operationName - 확인할 작업의 이름
+ * @returns {Promise<object>} 작업 상태 응답 객체
+ */
+async function checkVideoGenerationStatus(operationName) {
+    const endpoint = `${VEO_BASE_URL}/${operationName}`;
+    
+    const response = await fetch(endpoint, {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': process.env.GEMINI_API_KEY
+        }
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Veo API 상태 확인 실패: ${response.status} ${errorText}`);
+    }
+
+    return await response.json();
+}
+
 module.exports = {
     callFlowise,
     generateMongoFilter,
@@ -269,4 +324,6 @@ module.exports = {
     generateAttachmentDescription,
     generateImage,
     genAI,
+    startVideoGeneration,
+    checkVideoGenerationStatus,
 };
