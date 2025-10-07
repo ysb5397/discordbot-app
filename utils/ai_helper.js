@@ -1,10 +1,12 @@
 const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require('@google/generative-ai');
+const { GoogleGenAI, Modality } = require('@google/genai');
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const ai_live = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const flowiseEndpoint = process.env.FLOWISE_ENDPOINT;
 const flowiseApiKey = process.env.FLOWISE_API_KEY;
 
-const visionModel = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
+const proModel = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
 const flashModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 /**
@@ -96,7 +98,7 @@ async function generateMongoFilter(query, userId) {
  */
 async function getTranscript(audioBuffer) {
     try {
-        const audioPart = { inlineData: { data: audioBuffer.toString('base64'), mimeType: "audio/ogg" } }; // ogg나 opus가 pcm보다 효율적일 수 있어.
+        const audioPart = { inlineData: { data: audioBuffer.toString('base64'), mimeType: "audio/ogg" } };
         const result = await flashModel.generateContent(["이 오디오를 한국어로 전사해 줘.", audioPart]);
         return result.response.text();
     } catch (error) {
@@ -123,7 +125,7 @@ async function generateAttachmentDescription(attachment) {
         let contentParts = [];
 
         if (contentType.startsWith('image/')) {
-            model = visionModel;
+            model = proModel;
             prompt = "이 이미지를 데이터베이스 검색 항목으로 사용할 수 있도록 간결하고 사실적으로 묘사해 줘. 한국어로 답변해 줘.";
             const imageBuffer = Buffer.from(await response.arrayBuffer());
             contentParts.push({ inlineData: { data: imageBuffer.toString('base64'), mimeType: contentType } });
@@ -197,11 +199,56 @@ async function generateImage(prompt, count = 1) {
     return predictions.map(p => Buffer.from(p.bytesBase64Encoded, 'base64'));
 }
 
+/**
+ * Gemini 실시간 API에 연결하여 스트리밍 오디오 및 텍스트 응답을 가져옵니다.
+ * @param {string} prompt - AI를 위한 시스템 명령어 프롬프트
+ * @returns {Promise<{audioBuffers: Buffer[], aiTranscript: string, session: any}>}
+ */
+async function getLiveAiAudioResponse(prompt) {
+    const responseQueue = [];
+    const waitMessage = () => new Promise(resolve => {
+        const check = () => {
+            const msg = responseQueue.shift();
+            if (msg) resolve(msg);
+            else setTimeout(check, 100);
+        };
+        check();
+    });
+
+    const handleTurn = async () => {
+        const turns = [];
+        while (true) {
+            const message = await waitMessage();
+            turns.push(message);
+            if (message.serverContent && message.serverContent.turnComplete) return turns;
+        }
+    };
+
+    const session = await ai_live.live.connect({
+        model: "gemini-2.5-flash-native-audio-preview-09-2025",
+        callbacks: {
+            onmessage: (m) => responseQueue.push(m),
+            onerror: (e) => console.error('Live API Error:', e.message),
+            onclose: (e) => console.log('Live API Close:', e.reason)
+        },
+        config: {
+            responseModalities: [Modality.AUDIO, Modality.TEXT],
+            systemInstruction: prompt
+        },
+    });
+
+    const turns = await handleTurn();
+    const audioBuffers = turns.map(t => t.data ? Buffer.from(t.data, 'base64') : null).filter(Boolean);
+    const aiTranscript = turns.map(t => t.text).filter(Boolean).join(' ');
+
+    return { audioBuffers, aiTranscript, session };
+}
 
 module.exports = {
     callFlowise,
     generateMongoFilter,
     getTranscript,
+    getLiveAiAudioResponse,
     generateAttachmentDescription,
     generateImage,
     genAI,
