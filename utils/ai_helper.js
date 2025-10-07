@@ -99,7 +99,7 @@ async function generateMongoFilter(query, userId) {
 async function getTranscript(audioBuffer) {
     try {
         const audioPart = { inlineData: { data: audioBuffer.toString('base64'), mimeType: "audio/ogg" } };
-        const result = await flashModel.generateContent(["이 오디오를 한국어로 전사해 줘.", audioPart]);
+        const result = await proModel.generateContent(["이 오디오를 한국어 텍스트로 바꿔서 전달해줘.", audioPart]);
         return result.response.text();
     } catch (error) {
         console.error("음성 텍스트 변환(STT) 중 오류:", error);
@@ -233,7 +233,7 @@ async function getLiveAiAudioResponse(prompt) {
         },
         config: {
             responseModalities: [Modality.AUDIO, Modality.TEXT],
-            systemInstruction: prompt
+            systemInstruction: { parts: [{ text: prompt }] }
         },
     });
 
