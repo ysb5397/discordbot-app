@@ -35,10 +35,17 @@ module.exports = {
 
                 if (statusResponse.done) {
                     await interaction.editReply('✅ 영상 생성이 완료되었습니다! 최종 파일을 처리 중입니다...');
-                    const videoUrl = statusResponse.response?.predictions?.[0]?.video_file_uri;
+                    console.log("===== Veo API 최종 응답 객체 =====");
+                    console.log(JSON.stringify(statusResponse, null, 2));
+                    console.log("===================================");
 
-                    if (!videoUrl) {
-                        throw new Error('생성된 영상의 URL을 찾을 수 없습니다.');
+                    const videoUri = statusResponse.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri;
+
+                    if (!videoUri) {
+                        await interaction.editReply({
+                            content: `❌ 생성된 영상의 URL을 찾을 수 없습니다.`
+                        });
+                        return;
                     }
                     
                     const resultEmbed = new EmbedBuilder()
@@ -49,7 +56,7 @@ module.exports = {
                         .setTimestamp();
                         
                     await interaction.editReply({
-                        content: `🎉 영상이 준비됐어!\n${videoUrl}`,
+                        content: `🎉 영상이 준비됐어!\n${videoUri}`,
                         embeds: [resultEmbed]
                     });
                     return;
