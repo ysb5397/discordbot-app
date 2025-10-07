@@ -121,43 +121,49 @@ class VoiceManager {
         }
     }
 
-    #recordUserAudio(userId) {
-        return new Promise((resolve, reject) => {
+    async #recordUserAudio(userId) {
+        try {
+            console.log(`[디버그] -> 녹음: [${userId}]님의 오디오 스트림을 구독합니다.`);
             const opusStream = this.connection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 1200 } });
+            
             const pcmStream = new prism.opus.Decoder({ 
                 frameSize: AUDIO_CONFIG.FRAME_SIZE, 
                 channels: AUDIO_CONFIG.CHANNELS, 
                 rate: AUDIO_CONFIG.DISCORD_SAMPLE_RATE 
             });
-            
+    
+            opusStream.pipe(pcmStream);
+    
             const ffmpegProcess = ffmpeg(pcmStream)
                 .inputFormat(AUDIO_CONFIG.FORMAT)
-                .inputOptions([
-                    `-ar ${AUDIO_CONFIG.DISCORD_SAMPLE_RATE}`, 
-                    `-ac ${AUDIO_CONFIG.CHANNELS}`
-                ])
-                .outputFormat(AUDIO_CONFIG.FORMAT).outputOptions([`-ar ${AUDIO_CONFIG.AI_SAMPLE_RATE}`])
-                .on('start', cmd => console.log(`[디버그] -> 녹음: FFmpeg 리샘플링 프로세스 시작.`))
+                .inputOptions([`-ar ${AUDIO_CONFIG.DISCORD_SAMPLE_RATE}`, `-ac ${AUDIO_CONFIG.CHANNELS}`])
+                .outputFormat(AUDIO_CONFIG.FORMAT)
+                .outputOptions([`-ar ${AUDIO_CONFIG.AI_SAMPLE_RATE}`])
+                .on('start', cmd => console.log(`[디버그] -> 녹음: FFmpeg 리샘플링 프로세스 시작. (명령어: ${cmd})`))
                 .on('error', err => {
                     console.error('[디버그] ❌ -> 녹음: FFmpeg 오류 발생:', err);
-                    reject(err);
+                    opusStream.destroy(err);
                 });
-
-            const audioChunks = [];
-            const ffmpegStream = ffmpegProcess.stream();
-
-            ffmpegStream.on('data', chunk => audioChunks.push(chunk));
             
-            ffmpegStream.on('end', () => {
-                console.log(`[디버그] -> 녹음: FFmpeg 스트림이 정상적으로 종료되었습니다.`);
-                resolve(Buffer.concat(audioChunks));
-            });
-
+            const ffmpegStream = ffmpegProcess.stream();
+    
             opusStream.on('end', () => {
-                console.log(`[디버그] -> 녹음: [${userId}]님의 발화가 끝나 오디오 스트림이 종료되었습니다.`);
+                console.log(`[디버그] -> 녹음: [${userId}]님의 발화가 끝나 Opus 스트림이 종료되었습니다.`);
                 pcmStream.end();
             });
-        });
+    
+            const audioChunks = [];
+            for await (const chunk of ffmpegStream) {
+                audioChunks.push(chunk);
+            }
+            
+            console.log('[디버그] -> 녹음: FFmpeg 스트림이 정상적으로 완료되었습니다.');
+            return Buffer.concat(audioChunks);
+            
+        } catch (error) {
+            console.error('[디버그] ❌ -> 녹음: 스트림 처리 중 심각한 오류 발생:', error);
+            return Buffer.alloc(0); 
+        }
     }
 
     async #getAiResponse(transcript, userId) {
