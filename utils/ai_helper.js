@@ -232,7 +232,6 @@ async function getLiveAiAudioResponse(prompt) {
             onclose: (e) => console.log('Live API Close:', e.reason)
         },
         config: {
-            responseModalities: [Modality.AUDIO, Modality.TEXT],
             systemInstruction: { parts: [{ text: prompt }] }
         },
     });
