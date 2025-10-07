@@ -1,5 +1,3 @@
-// commands/video.js
-
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { startVideoGeneration, checkVideoGenerationStatus } = require('../utils/ai_helper.js');
 
@@ -21,7 +19,7 @@ module.exports = {
         const prompt = interaction.options.getString('prompt');
 
         try {
-            await interaction.editReply(`⏳ AI가 프롬프트("${prompt}")를 분석하여 영상 생성 작업을 시작합니다...`);
+            await interaction.editReply(`⏳ AI가 프롬프트("${prompt.substring(0, 100)}...")를 분석하여 영상 생성 작업을 시작합니다...`);
             const operationName = await startVideoGeneration(prompt);
 
             if (!operationName) {
@@ -35,22 +33,19 @@ module.exports = {
 
                 if (statusResponse.done) {
                     await interaction.editReply('✅ 영상 생성이 완료되었습니다! 최종 파일을 처리 중입니다...');
-                    console.log("===== Veo API 최종 응답 객체 =====");
-                    console.log(JSON.stringify(statusResponse, null, 2));
-                    console.log("===================================");
-
+                    
                     const videoUri = statusResponse.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri;
 
                     if (!videoUri) {
-                        await interaction.editReply({
-                            content: `❌ 생성된 영상의 URL을 찾을 수 없습니다.`
-                        });
-                        return;
+                        console.error("영상 URI를 찾을 수 없습니다. 전체 응답 객체:", JSON.stringify(statusResponse, null, 2));
+                        throw new Error('생성된 영상의 URI를 응답에서 찾을 수 없습니다. 봇 콘솔을 확인해주세요.');
                     }
                     
+                    const embedTitle = prompt.length > 250 ? prompt.substring(0, 250) + '...' : prompt;
+
                     const resultEmbed = new EmbedBuilder()
                         .setColor(0x5865F2)
-                        .setTitle(`"${prompt}"`)
+                        .setTitle(embedTitle) // 수정된 제목 사용
                         .setDescription(`영상 생성이 완료되었어! 아래 링크를 확인해봐.`)
                         .setFooter({ text: `Requested by ${interaction.user.tag}` })
                         .setTimestamp();
