@@ -200,11 +200,12 @@ async function generateImage(prompt, count = 1) {
 }
 
 /**
- * Gemini 실시간 API에 연결하여 스트리밍 오디오 및 텍스트 응답을 가져옵니다.
- * @param {string} prompt - AI를 위한 시스템 명령어 프롬프트
+ * Gemini 실시간 API에 연결하여 사용자 음성 스트림을 보내고, 스트리밍 오디오/텍스트 응답을 받습니다.
+ * @param {string} systemPrompt - AI를 위한 시스템 명령어
+ * @param {Readable} userAudioStream - 사용자의 음성 오디오 스트림 (16kHz s16le PCM)
  * @returns {Promise<{audioBuffers: Buffer[], aiTranscript: string, session: any}>}
  */
-async function getLiveAiAudioResponse(prompt) {
+async function getLiveAiAudioResponse(systemPrompt, userAudioStream) {
     const responseQueue = [];
     const waitMessage = () => new Promise(resolve => {
         const check = () => {
@@ -224,6 +225,7 @@ async function getLiveAiAudioResponse(prompt) {
         }
     };
 
+    console.log('[디버그] Live API 연결을 시도합니다...');
     const session = await ai_live.live.connect({
         model: "gemini-2.5-flash-native-audio-preview-09-2025",
         callbacks: {
@@ -232,9 +234,25 @@ async function getLiveAiAudioResponse(prompt) {
             onclose: (e) => console.log('Live API Close:', e.reason)
         },
         config: {
-            systemInstruction: { parts: [{ text: prompt }] }
+            inputModalities: [Modality.AUDIO],
+            responseModalities: [Modality.AUDIO],
+            systemInstruction: { parts: [{ text: systemPrompt }] }
         },
     });
+    console.log('[디버그] Live API 세션이 성공적으로 연결되었습니다. 오디오 전송을 시작합니다.');
+
+    async function sendAudioToSession(stream) {
+        try {
+            for await (const chunk of stream) {
+                session.sendAudio({ data: chunk });
+            }
+            console.log('[디버그] 사용자 오디오 스트림 전송이 완료되었습니다.');
+        } catch (error) {
+            console.error('[디버그] 오디오 전송 중 오류:', error);
+        }
+    }
+    
+    sendAudioToSession(userAudioStream);
 
     const turns = await handleTurn();
     const audioBuffers = turns.map(t => t.data ? Buffer.from(t.data, 'base64') : null).filter(Boolean);

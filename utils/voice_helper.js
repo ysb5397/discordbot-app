@@ -84,35 +84,24 @@ class VoiceManager {
     
     async #processUserSpeech(userId) {
         try {
-            console.log(`[디버그] 1. [${userId}]님의 음성 녹음을 시작합니다.`);
-            const userAudioBuffer = await this.#recordUserAudio(userId);
-            if (userAudioBuffer.length === 0) {
-                console.log("[디버그] ⚠️ 녹음된 오디오 데이터가 없습니다. 처리를 중단합니다.");
-                return this.#endSession();
-            }
-            console.log(`[디버그] ✅ 1. 음성 녹음 완료 (버퍼 크기: ${userAudioBuffer.length} bytes).`);
-
-            console.log(`[디버그] 2. 녹음된 음성을 텍스트로 변환(STT)합니다.`);
-            const userTranscript = await getTranscript(userAudioBuffer);
-            if (!userTranscript) {
-                console.log("[디버그] ❌ STT 결과가 없습니다. 처리를 중단합니다.");
-                return this.#endSession();
-            }
-            console.log(`[디버그] ✅ 2. STT 변환 완료: "${userTranscript}"`);
+            console.log(`[디버그] 1. [${userId}]님의 음성 스트림 처리를 시작합니다.`);
+            const userAudioStream = this.#recordUserAudio(userId);
             
-            console.log(`[디버그] 3. AI 답변 생성을 요청합니다.`);
-            const { audioBuffers, aiTranscript, session } = await this.#getAiResponse(userTranscript, userId);
+            console.log(`[디버그] 2. AI 답변 생성을 요청합니다. (이제 STT를 건너뜁니다)`);
+            const tempTranscript = "사용자가 무언가 말함";
+
+            const { audioBuffers, aiTranscript, session } = await this.#getAiResponse(tempTranscript, userId, userAudioStream);
             this.activeSession.liveSession = session;
-            console.log(`[디버그] ✅ 3. AI 답변 생성 완료 (텍스트: "${aiTranscript}", 오디오 버퍼 개수: ${audioBuffers ? audioBuffers.length : 0}).`);
+            console.log(`[디버그] ✅ 3. AI 답변 생성 완료 (텍스트: "${aiTranscript}", 오디오 버퍼 개수: ${audioBuffers.length}).`);
             
             console.log(`[디버그] 4. 대화 내용을 DB에 저장합니다.`);
-            await this.#saveInteraction(userId, userTranscript, aiTranscript);
+            await this.#saveInteraction(userId, aiTranscript, aiTranscript);
 
             if (audioBuffers && audioBuffers.length > 0) {
                 console.log(`[디버그] 5. 생성된 AI 음성을 채널에 재생합니다.`);
                 this.#playAiAudio(audioBuffers);
             } else {
-                console.log("[디버그] ⚠️ AI로부터 받은 오디오 데이터가 없어 재생할 수 없습니다. 세션을 종료합니다.");
+                console.log("[디버그] ⚠️ AI로부터 받은 오디오 데이터가 없어 재생할 수 없습니다.");
                 this.#endSession();
             }
         } catch (error) {
@@ -121,64 +110,50 @@ class VoiceManager {
         }
     }
 
-    async #recordUserAudio(userId) {
-        try {
-            console.log(`[디버그] -> 녹음: [${userId}]님의 오디오 스트림을 구독합니다.`);
-            const opusStream = this.connection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 1200 } });
-            
-            const pcmStream = new prism.opus.Decoder({ 
-                frameSize: AUDIO_CONFIG.FRAME_SIZE, 
-                channels: AUDIO_CONFIG.CHANNELS, 
-                rate: AUDIO_CONFIG.DISCORD_SAMPLE_RATE 
+    #recordUserAudio(userId) {
+        console.log(`[디버그] -> 녹음: [${userId}]님의 오디오 스트림을 구독합니다.`);
+        const opusStream = this.connection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 1200 } });
+        
+        const pcmStream = new prism.opus.Decoder({ 
+            frameSize: AUDIO_CONFIG.FRAME_SIZE, 
+            channels: AUDIO_CONFIG.CHANNELS, 
+            rate: AUDIO_CONFIG.DISCORD_SAMPLE_RATE 
+        });
+
+        opusStream.pipe(pcmStream);
+
+        const ffmpegProcess = ffmpeg(pcmStream)
+            .inputFormat(AUDIO_CONFIG.FORMAT)
+            .inputOptions([`-ar ${AUDIO_CONFIG.DISCORD_SAMPLE_RATE}`, `-ac ${AUDIO_CONFIG.CHANNELS}`])
+            .outputFormat(AUDIO_CONFIG.FORMAT)
+            .outputOptions([`-ar ${AUDIO_CONFIG.AI_SAMPLE_RATE}`])
+            .on('start', cmd => console.log(`[디버그] -> 녹음: FFmpeg 리샘플링 프로세스 시작.`))
+            .on('error', err => {
+                console.error('[디버그] ❌ -> 녹음: FFmpeg 오류 발생:', err);
+                opusStream.destroy(err);
             });
-    
-            opusStream.pipe(pcmStream);
-    
-            const ffmpegProcess = ffmpeg(pcmStream)
-                .inputFormat(AUDIO_CONFIG.FORMAT)
-                .inputOptions([`-ar ${AUDIO_CONFIG.DISCORD_SAMPLE_RATE}`, `-ac ${AUDIO_CONFIG.CHANNELS}`])
-                .outputFormat(AUDIO_CONFIG.FORMAT)
-                .outputOptions([`-ar ${AUDIO_CONFIG.AI_SAMPLE_RATE}`])
-                .on('start', cmd => console.log(`[디버그] -> 녹음: FFmpeg 리샘플링 프로세스 시작. (명령어: ${cmd})`))
-                .on('error', err => {
-                    console.error('[디버그] ❌ -> 녹음: FFmpeg 오류 발생:', err);
-                    opusStream.destroy(err);
-                });
-            
-            const ffmpegStream = ffmpegProcess.stream();
-    
-            opusStream.on('end', () => {
-                console.log(`[디버그] -> 녹음: [${userId}]님의 발화가 끝나 Opus 스트림이 종료되었습니다.`);
-                pcmStream.end();
-            });
-    
-            const audioChunks = [];
-            for await (const chunk of ffmpegStream) {
-                audioChunks.push(chunk);
-            }
-            
-            console.log('[디버그] -> 녹음: FFmpeg 스트림이 정상적으로 완료되었습니다.');
-            return Buffer.concat(audioChunks);
-            
-        } catch (error) {
-            console.error('[디버그] ❌ -> 녹음: 스트림 처리 중 심각한 오류 발생:', error);
-            return Buffer.alloc(0); 
-        }
+        
+        opusStream.on('end', () => {
+            console.log(`[디버그] -> 녹음: Opus 스트림 종료. pcmStream 종료를 알립니다.`);
+            pcmStream.end();
+        });
+
+        return ffmpegProcess.stream(); 
     }
 
-    async #getAiResponse(transcript, userId) {
-        console.log(`[디버그] -> AI 응답: 기억 검색을 시작합니다 (쿼리: "${transcript}").`);
+    async #getAiResponse(transcript, userId, userAudioStream) {
+        console.log(`[디버그] -> AI 응답: 기억 검색을 시작합니다 (임시 쿼리: "${transcript}").`);
         const searchResults = await this.#searchMemories(transcript, userId);
         
-        let finalPrompt = `The user just said: "${transcript}".`;
+        let systemPrompt = `You are a friendly and helpful AI assistant. Respond in Korean.`;
         if (searchResults.length > 0) {
             const memories = searchResults.map(r => ` - ${r.content}`).join('\n');
-            finalPrompt += `\nI found these related past memories:\n${memories}\nPlease use this context to form your response.`;
+            systemPrompt += `\nHere are some related past memories to provide context:\n${memories}`;
             console.log(`[디버그] -> AI 응답: ${searchResults.length}개의 기억을 찾아 프롬프트에 추가했습니다.`);
         }
-        finalPrompt += "\nNow, provide a helpful and friendly audio response in Korean.";
-        console.log(`[디버그] -> AI 응답: 최종 프롬프트로 Gemini Live API를 호출합니다.`);
-        return getLiveAiAudioResponse(finalPrompt);
+        
+        console.log(`[디버그] -> AI 응답: 최종 프롬프트와 오디오 스트림으로 Gemini Live API를 호출합니다.`);
+        return getLiveAiAudioResponse(systemPrompt, userAudioStream);
     }
     
     async #searchMemories(transcript, userId) {
