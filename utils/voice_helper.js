@@ -123,7 +123,6 @@ class VoiceManager {
 
     #recordUserAudio(userId) {
         return new Promise((resolve, reject) => {
-            console.log(`[디버그] -> 녹음: [${userId}]님의 오디오 스트림을 구독합니다.`);
             const opusStream = this.connection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 1200 } });
             const pcmStream = new prism.opus.Decoder({ 
                 frameSize: AUDIO_CONFIG.FRAME_SIZE, 
@@ -145,10 +144,18 @@ class VoiceManager {
                 });
 
             const audioChunks = [];
-            ffmpegProcess.stream().on('data', chunk => audioChunks.push(chunk));
+            const ffmpegStream = ffmpegProcess.stream();
+
+            ffmpegStream.on('data', chunk => audioChunks.push(chunk));
+            
+            ffmpegStream.on('end', () => {
+                console.log(`[디버그] -> 녹음: FFmpeg 스트림이 정상적으로 종료되었습니다.`);
+                resolve(Buffer.concat(audioChunks));
+            });
+
             opusStream.on('end', () => {
                 console.log(`[디버그] -> 녹음: [${userId}]님의 발화가 끝나 오디오 스트림이 종료되었습니다.`);
-                resolve(Buffer.concat(audioChunks));
+                pcmStream.end();
             });
         });
     }
