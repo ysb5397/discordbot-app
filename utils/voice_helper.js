@@ -132,7 +132,11 @@ class VoiceManager {
             });
             
             const ffmpegProcess = ffmpeg(pcmStream)
-                .inputFormat(AUDIO_CONFIG.FORMAT).inputOptions([`-ar ${AUDIO_CONFIG.DISCORD_SAMPLE_RATE}`])
+                .inputFormat(AUDIO_CONFIG.FORMAT)
+                .inputOptions([
+                    `-ar ${AUDIO_CONFIG.DISCORD_SAMPLE_RATE}`, 
+                    `-ac ${AUDIO_CONFIG.CHANNELS}`
+                ])
                 .outputFormat(AUDIO_CONFIG.FORMAT).outputOptions([`-ar ${AUDIO_CONFIG.AI_SAMPLE_RATE}`])
                 .on('start', cmd => console.log(`[디버그] -> 녹음: FFmpeg 리샘플링 프로세스 시작.`))
                 .on('error', err => {
