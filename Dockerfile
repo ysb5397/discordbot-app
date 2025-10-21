@@ -1,5 +1,5 @@
 # 1. Cloudtype.yml에서 Node.js 20 환경을 가져옵니다.
-FROM node:20-slim
+FROM node:22.12-slim
 
 # 2. 작업 폴더를 만듭니다.
 WORKDIR /usr/src/app
