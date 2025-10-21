@@ -7,6 +7,8 @@ WORKDIR /usr/src/app
 # 3. 필요한 라이브러리 목록 파일을 먼저 복사합니다.
 COPY package.json yarn.lock* ./
 
+RUN apt-get update && apt-get install -y python3 build-essential
+
 # 4. Cloudtype.yml의 'install: yarn install' 명령어를 실행합니다.
 RUN yarn install --frozen-lockfile
 
