@@ -28,7 +28,7 @@ const connectDB = async () => {
     }
 
     try {
-        await mongoose.connect(mongoURI);
+        await mongoose.connect(process.env.MONGODB_URI, { family: 4 });
         console.log('성공적으로 MongoDB에 연결되었어! ✅');
     } catch (err) {
         console.error('MongoDB 연결에 실패했어... 😭', err);
