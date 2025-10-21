@@ -1,3 +1,4 @@
+const express = require('express');
 const fs = require('node:fs');
 const path = require('node:path');
 const { Client, GatewayIntentBits, Collection } = require('discord.js');
@@ -70,3 +71,17 @@ for (const folder of eventFolders) {
 
 // 봇 로그인
 client.login(process.env.DISCORD_BOT_TOKEN);
+
+// Cloud Run의 헬스 체크(PORT=8080)를 통과하기 위한 더미 웹서버
+const app = express();
+// Cloud Run이 주는 PORT 환경 변수를 쓰거나, 없으면 8080을 씀
+const port = process.env.PORT || 8080;
+
+app.get('/', (req, res) => {
+  // 봇이 살아있는지 확인용
+  res.send('Discord bot is running!');
+});
+
+app.listen(port, () => {
+  console.log(`Dummy server listening on port ${port}`);
+});
