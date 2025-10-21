@@ -12,39 +12,34 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    # 1. Google Cloud에 로그인하기 위한 권한 설정
-    permissions:
-      contents: 'read'
-      id-token: 'write'
-
     steps:
-      # 2. GitHub 저장소의 코드를 가져옴
+      # 1. GitHub 저장소의 코드를 가져옴
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 3. Google Cloud에 로그인 (우리가 만든 '비밀 통로' 사용)
+      # 2. (새로운 방식!) GCP 서비스 계정 키(JSON)를 사용해 로그인
       - name: Authenticate to Google Cloud
         uses: 'google-github-actions/auth@v2'
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SA_EMAIL }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }} # <- "만능 열쇠" 사용!
 
-      # 4. gcloud 명령어 사용 준비
+      # 3. gcloud 명령어 사용 준비
       - name: Set up Cloud SDK
         uses: 'google-github-actions/setup-gcloud@v2'
         with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          project_id: 'gen-lang-client-0683011321' # 네 프로젝트 ID
 
-      # 5. 이미지 빌드 및 푸시 (우리가 터미널에서 쳤던 gcloud builds submit)
+      # 4. 이미지 빌드 및 푸시 (이건 동일)
       - name: Build and Push Docker image
         run: |-
-          gcloud builds submit --tag us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/my-spring-repo/gemini-discord-bot
+          gcloud builds submit --tag us-central1-docker.pkg.dev/gen-lang-client-0683011321/my-spring-repo/gemini-discord-bot
 
-      # 6. Cloud Run에 배포 (우리가 터미널에서 쳤던 gcloud run deploy)
+      # 5. Cloud Run에 배포 (이건 동일)
       - name: Deploy to Cloud Run
         run: |-
           gcloud run deploy gemini-discord-bot \
-            --image="us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/my-spring-repo/gemini-discord-bot" \
+            --image="us-central1-docker.pkg.dev/gen-lang-client-0683011321/my-spring-repo/gemini-discord-bot" \
+            --project="gen-lang-client-0683011321" \
             --region="us-central1" \
             --cpu=1 \
             --memory=512Mi \
