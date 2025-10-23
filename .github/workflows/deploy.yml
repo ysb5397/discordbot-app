@@ -17,11 +17,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. (새로운 방식!) GCP 서비스 계정 키(JSON)를 사용해 로그인
+      # 2. GCP 서비스 계정 키(JSON)를 사용해 로그인
       - name: Authenticate to Google Cloud
         uses: 'google-github-actions/auth@v2'
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }} # <- "만능 열쇠" 사용!
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       # 3. gcloud 명령어 사용 준비
       - name: Set up Cloud SDK
@@ -29,12 +29,12 @@ jobs:
         with:
           project_id: 'gen-lang-client-0683011321' # 네 프로젝트 ID
 
-      # 4. 이미지 빌드 및 푸시 (이건 동일)
+      # 4. 이미지 빌드 및 푸시
       - name: Build and Push Docker image
         run: |-
           gcloud builds submit --tag us-central1-docker.pkg.dev/gen-lang-client-0683011321/my-spring-repo/gemini-discord-bot
 
-      # 5. Cloud Run에 배포 (이건 동일)
+      # 5. Cloud Run에 배포 (✨ 성능 옵션 적용됨 ✨)
       - name: Deploy to Cloud Run
         run: |-
           gcloud run deploy gemini-discord-bot \
@@ -43,7 +43,7 @@ jobs:
             --region="us-central1" \
             --cpu=2 \
             --memory=1Gi \
-            ​--no-cpu-throttling \
             --min-instances=1 \
+            --no-cpu-throttling \
             --set-env-vars="DISCORD_BOT_TOKEN=${{ secrets.DISCORD_BOT_TOKEN }},GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }},MONGODB_URI=${{ secrets.MONGODB_URI }},FLOWISE_ENDPOINT=${{ secrets.FLOWISE_ENDPOINT }},FLOWISE_API_KEY=${{ secrets.FLOWISE_API_KEY }},DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }},DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }},EQK_AUTH_KEY=${{ secrets.EQK_AUTH_KEY }},GOOGLE_SEARCH_API=${{ secrets.GOOGLE_SEARCH_API }},GOOGLE_SEARCH_ENGINE_ID=${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}" \
             --allow-unauthenticated
