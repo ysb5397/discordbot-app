@@ -43,7 +43,7 @@ jobs:
             --region="us-central1" \
             --cpu=2 \
             --memory=1Gi \
-            --cpu-allocation=always \
+            ​--no-cpu-throttling \
             --min-instances=1 \
             --set-env-vars="DISCORD_BOT_TOKEN=${{ secrets.DISCORD_BOT_TOKEN }},GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }},MONGODB_URI=${{ secrets.MONGODB_URI }},FLOWISE_ENDPOINT=${{ secrets.FLOWISE_ENDPOINT }},FLOWISE_API_KEY=${{ secrets.FLOWISE_API_KEY }},DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }},DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }},EQK_AUTH_KEY=${{ secrets.EQK_AUTH_KEY }},GOOGLE_SEARCH_API=${{ secrets.GOOGLE_SEARCH_API }},GOOGLE_SEARCH_ENGINE_ID=${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}" \
             --allow-unauthenticated
