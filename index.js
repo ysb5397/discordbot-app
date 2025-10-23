@@ -7,8 +7,6 @@ const { connectDB } = require('./utils/database');
 
 dotenv.config();
 
-connectDB();
-
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -81,6 +79,25 @@ app.get('/', (req, res) => {
   // 봇이 살아있는지 확인용
   res.send('Discord bot is running!');
 });
+
+const startBot = async () => {
+    try {
+        // 1. DB 연결을 먼저 시도
+        await connectDB();
+        
+        // 2. DB 연결에 성공해야만 봇 로그인을 시도
+        console.log('DB 연결 성공. 봇 로그인을 시도합니다...');
+        await client.login(process.env.DISCORD_BOT_TOKEN);
+
+    } catch (error) {
+        // 3. DB 연결이나 봇 로그인 실패 시
+        console.error("!!! 봇 시작 중 치명적인 오류 발생 !!!", error);
+        process.exit(1); // Cloud Run에 "시작 실패"를 알림
+    }
+};
+
+// 봇 시작!
+startBot();
 
 app.listen(port, () => {
   console.log(`Dummy server listening on port ${port}`);
