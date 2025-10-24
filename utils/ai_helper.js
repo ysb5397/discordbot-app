@@ -1,5 +1,6 @@
 const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require('@google/generative-ai');
 const { GoogleGenAI, Modality } = require('@google/genai');
+const { logToDiscord } = require('./catch_log.js');
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const ai_live = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -49,13 +50,28 @@ async function callFlowise(prompt, sessionId, task) {
             return JSON.stringify(aiResponse);
         } else {
             // Flowise가 순수 텍스트를 반환하면, JSON 객체 문자열로 포장
+            const responseText = await response.text();
+
+            if (client) {
+                await logToDiscord(client, 'INFO', `Flowise ('${task}')가 JSON이 아닌 텍스트 응답을 반환했습니다.`, interaction, null, responseText);
+            } else {
+                 console.log(`[Flowise Text] ('${task}') ${responseText.substring(0,100)}...`);
+            }
+
             return JSON.stringify({ text: await response.text() });
         }
 
     } catch (flowiseError) {
         // 2. (신규 로직) Flowise가 실패하면, Gemini 폴백을 호출!
-        console.error(flowiseError.message); // Flowise가 왜 실패했는지 로그 남기기
-        return callGeminiFlashFallback(prompt); // 1단계에서 만든 폴백 함수 호출
+        if (!client) {
+             console.error(flowiseError.message); 
+            return callGeminiFlashFallback(prompt);
+        }
+
+        const responseText = callGeminiFlashFallback(prompt); // 1단계에서 만든 폴백 함수 호출
+        await logToDiscord(client, 'INFO', `Flowise ('${task}') 가 JSON이 아닌 텍스트 응답을 반환했습니다.`, interaction, null, responseText);
+
+        return responseText;
     }
 }
 

@@ -5,7 +5,7 @@ const { Client, GatewayIntentBits, Collection, REST, Routes,ActionRowBuilder, Bu
 const dotenv = require('dotenv');
 const { connectDB } = require('./utils/database');
 const { callFlowise } = require('./utils/ai_helper');
-const { logErrorToDiscord } = require('./utils/catch_error.js');
+const { logErrorToDiscord } = require('./utils/catch_log.js');
 const { ApiKey } = require('./utils/database');
 
 dotenv.config();
@@ -22,23 +22,19 @@ const client = new Client({
 
 process.on('uncaughtException', (error, origin) => {
     console.error('!!! 치명적인 예외 발생 (Uncaught Exception) !!!', error);
-    // 봇 클라이언트가 준비되기 전에도 로그를 남기려 시도 (client가 없으면 실패할 수 있음)
     if (client.isReady()) {
-        logErrorToDiscord(client, null, error, origin);
+        logToDiscord(client, 'ERROR', '처리되지 않은 치명적인 예외가 발생했습니다!', null, error, origin);
     } else {
-        // 봇이 준비 안 됐으면 일단 콘솔에만...
         console.error('봇이 준비되지 않아 디스코드 로그를 남길 수 없습니다.');
     }
-    // process.exit(1); // (너무 자주 죽으면 주석 처리)
+    // process.exit(1);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
     console.error('!!! 처리되지 않은 Promise 거부 (Unhandled Rejection) !!!', reason);
-    // 'reason'이 Error 객체가 아닐 수도 있어서 Error로 감싸줌
     const error = (reason instanceof Error) ? reason : new Error(String(reason));
-    
     if (client.isReady()) {
-        logErrorToDiscord(client, null, error, 'unhandledRejection');
+        logToDiscord(client, 'ERROR', '처리되지 않은 Promise 거부가 발생했습니다!', null, error, 'unhandledRejection');
     } else {
         console.error('봇이 준비되지 않아 디스코드 로그를 남길 수 없습니다.');
     }
@@ -167,7 +163,8 @@ app.post('/api/chat', authenticateApiKey, async (req, res) => {
         const aiResponseText = await callFlowise(
             question, 
             sessionId || 'http-default-session', // 세션 ID가 없으면 기본값
-            'http-api-chat'
+            'http-api-chat',
+            client
         );
 
         // 3. AI의 답변을 클라이언트에게 JSON으로 응답
