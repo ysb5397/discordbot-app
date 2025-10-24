@@ -28,19 +28,20 @@ jobs:
       - name: Install Dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Verify Secret Lengths (Debug)
+      - name: Verify Secrets Existence (Debug)
         run: |
-          echo "TOKEN Length: ${{ env.TOKEN_LENGTH }}"
-          echo "CLIENT_ID Length: ${{ env.CLIENT_LENGTH }}"
-          echo "GUILD_ID Length: ${{ env.GUILD_LENGTH }}"
-          if [[ "${{ env.TOKEN_LENGTH }}" == "0" || "${{ env.CLIENT_LENGTH }}" == "0" || "${{ env.GUILD_LENGTH }}" == "0" ]]; then
-            echo "::error::One or more secrets are empty!"
+          echo "TOKEN Exists: ${{ env.TOKEN_EXISTS }}"
+          echo "CLIENT_ID Exists: ${{ env.CLIENT_EXISTS }}"
+          echo "GUILD_ID Exists: ${{ env.GUILD_EXISTS }}"
+          if [[ "${{ env.TOKEN_EXISTS }}" == "false" || "${{ env.CLIENT_EXISTS }}" == "false" || "${{ env.GUILD_EXISTS }}" == "false" ]]; then
+            echo "::error::One or more secrets are missing or empty in GitHub Secrets!"
             exit 1
           fi
         env:
-          TOKEN_LENGTH: ${{ secrets.DISCORD_BOT_TOKEN && builtins.stringLength(secrets.DISCORD_BOT_TOKEN) || '0' }}
-          CLIENT_LENGTH: ${{ secrets.DISCORD_CLIENT_ID && builtins.stringLength(secrets.DISCORD_CLIENT_ID) || '0' }}
-          GUILD_LENGTH: ${{ secrets.DISCORD_GUILD_ID && builtins.stringLength(secrets.DISCORD_GUILD_ID) || '0' }}
+          # secret 값이 존재하고 비어있지 않으면 'true', 아니면 'false'
+          TOKEN_EXISTS: ${{ secrets.DISCORD_BOT_TOKEN && 'true' || 'false' }}
+          CLIENT_EXISTS: ${{ secrets.DISCORD_CLIENT_ID && 'true' || 'false' }}
+          GUILD_EXISTS: ${{ secrets.DISCORD_GUILD_ID && 'true' || 'false' }}
 
       # 4. 명령어 등록 스크립트 실행 (환경 변수 주입!)
       - name: Register Discord Commands
