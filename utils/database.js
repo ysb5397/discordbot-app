@@ -17,6 +17,15 @@ const interactionSchema = new mongoose.Schema({
 
 interactionSchema.index({ userId: 1, type: 1, timestamp: -1 });
 
+const apiKeySchema = new mongoose.Schema({
+    keyName: { type: String, required: true, unique: true }, // "Flutter App", "Admin Tool"
+    apiKey: { type: String, required: true, unique: true }, // 실제 키 (key-v1-abc)
+    isActive: { type: Boolean, default: true }, // "ALLOWED_API_KEYS" 목록에 포함되는지? (부드러운 전환용)
+    isCurrent: { type: Boolean, default: false } // "/api/config"가 나눠줄 키인지?
+});
+
+const ApiKey = mongoose.model('ApiKey', apiKeySchema);
+
 
 const Interaction = mongoose.model('Interaction', interactionSchema);
 
@@ -54,6 +63,7 @@ const reconnectDB = async () => {
 
 module.exports = {
     Interaction,
+    ApiKey,
     connectDB,
     disconnectDB,
     reconnectDB,

@@ -6,6 +6,7 @@ const dotenv = require('dotenv');
 const { connectDB } = require('./utils/database');
 const { callFlowise } = require('./utils/ai_helper');
 const { logErrorToDiscord } = require('./utils/catch_error.js');
+const { ApiKey } = require('./utils/database');
 
 dotenv.config();
 
@@ -102,21 +103,14 @@ app.use(express.json());
 // Cloud Run이 주는 PORT 환경 변수를 쓰거나, 없으면 8080을 씀
 const port = process.env.PORT || 8080;
 
-const allowedKeys = new Set(process.env.ALLOWED_API_KEYS?.split(',') || []);
-if (allowedKeys.size === 0) {
-    console.warn('[경고] ALLOWED_API_KEYS가 .env에 설정되지 않았습니다. HTTP API가 작동하지 않을 수 있습니다.');
-}
-
-const currentAppKey = process.env.CURRENT_FLUTTER_API_KEY;
-
-const authenticateApiKey = (req, res, next) => {
+const authenticateApiKey = async (req, res, next) => {
     try {
         const authHeader = req.headers['authorization'];
         if (!authHeader) {
             return res.status(401).send({ error: '인증 헤더(Authorization)가 필요합니다.' });
         }
 
-        const token = authHeader.split(' ')[1]; // "Bearer" 다음의 키 값만 추출
+        const validKey = await ApiKey.findOne({ apiKey: token, isActive: true }); // "Bearer" 다음의 키 값만 추출
 
         if (!token || !allowedKeys.has(token)) {
             return res.status(401).send({ error: '유효하지 않은 API 키입니다.' });
@@ -135,16 +129,21 @@ app.get('/', (req, res) => {
   res.send('Discord bot is running! (And AI API Server is ready!)');
 });
 
-app.get('/api/config', (req, res) => {
-    if (!currentAppKey) {
-        console.error('[HTTP API Error] CURRENT_FLUTTER_API_KEY가 .env에 설정되지 않았습니다.');
-        return res.status(500).send({ error: '서버 설정(Config)을 불러올 수 없습니다.' });
+app.get('/api/config', async (req, res) => {
+    try {
+        // [수정!] .env 대신 DB에서 "현재(isCurrent)" 키를 찾음!
+        const currentKey = await ApiKey.findOne({ keyName: "Flutter App", isCurrent: true });
+
+        if (!currentKey) {
+            return res.status(500).send({ error: '서버 설정(Config)을 불러올 수 없습니다.' });
+        }
+        
+        res.status(200).send({
+            'currentApiKey': currentKey.apiKey
+        });
+    } catch (err) {
+        res.status(500).send({ error: 'Config 조회 중 DB 오류 발생' });
     }
-    
-    // Flutter 앱에게 JSON 형태로 현재 키를 알려줌
-    res.status(200).send({
-        'currentApiKey': currentAppKey
-    });
 });
 
 app.post('/api/chat', authenticateApiKey, async (req, res) => {
