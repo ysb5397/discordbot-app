@@ -17,6 +17,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22' # Dockerfile이 node:22 버전을 사용
+
+      # 3. 봇의 의존성 패키지 설치 (yarn 사용 기준)
+      - name: Install Dependencies
+        run: yarn install --frozen-lockfile
+
+      # 4. 명령어 등록 스크립트 실행 (환경 변수 주입!)
+      # deploy-commands.js가 Discord API에 접속하려면 토큰이 필요
+      - name: Register Discord Commands
+        run: node deploy-commands.js
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_CLIENT_ID: ${{ secrets.DISCORD_CLIENT_ID }}
+          DISCORD_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
+
+      # ==============================================
+
       # 2. GCP 서비스 계정 키(JSON)를 사용해 로그인
       - name: Authenticate to Google Cloud
         uses: 'google-github-actions/auth@v2'
