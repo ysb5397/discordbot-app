@@ -1,4 +1,5 @@
 # 파일 이름: .github/workflows/deploy.yml
+# (모든 들여쓰기를 일반 공백으로 수정함)
 
 name: Deploy to Google Cloud Run
 
@@ -17,17 +18,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 2. Node.js 환경 설정
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22' # Dockerfile이 node:22 버전을 사용
+          node-version: '22' # Dockerfile 버전에 맞춤
 
-      # 3. 봇의 의존성 패키지 설치 (yarn 사용 기준)
+      # 3. 봇의 의존성 패키지 설치
       - name: Install Dependencies
         run: yarn install --frozen-lockfile
 
       # 4. 명령어 등록 스크립트 실행 (환경 변수 주입!)
-      # deploy-commands.js가 Discord API에 접속하려면 토큰이 필요
       - name: Register Discord Commands
         run: node deploy-commands.js
         env:
@@ -35,26 +36,24 @@ jobs:
           DISCORD_CLIENT_ID: ${{ secrets.DISCORD_CLIENT_ID }}
           DISCORD_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
 
-      # ==============================================
-
-      # 2. GCP 서비스 계정 키(JSON)를 사용해 로그인
+      # 5. GCP 서비스 계정 키(JSON)를 사용해 로그인
       - name: Authenticate to Google Cloud
         uses: 'google-github-actions/auth@v2'
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      # 3. gcloud 명령어 사용 준비
+      # 6. gcloud 명령어 사용 준비
       - name: Set up Cloud SDK
         uses: 'google-github-actions/setup-gcloud@v2'
         with:
           project_id: 'gen-lang-client-0683011321' # 네 프로젝트 ID
 
-      # 4. 이미지 빌드 및 푸시
+      # 7. 이미지 빌드 및 푸시
       - name: Build and Push Docker image
         run: |-
           gcloud builds submit --tag us-central1-docker.pkg.dev/gen-lang-client-0683011321/my-spring-repo/gemini-discord-bot
 
-      # 5. Cloud Run에 배포 (✨ 성능 옵션 적용됨 ✨)
+      # 8. Cloud Run에 배포 (모든 최신 env var 포함)
       - name: Deploy to Cloud Run
         run: |-
           gcloud run deploy gemini-discord-bot \
