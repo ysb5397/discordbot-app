@@ -4,6 +4,8 @@ const path = require('node:path');
 const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const dotenv = require('dotenv');
 const { connectDB } = require('./utils/database');
+const { callFlowise } = require('./utils/ai_helper');
+const { logErrorToDiscord } = require('./utils/catch_error.js');
 
 dotenv.config();
 
@@ -15,6 +17,30 @@ const client = new Client({
         GatewayIntentBits.GuildScheduledEvents,
         GatewayIntentBits.GuildVoiceStates
     ]
+});
+
+process.on('uncaughtException', (error, origin) => {
+    console.error('!!! 치명적인 예외 발생 (Uncaught Exception) !!!', error);
+    // 봇 클라이언트가 준비되기 전에도 로그를 남기려 시도 (client가 없으면 실패할 수 있음)
+    if (client.isReady()) {
+        logErrorToDiscord(client, null, error, origin);
+    } else {
+        // 봇이 준비 안 됐으면 일단 콘솔에만...
+        console.error('봇이 준비되지 않아 디스코드 로그를 남길 수 없습니다.');
+    }
+    // process.exit(1); // (너무 자주 죽으면 주석 처리)
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('!!! 처리되지 않은 Promise 거부 (Unhandled Rejection) !!!', reason);
+    // 'reason'이 Error 객체가 아닐 수도 있어서 Error로 감싸줌
+    const error = (reason instanceof Error) ? reason : new Error(String(reason));
+    
+    if (client.isReady()) {
+        logErrorToDiscord(client, null, error, 'unhandledRejection');
+    } else {
+        console.error('봇이 준비되지 않아 디스코드 로그를 남길 수 없습니다.');
+    }
 });
 
 // --- 명령어 핸들러 로딩 ---
@@ -72,12 +98,83 @@ client.login(process.env.DISCORD_BOT_TOKEN);
 
 // Cloud Run의 헬스 체크(PORT=8080)를 통과하기 위한 더미 웹서버
 const app = express();
+app.use(express.json());
 // Cloud Run이 주는 PORT 환경 변수를 쓰거나, 없으면 8080을 씀
 const port = process.env.PORT || 8080;
 
+const allowedKeys = new Set(process.env.ALLOWED_API_KEYS?.split(',') || []);
+if (allowedKeys.size === 0) {
+    console.warn('[경고] ALLOWED_API_KEYS가 .env에 설정되지 않았습니다. HTTP API가 작동하지 않을 수 있습니다.');
+}
+
+const currentAppKey = process.env.CURRENT_FLUTTER_API_KEY;
+
+const authenticateApiKey = (req, res, next) => {
+    try {
+        const authHeader = req.headers['authorization'];
+        if (!authHeader) {
+            return res.status(401).send({ error: '인증 헤더(Authorization)가 필요합니다.' });
+        }
+
+        const token = authHeader.split(' ')[1]; // "Bearer" 다음의 키 값만 추출
+
+        if (!token || !allowedKeys.has(token)) {
+            return res.status(401).send({ error: '유효하지 않은 API 키입니다.' });
+        }
+
+        // 키가 유효함! 다음 단계(실제 API 로직)로 통과
+        console.log(`[HTTP API] 유효한 키(${token.substring(0, 5)}...)로 요청이 승인되었습니다.`);
+        next();
+
+    } catch (err) {
+        res.status(500).send({ error: '인증 처리 중 서버 오류 발생' });
+    }
+};
+
 app.get('/', (req, res) => {
-  // 봇이 살아있는지 확인용
-  res.send('Discord bot is running!');
+  res.send('Discord bot is running! (And AI API Server is ready!)');
+});
+
+app.get('/api/config', (req, res) => {
+    if (!currentAppKey) {
+        console.error('[HTTP API Error] CURRENT_FLUTTER_API_KEY가 .env에 설정되지 않았습니다.');
+        return res.status(500).send({ error: '서버 설정(Config)을 불러올 수 없습니다.' });
+    }
+    
+    // Flutter 앱에게 JSON 형태로 현재 키를 알려줌
+    res.status(200).send({
+        'currentApiKey': currentAppKey
+    });
+});
+
+app.post('/api/chat', authenticateApiKey, async (req, res) => {
+    try {
+        // 1. 클라이언트가 보낸 질문을 받음 (JSON body)
+        const { question, sessionId } = req.body;
+
+        if (!question) {
+            return res.status(400).send({ error: '질문(question)은 필수입니다.' });
+        }
+
+        // 2. 네가 만든 AI 헬퍼(서비스)를 호출
+        const aiResponseText = await callFlowise(
+            question, 
+            sessionId || 'http-default-session', // 세션 ID가 없으면 기본값
+            'http-api-chat'
+        );
+
+        // 3. AI의 답변을 클라이언트에게 JSON으로 응답
+        try {
+            const aiJson = JSON.parse(aiResponseText);
+             res.status(200).send(aiJson);
+        } catch (e) {
+             res.status(200).send({ text: aiResponseText });
+        }
+
+    } catch (error) {
+        console.error("[HTTP API Error]", error);
+        res.status(500).send({ error: `AI 서버 처리 중 오류 발생: ${error.message}` });
+    }
 });
 
 const startBot = async () => {
@@ -100,5 +197,5 @@ const startBot = async () => {
 startBot();
 
 app.listen(port, () => {
-  console.log(`Dummy server listening on port ${port}`);
+  console.log(`Dummy server (and AI API) listening on port ${port}`);
 });
