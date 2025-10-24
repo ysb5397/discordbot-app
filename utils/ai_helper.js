@@ -55,18 +55,18 @@ async function callFlowise(prompt, sessionId, task) {
     } catch (flowiseError) {
         // 2. (신규 로직) Flowise가 실패하면, Gemini 폴백을 호출!
         console.error(flowiseError.message); // Flowise가 왜 실패했는지 로그 남기기
-        return callGeminiProFallback(prompt); // 1단계에서 만든 폴백 함수 호출
+        return callGeminiFlashFallback(prompt); // 1단계에서 만든 폴백 함수 호출
     }
 }
 
 /**
- * [신규] Gemini Pro 폴백(Fallback) 전용 함수
+ * [신규] Gemini Flash 폴백(Fallback) 전용 함수
  * Flowise가 실패했을 때 호출되는 비상용 Gemini API
  * @param {object|string} prompt - AI에게 보낼 프롬프트 (Flowise가 받던 것과 동일)
  * @returns {Promise<string>} AI의 텍스트 응답 (JSON 문자열이 아닌, 순수 텍스트)
  */
-async function callGeminiProFallback(prompt) {
-    console.warn('[Gemini Fallback] Flowise 에이전트 호출 실패. Gemini (Pro) 폴백으로 전환합니다.');
+async function callGeminiFlashFallback(prompt) {
+    console.warn('[Gemini Fallback] Flowise 에이전트 호출 실패. Gemini (Flash) 폴백으로 전환합니다.');
     
     // 1. 프롬프트가 문자열이 아닌 객체(history 포함)일 수 있으니, 질문 텍스트만 추출
     let questionText = '';
@@ -74,13 +74,12 @@ async function callGeminiProFallback(prompt) {
         questionText = prompt;
     } else if (typeof prompt === 'object' && prompt.question) {
         questionText = prompt.question;
-        // (참고: 히스토리는 Gemini Pro 기본 모델에겐 일단 무시됨)
     } else {
         questionText = JSON.stringify(prompt); // 최악의 경우, 그냥 문자열로 변환
     }
 
     try {
-        const result = await proModel.generateContent(questionText);
+        const result = await flashModel.generateContent(questionText);
         const fallbackResponse = result.response.text();
         
         // 2. 다른 파일들이 JSON.parse()를 시도할 수 있으므로, Flowise처럼 JSON 객체 문자열로 포장

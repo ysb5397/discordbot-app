@@ -28,47 +28,24 @@ jobs:
       - name: Install Dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Verify Secrets Existence (Debug)
-        run: |
-          echo "TOKEN Exists: ${{ env.TOKEN_EXISTS }}"
-          echo "CLIENT_ID Exists: ${{ env.CLIENT_EXISTS }}"
-          echo "GUILD_ID Exists: ${{ env.GUILD_EXISTS }}"
-          if [[ "${{ env.TOKEN_EXISTS }}" == "false" || "${{ env.CLIENT_EXISTS }}" == "false" || "${{ env.GUILD_EXISTS }}" == "false" ]]; then
-            echo "::error::One or more secrets are missing or empty in GitHub Secrets!"
-            exit 1
-          fi
-        env:
-          # secret 값이 존재하고 비어있지 않으면 'true', 아니면 'false'
-          TOKEN_EXISTS: ${{ secrets.DISCORD_BOT_TOKEN && 'true' || 'false' }}
-          CLIENT_EXISTS: ${{ secrets.DISCORD_CLIENT_ID && 'true' || 'false' }}
-          GUILD_EXISTS: ${{ secrets.DISCORD_GUILD_ID && 'true' || 'false' }}
-
-      # 4. 명령어 등록 스크립트 실행 (환경 변수 주입!)
-      - name: Register Discord Commands
-        run: node deploy-commands.js
-        env:
-          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
-          DISCORD_CLIENT_ID: ${{ secrets.DISCORD_CLIENT_ID }}
-          DISCORD_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
-
-      # 5. GCP 서비스 계정 키(JSON)를 사용해 로그인
+      # 4. GCP 서비스 계정 키(JSON)를 사용해 로그인
       - name: Authenticate to Google Cloud
         uses: 'google-github-actions/auth@v2'
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      # 6. gcloud 명령어 사용 준비
+      # 5. gcloud 명령어 사용 준비
       - name: Set up Cloud SDK
         uses: 'google-github-actions/setup-gcloud@v2'
         with:
           project_id: 'gen-lang-client-0683011321' # 네 프로젝트 ID
 
-      # 7. 이미지 빌드 및 푸시
+      # 6. 이미지 빌드 및 푸시
       - name: Build and Push Docker image
         run: |-
           gcloud builds submit --tag us-central1-docker.pkg.dev/gen-lang-client-0683011321/my-spring-repo/gemini-discord-bot
 
-      # 8. Cloud Run에 배포 (모든 최신 env var 포함)
+      # 7. Cloud Run에 배포 (모든 최신 env var 포함)
       - name: Deploy to Cloud Run
         run: |-
           gcloud run deploy gemini-discord-bot \
