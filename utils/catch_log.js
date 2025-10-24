@@ -86,7 +86,7 @@ async function logToDiscord(client, level, message, interaction = null, error = 
         } 
         
         else if (origin) {
-            embed.addFields([ { name: '💥 Origin', value: origin, inline: true } ]);
+            embed.addFields([ { name: '💥 Origin', value: String(origin), inline: true } ]);
         }
 
         await channel.send({ embeds: [embed] });
