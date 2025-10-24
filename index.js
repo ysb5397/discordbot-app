@@ -106,21 +106,33 @@ const port = process.env.PORT || 8080;
 const authenticateApiKey = async (req, res, next) => {
     try {
         const authHeader = req.headers['authorization'];
-        if (!authHeader) {
-            return res.status(401).send({ error: '인증 헤더(Authorization)가 필요합니다.' });
+        if (!authHeader || !authHeader.startsWith('Bearer ')) { // 'Bearer ' 형식인지도 확인
+            return res.status(401).send({ error: '인증 헤더(Authorization: Bearer <key>)가 필요합니다.' });
         }
 
-        const validKey = await ApiKey.findOne({ apiKey: token, isActive: true }); // "Bearer" 다음의 키 값만 추출
+        // 1. 헤더에서 토큰 값 먼저 추출!
+        const token = authHeader.split(' ')[1]; 
+        
+        if (!token) {
+             return res.status(401).send({ error: '헤더에 API 키 값이 없습니다.' });
+        }
 
-        if (!token || !allowedKeys.has(token)) {
+        // 2. 추출한 토큰으로 DB 조회!
+        const validKey = await ApiKey.findOne({ apiKey: token, isActive: true }); 
+
+        // 3. DB 조회 결과 확인!
+        if (!validKey) {
+            // 키가 DB에 없거나 isActive가 false이면 거부
             return res.status(401).send({ error: '유효하지 않은 API 키입니다.' });
         }
 
-        // 키가 유효함! 다음 단계(실제 API 로직)로 통과
-        console.log(`[HTTP API] 유효한 키(${token.substring(0, 5)}...)로 요청이 승인되었습니다.`);
+        // 4. 키가 유효함! 통과!
+        console.log(`[HTTP API] DB 인증 성공 (${validKey.keyName}, 키: ${token.substring(0, 5)}...)`);
         next();
 
     } catch (err) {
+        // 5. DB 조회 자체에서 에러가 나면 여기로! (DB 연결 문제 등)
+        console.error('[HTTP API Auth Error] 인증 미들웨어 DB 조회 중 오류 발생:', err); 
         res.status(500).send({ error: '인증 처리 중 서버 오류 발생' });
     }
 };
