@@ -66,19 +66,19 @@ async function logToDiscord(client, level, message, interaction = null, error = 
             .setTimestamp();
 
         if (error) {
-            embed.addFields({ 
+            embed.addFields([{ 
                 name: 'Error Details', 
                 value: '```' + (error.stack || error.message).substring(0, 1000) + '```' 
-            });
+            }]);
         }
 
         if (interaction) {
             const commandName = interaction.isCommand() ? `/${interaction.commandName}` : 'N/A';
-            embed.addFields(
+            embed.addFields([
                 { name: '👤 User', value: `${interaction.user.tag} (${interaction.user.id})`, inline: true },
                 { name: '📍 Guild', value: `${interaction.guild?.name || 'DM'}`, inline: true },
                 { name: '💬 Command', value: commandName, inline: true }
-            );
+            ]);
             
              if (level === 'ERROR' && interaction.isCommand()) {
                  embed.setTitle(`${levelInfo.emoji} ${levelInfo.titlePrefix}: ${commandName}`);
@@ -86,7 +86,7 @@ async function logToDiscord(client, level, message, interaction = null, error = 
         } 
         
         else if (origin) {
-            embed.addFields({ name: '💥 Origin', value: origin, inline: true });
+            embed.addFields([ { name: '💥 Origin', value: origin, inline: true } ]);
         }
 
         await channel.send({ embeds: [embed] });
