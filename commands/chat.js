@@ -89,45 +89,25 @@ async function handleRegularConversation(interaction) {
     }
 
     try {
-        // --- 4A. (기본) Flowise 에이전트 호출 시도 ---
-        console.log(`[Flowise] '${sessionId}'님의 질문으로 에이전트 호출 시도...`);
+        // 1. 그냥 callFlowise 호출 (이제부턴 실패해도 Gemini가 응답해줌)
         const aiResponseText = await callFlowise(requestBody, sessionId, 'chat-conversation');
-        const flowiseResponse = JSON.parse(aiResponseText);
+        
+        // 2. 무조건 성공할테니, 바로 JSON 파싱
+        const aiResponse = JSON.parse(aiResponseText); 
 
+        // 3. embed 만들기
         const replyEmbed = new EmbedBuilder()
-            .setColor(0x00FA9A)
-            .setDescription(flowiseResponse.text || 'AI로부터 답변을 받지 못했습니다.')
+            .setColor(aiResponse.text.includes('Flowise 에이전트 연결에 실패') ? 0xFFA500 : 0x00FA9A) // (폴백이면 주황색)
+            .setDescription(aiResponse.text || 'AI로부터 답변을 받지 못했습니다.')
             .setTimestamp()
-            .setFooter({ text: '해당 결과는 AI(Flowise)에 의해 생성되었으며, 항상 정확한 결과를 도출하지 않습니다.' });
-
-        if (flowiseResponse.imageUrl) {
-            replyEmbed.setImage(flowiseResponse.imageUrl);
-        }
+            .setFooter({ text: '⚠️ Flowise 오류로 인해 Gemini Pro (Fallback)가 응답했습니다.' });
 
         await interaction.editReply({ content: `<@${sessionId}>`, embeds: [replyEmbed] });
 
-    } catch (flowiseError) {
-        // --- 4B. (폴백) Flowise 실패 시 Gemini Pro 직접 호출 ---
-        console.error(`[Flowise] 에이전트 호출 실패. Gemini (Pro) 폴백으로 전환합니다.`, flowiseError);
-        await interaction.editReply({ content: `<@${sessionId}> 앗, Flowise 에이전트 연결에 실패했어. 😵\n잠시만, Gemini 기본 모델로 다시 시도해 볼게...` });
-
-        try {
-            const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" }); 
-            const result = await model.generateContent(userQuestion);
-            const fallbackResponse = result.response.text();
-
-            const fallbackEmbed = new EmbedBuilder()
-                .setColor(0xFFA500)
-                .setDescription(fallbackResponse || 'Gemini 폴백 응답을 받지 못했습니다.')
-                .setTimestamp()
-                .setFooter({ text: '⚠️ Flowise 오류로 인해 Gemini Pro (Fallback)가 응답했습니다.' });
-
-            await interaction.editReply({ content: `<@${sessionId}>`, embeds: [fallbackEmbed] });
-
-        } catch (geminiError) {
-            console.error(`[Gemini Fallback] 폴백조차 실패...`, geminiError);
-            await interaction.editReply({ content: `<@${sessionId}> 미안... Flowise도, Gemini 폴백도 모두 실패했어... 😭` });
-        }
+    } catch (error) {
+        // 4. (이건 callFlowise가 아닌, JSON 파싱이나 editReply에서 날 수 있는 진짜 에러)
+        console.error(`[Chat Command] AI 응답 처리 중 심각한 오류:`, error);
+        await interaction.editReply({ content: `<@${sessionId}> 미안... 응답을 처리하다가 알 수 없는 오류가 났어. 😭` });
     }
 }
 

@@ -10,15 +10,14 @@ const proModel = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
 const flashModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 /**
- * Flowise API를 호출하는 함수
+ * [수정] Flowise API를 호출하는 함수 (폴백 기능 탑재!)
  * @param {object|string} prompt - AI에게 보낼 프롬프트
  * @param {string} sessionId - 대화 세션 ID
  * @param {string} task - 고유 세션 ID를 만들기 위한 작업 설명자
- * @returns {Promise<string>} AI의 텍스트 응답
+ * @returns {Promise<string>} AI의 텍스트 응답 (Flowise 또는 Gemini Fallback의 JSON 문자열)
  */
 async function callFlowise(prompt, sessionId, task) {
     const question = typeof prompt === 'object' && prompt.question ? prompt.question : prompt;
-
     const body = typeof prompt === 'object' ? prompt : { question };
     
     body.overrideConfig = {
@@ -26,30 +25,76 @@ async function callFlowise(prompt, sessionId, task) {
         sessionId: `flowise-${task}-${sessionId}`,
     };
 
-    const response = await fetch(flowiseEndpoint, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            ...(flowiseApiKey ? { 'Authorization': `Bearer ${flowiseApiKey}` } : {})
-        },
-        body: JSON.stringify(body),
-    });
+    // --- [ 여기가 핵심! ] ---
+    try {
+        // 1. (기존 로직) Flowise를 먼저 시도
+        const response = await fetch(flowiseEndpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(flowiseApiKey ? { 'Authorization': `Bearer ${flowiseApiKey}` } : {})
+            },
+            body: JSON.stringify(body),
+        });
 
-    if (!response.ok) {
-        const errorBody = await response.text();
-        throw new Error(`Flowise API 호출 실패 ('${task}'): ${response.status} ${response.statusText} - ${errorBody}`);
+        if (!response.ok) {
+            const errorBody = await response.text();
+            throw new Error(`Flowise API 호출 실패 ('${task}'): ${response.status} ${response.statusText} - ${errorBody}`);
+        }
+
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.indexOf("application/json") !== -1) {
+            const aiResponse = await response.json();
+            // Flowise가 JSON 객체를 반환하면, 우리도 일관성을 위해 문자열로 반환
+            return JSON.stringify(aiResponse);
+        } else {
+            // Flowise가 순수 텍스트를 반환하면, JSON 객체 문자열로 포장
+            return JSON.stringify({ text: await response.text() });
+        }
+
+    } catch (flowiseError) {
+        // 2. (신규 로직) Flowise가 실패하면, Gemini 폴백을 호출!
+        console.error(flowiseError.message); // Flowise가 왜 실패했는지 로그 남기기
+        return callGeminiProFallback(prompt); // 1단계에서 만든 폴백 함수 호출
+    }
+}
+
+/**
+ * [신규] Gemini Pro 폴백(Fallback) 전용 함수
+ * Flowise가 실패했을 때 호출되는 비상용 Gemini API
+ * @param {object|string} prompt - AI에게 보낼 프롬프트 (Flowise가 받던 것과 동일)
+ * @returns {Promise<string>} AI의 텍스트 응답 (JSON 문자열이 아닌, 순수 텍스트)
+ */
+async function callGeminiProFallback(prompt) {
+    console.warn('[Gemini Fallback] Flowise 에이전트 호출 실패. Gemini (Pro) 폴백으로 전환합니다.');
+    
+    // 1. 프롬프트가 문자열이 아닌 객체(history 포함)일 수 있으니, 질문 텍스트만 추출
+    let questionText = '';
+    if (typeof prompt === 'string') {
+        questionText = prompt;
+    } else if (typeof prompt === 'object' && prompt.question) {
+        questionText = prompt.question;
+        // (참고: 히스토리는 Gemini Pro 기본 모델에겐 일단 무시됨)
+    } else {
+        questionText = JSON.stringify(prompt); // 최악의 경우, 그냥 문자열로 변환
     }
 
-    const contentType = response.headers.get("content-type");
-    if (contentType && contentType.indexOf("application/json") !== -1) {
-        const aiResponse = await response.json();
-        if (aiResponse.text) {
-             return aiResponse.text;
-        }
-        return JSON.stringify(aiResponse);
-    } else {
-        return await response.text();
-    };
+    try {
+        const result = await proModel.generateContent(questionText);
+        const fallbackResponse = result.response.text();
+        
+        // 2. 다른 파일들이 JSON.parse()를 시도할 수 있으므로, Flowise처럼 JSON 객체 문자열로 포장
+        return JSON.stringify({
+            text: `${fallbackResponse}\n\n*(앗, Flowise 에이전트 연결에 실패해서, Gemini 기본 모델이 대신 답했어!)*`
+        });
+
+    } catch (geminiError) {
+        console.error(`[Gemini Fallback] 폴백조차 실패...`, geminiError);
+        // 3. 폴백마저 실패하면, 역시 JSON 객체 문자열로 에러 반환
+        return JSON.stringify({
+            text: "미안... Flowise도, Gemini 폴백도 모두 실패했어... 😭"
+        });
+    }
 }
 
 /**
