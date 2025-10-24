@@ -17,7 +17,7 @@ const flashModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
  * @param {string} task - 고유 세션 ID를 만들기 위한 작업 설명자
  * @returns {Promise<string>} AI의 텍스트 응답 (Flowise 또는 Gemini Fallback의 JSON 문자열)
  */
-async function callFlowise(prompt, sessionId, task) {
+async function callFlowise(prompt, sessionId, task, client = null, interaction = null) {
     const question = typeof prompt === 'object' && prompt.question ? prompt.question : prompt;
     const body = typeof prompt === 'object' ? prompt : { question };
     
@@ -102,7 +102,7 @@ async function callGeminiFlashFallback(prompt) {
     }
 
     try {
-        const result = await flashModel.generateContent(questionText);
+        const result = await flashModel.generateContent(questionText, );
         const fallbackResponse = result.response.text();
         
         // 2. 다른 파일들이 JSON.parse()를 시도할 수 있으므로, Flowise처럼 JSON 객체 문자열로 포장
