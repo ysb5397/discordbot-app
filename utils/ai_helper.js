@@ -47,6 +47,13 @@ async function callFlowise(prompt, sessionId, task) {
         if (contentType && contentType.indexOf("application/json") !== -1) {
             const aiResponse = await response.json();
             // Flowise가 JSON 객체를 반환하면, 우리도 일관성을 위해 문자열로 반환
+
+            if (client) {
+                await logToDiscord(client, 'INFO', `Flowise ('${task}')가 JSON 객체를 반환했습니다.`, interaction, null, aiResponse);
+            } else {
+                 console.log(`[Flowise Text] ('${task}') ${responseText.substring(0,100)}...`);
+            }
+
             return JSON.stringify(aiResponse);
         } else {
             // Flowise가 순수 텍스트를 반환하면, JSON 객체 문자열로 포장
