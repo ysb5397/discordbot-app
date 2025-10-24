@@ -1,6 +1,7 @@
 // events/interactionCreate.js
 
 const { Events } = require('discord.js');
+const { logErrorToDiscord } = require('../utils/catch_error.js');
 
 module.exports = {
     name: Events.InteractionCreate,
@@ -19,6 +20,9 @@ module.exports = {
         } catch (error) {
             console.error(`Error executing ${interaction.commandName}`);
             console.error(error);
+
+            await logErrorToDiscord(client, interaction, error);
+
             if (interaction.replied || interaction.deferred) {
                 await interaction.followUp({ content: '명령어 실행 중 오류가 발생했습니다!', ephemeral: true });
             } else {
