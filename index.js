@@ -254,13 +254,11 @@ const startBot = async () => {
     try {
         // 1. DB 연결을 먼저 시도
         await connectDB();
+        console.log('DB 연결 성공. 봇 로그인을 시도합니다...');
 
         // 봇 로그인
         await client.login(process.env.DISCORD_BOT_TOKEN);
-        
-        // 2. DB 연결에 성공해야만 봇 로그인을 시도
-        console.log('DB 연결 성공. 봇 로그인을 시도합니다...');
-        await client.login(process.env.DISCORD_BOT_TOKEN);
+        console.log(`✅ ${client.user.tag}으로 성공적으로 로그인했습니다!`);
         
         const logChannelId = process.env.DISCORD_LOG_CHANNEL_ID; // 로그 채널 ID 가져오기
         let logChannel;
@@ -344,13 +342,14 @@ const startBot = async () => {
     } catch (error) {
         // 3. DB 연결이나 봇 로그인 실패 시
         console.error("!!! 봇 시작 중 치명적인 오류 발생 !!!", error);
-        process.exit(1); // Cloud Run에 "시작 실패"를 알림
+        throw error;
     }
 };
 
-// 봇 시작!
-startBot();
-
 app.listen(port, () => {
   console.log(`Dummy server (and AI API) listening on port ${port}`);
+
+  startBot().catch(err => {
+      console.error("!!! startBot() 실행 중 치명적인 오류 발생 (서버는 시작됨) !!!", err);
+  });
 });
