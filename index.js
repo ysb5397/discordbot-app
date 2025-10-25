@@ -9,6 +9,7 @@ const { callFlowise } = require('./utils/ai_helper');
 const { logToDiscord } = require('./utils/logger');
 
 const jwtSecret = process.env.JWT_SECRET;
+let commandRegistrationChecked = false;
 
 dotenv.config();
 
@@ -271,7 +272,7 @@ const startBot = async () => {
             }
         }
 
-        if (logChannel && logChannel.isTextBased()) {
+        if (!commandRegistrationChecked && logChannel && logChannel.isTextBased()) {
             // 1. 확인 메시지 + 버튼 만들기
             const row = new ActionRowBuilder()
                 .addComponents(
@@ -332,9 +333,10 @@ const startBot = async () => {
                 await confirmMsg.edit({ content: '⏰ 시간 초과 또는 오류로 명령어 등록이 취소되었습니다.', components: [] });
                 console.log('(/) 명령어 등록 확인 시간 초과 또는 오류 발생.');
             }
+            commandRegistrationChecked = true;
 
         } else {
-            console.warn('(/) 로그 채널을 찾을 수 없어 명령어 등록 확인을 건너뜁니다. (자동 등록 안 함)');
+            console.warn('(/) 이미 등록이 되었거나 로그 채널을 찾을 수 없어 명령어 등록 확인을 건너뜁니다. (자동 등록 안 함)');
         }
 
         console.log('✅ 봇이 성공적으로 시작되었습니다!');
