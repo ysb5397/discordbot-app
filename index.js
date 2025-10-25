@@ -6,7 +6,7 @@ const dotenv = require('dotenv');
 const jwt = require('jsonwebtoken');
 const { connectDB, ApiKey } = require('./utils/database');
 const { callFlowise } = require('./utils/ai_helper');
-const { logToDiscord } = require('./utils/logger');
+const { logToDiscord } = require('./utils/catch_log');
 
 const jwtSecret = process.env.JWT_SECRET;
 let commandRegistrationChecked = false;
