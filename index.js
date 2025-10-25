@@ -3,10 +3,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Client, GatewayIntentBits, Collection, REST, Routes,ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, PermissionsBitField } = require('discord.js');
 const dotenv = require('dotenv');
-const { connectDB } = require('./utils/database');
+const jwt = require('jsonwebtoken');
+const { connectDB, ApiKey } = require('./utils/database');
 const { callFlowise } = require('./utils/ai_helper');
-const { logErrorToDiscord } = require('./utils/catch_log.js');
-const { ApiKey } = require('./utils/database');
+const { logToDiscord } = require('./utils/logger');
+
+const jwtSecret = process.env.JWT_SECRET;
 
 dotenv.config();
 
@@ -92,40 +94,34 @@ for (const folder of eventFolders) {
 // Cloud Run의 헬스 체크(PORT=8080)를 통과하기 위한 더미 웹서버
 const app = express();
 app.use(express.json());
-// Cloud Run이 주는 PORT 환경 변수를 쓰거나, 없으면 8080을 씀
 const port = process.env.PORT || 8080;
 
 const authenticateApiKey = async (req, res, next) => {
     try {
         const authHeader = req.headers['authorization'];
-        if (!authHeader || !authHeader.startsWith('Bearer ')) { // 'Bearer ' 형식인지도 확인
-            return res.status(401).send({ error: '인증 헤더(Authorization: Bearer <key>)가 필요합니다.' });
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).send({ error: 'AI 키 인증 헤더(Authorization: Bearer <key>)가 필요합니다.' });
         }
-
-        // 1. 헤더에서 토큰 값 먼저 추출!
-        const token = authHeader.split(' ')[1]; 
-        
+        const token = authHeader.split(' ')[1];
         if (!token) {
-             return res.status(401).send({ error: '헤더에 API 키 값이 없습니다.' });
+             return res.status(401).send({ error: '헤더에 AI API 키 값이 없습니다.' });
         }
 
-        // 2. 추출한 토큰으로 DB 조회!
-        const validKey = await ApiKey.findOne({ apiKey: token, isActive: true }); 
+        // DB에서 "Flutter AI" 키이고 활성화된 키인지 검증!
+        const validKey = await ApiKey.findOne({
+            keyName: "Flutter AI", // 이름으로 필터링!
+            apiKey: token,
+            isActive: true
+        });
 
-        // 3. DB 조회 결과 확인!
         if (!validKey) {
-            // 키가 DB에 없거나 isActive가 false이면 거부
-            return res.status(401).send({ error: '유효하지 않은 API 키입니다.' });
+            return res.status(401).send({ error: '유효하지 않은 AI API 키입니다.' });
         }
-
-        // 4. 키가 유효함! 통과!
-        console.log(`[HTTP API] DB 인증 성공 (${validKey.keyName}, 키: ${token.substring(0, 5)}...)`);
+        console.log(`[HTTP API Chat Auth] DB AI 키 인증 성공 (키: ${token.substring(0, 5)}...)`);
         next();
-
     } catch (err) {
-        // 5. DB 조회 자체에서 에러가 나면 여기로! (DB 연결 문제 등)
-        console.error('[HTTP API Auth Error] 인증 미들웨어 DB 조회 중 오류 발생:', err); 
-        res.status(500).send({ error: '인증 처리 중 서버 오류 발생' });
+        console.error('[HTTP API Chat Auth Error] AI 키 인증 미들웨어 DB 조회 중 오류 발생:', err);
+        res.status(500).send({ error: 'AI 키 인증 처리 중 서버 오류 발생' });
     }
 };
 
@@ -133,20 +129,92 @@ app.get('/', (req, res) => {
   res.send('Discord bot is running! (And AI API Server is ready!)');
 });
 
-app.get('/api/config', async (req, res) => {
-    try {
-        // [수정!] .env 대신 DB에서 "현재(isCurrent)" 키를 찾음!
-        const currentKey = await ApiKey.findOne({ keyName: "Flutter App", isCurrent: true });
+app.post('/api/login', async (req, res) => { // async 추가!
+    const { secret } = req.body;
 
-        if (!currentKey) {
-            return res.status(500).send({ error: '서버 설정(Config)을 불러올 수 없습니다.' });
+    if (!jwtSecret) {
+         console.error('[HTTP API Login Error] JWT_SECRET가 .env에 없습니다.');
+         return res.status(500).send({ error: '서버 로그인 설정 오류 (JWT)' });
+    }
+    if (!secret) {
+        return res.status(400).send({ error: '로그인 비밀번호(secret)가 필요합니다.' });
+    }
+
+    try {
+        // DB에서 "Flutter Login" 이름으로 저장된 비밀번호 조회
+        const loginConfig = await ApiKey.findOne({ keyName: "Flutter Login" });
+
+        if (!loginConfig || !loginConfig.apiKey) {
+             console.error('[HTTP API Login Error] DB에서 Flutter Login 비밀번호를 찾을 수 없습니다.');
+             return res.status(500).send({ error: '서버 로그인 설정 오류 (DB)' });
+        }
+
+        // 입력된 비밀번호와 DB의 비밀번호 비교
+        if (secret === loginConfig.apiKey) {
+            // 비밀번호 일치! JWT 발급
+            const payload = { appName: "Flutter App" };
+            const options = { expiresIn: '1h' }; // 1시간 유효
+            const token = jwt.sign(payload, jwtSecret, options);
+            console.log('[HTTP API Login] Flutter 앱 로그인 성공, JWT 발급됨.');
+            res.status(200).send({ accessToken: token });
+        } else {
+            console.warn('[HTTP API Login] Flutter 앱 로그인 실패 (잘못된 Secret).');
+            res.status(401).send({ error: '로그인 정보가 잘못되었습니다.' });
+        }
+    } catch (err) {
+        console.error('[HTTP API Login Error] 로그인 처리 중 DB 오류 발생:', err);
+        res.status(500).send({ error: '로그인 처리 중 서버 오류 발생' });
+    }
+});
+
+const verifyJwt = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).send({ error: '인증 헤더(Authorization: Bearer <token>)가 필요합니다.' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    if (!token) {
+        return res.status(401).send({ error: '헤더에 JWT 토큰이 없습니다.' });
+    }
+    if (!jwtSecret) {
+         console.error('[HTTP API JWT Error] JWT_SECRET가 .env에 없습니다.');
+         return res.status(500).send({ error: '서버 JWT 설정 오류' });
+    }
+
+    jwt.verify(token, jwtSecret, (err, decoded) => {
+        if (err) {
+            console.warn('[HTTP API JWT] 토큰 검증 실패:', err.message);
+            // 에러 종류에 따라 다른 상태 코드 반환 가능 (예: 만료 시 403)
+            return res.status(401).send({ error: '유효하지 않은 토큰입니다.' });
         }
         
+        // 토큰이 유효함! 요청 객체에 디코딩된 정보(payload)를 추가해 줄 수도 있음
+        req.user = decoded; // 예: req.user.appName 확인 가능
+        console.log('[HTTP API JWT] 토큰 검증 성공.');
+        next(); // 다음 단계로 통과!
+    });
+};
+
+app.get('/api/config', verifyJwt, async (req, res) => { // JWT 문지기 적용!
+    try {
+        // DB에서 "Flutter AI" 키이고 현재 사용(isCurrent) 키를 찾음!
+        const currentAiKey = await ApiKey.findOne({
+             keyName: "Flutter AI", // 이름으로 필터링!
+             isCurrent: true
+        });
+
+        if (!currentAiKey) {
+            return res.status(500).send({ error: '현재 사용 가능한 AI API 키 설정을 찾을 수 없습니다.' });
+        }
+
         res.status(200).send({
-            'currentApiKey': currentKey.apiKey
+            'aiApiKey': currentAiKey.apiKey // 필드 이름 변경 aiApiKey
         });
     } catch (err) {
-        res.status(500).send({ error: 'Config 조회 중 DB 오류 발생' });
+        console.error('[HTTP API Config Error] AI 키 조회 중 DB 오류 발생:', err);
+        res.status(500).send({ error: 'AI 키 설정 조회 중 DB 오류 발생' });
     }
 });
 
