@@ -15,6 +15,13 @@ module.exports = {
             return;
         }
 
+        if (interaction.user.id !== process.env.MY_DISCORD_USER_ID) {
+            return interaction.reply({ 
+                content: '이 명령어는 봇 소유자만 사용할 수 있어요! 🔒', 
+                ephemeral: true
+            });
+        }
+
         try {
             await command.execute(interaction);
         } catch (error) {
