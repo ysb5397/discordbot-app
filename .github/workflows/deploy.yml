@@ -52,7 +52,7 @@ jobs:
             --image="us-central1-docker.pkg.dev/gen-lang-client-0683011321/my-spring-repo/gemini-discord-bot" \
             --project="gen-lang-client-0683011321" \
             --region="us-central1" \
-            --cpu=2 \
+            --cpu=1 \
             --memory=1Gi \
             --min-instances=1 \
             --no-cpu-throttling \
