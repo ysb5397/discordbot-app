@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, InteractionContextType } = require('discord.js');
 const { google } = require('googleapis');
 const { callFlowise } = require('../utils/ai_helper.js');
 const customsearch = google.customsearch('v1');
@@ -53,6 +53,11 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName('deep_research')
         .setDescription('AI가 질문을 분석하여 심층 리서치를 수행합니다.')
+        .setContexts([
+            InteractionContextType.Guild,          // 1. 서버
+            InteractionContextType.BotDM,          // 2. 봇과의 1:1 DM
+            InteractionContextType.PrivateChannel, // 3. 그룹 DM
+        ])
         .addStringOption(option =>
             option.setName('question')
                 .setDescription('리서치할 주제 또는 질문')

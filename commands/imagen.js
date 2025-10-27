@@ -1,10 +1,15 @@
-const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder, InteractionContextType } = require('discord.js');
 const { generateImage } = require('../utils/ai_helper.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('imagen')
         .setDescription('Gemini AI에게 이미지 생성을 요청합니다.')
+        .setContexts([
+            InteractionContextType.Guild,          // 1. 서버
+            InteractionContextType.BotDM,          // 2. 봇과의 1:1 DM
+            InteractionContextType.PrivateChannel, // 3. 그룹 DM
+        ])
         .addStringOption(option =>
             option.setName('prompt')
                 .setDescription('생성할 이미지에 대한 설명 (영어로 작성 권장)')

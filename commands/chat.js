@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, InteractionContextType } = require('discord.js');
 const { Interaction } = require('../utils/database.js');
 const { generateMongoFilter, callFlowise, genAI } = require('../utils/ai_helper.js');
 
@@ -115,6 +115,11 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName('chat')
         .setDescription('AI와 대화하거나, 저장된 기억을 검색합니다.')
+        .setContexts([
+            InteractionContextType.Guild,          // 1. 서버
+            InteractionContextType.BotDM,          // 2. 봇과의 1:1 DM
+            InteractionContextType.PrivateChannel, // 3. 그룹 DM
+        ])
         .addStringOption(option =>
             option.setName('question')
                 .setDescription('AI에게 할 질문 또는 검색할 내용')
