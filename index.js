@@ -314,7 +314,7 @@ const startBot = async () => {
 
                     try {
                         const data = await rest.put(
-                            Routes.applicationGuildCommands(process.env.DISCORD_CLIENT_ID),
+                            Routes.applicationCommands(process.env.DISCORD_CLIENT_ID),
                             { body: commands },
                         );
                         console.log(`(/) 관리자가 ${data.length}개의 슬래시 명령어를 성공적으로 등록했습니다.`);
