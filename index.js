@@ -99,9 +99,9 @@ const port = process.env.PORT || 8080;
 
 const authenticateApiKey = async (req, res, next) => {
     try {
-        const authHeader = req.headers['authorization'];
+        const authHeader = req.headers['cs-auth-key'];
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).send({ error: 'AI 키 인증 헤더(Authorization: Bearer <key>)가 필요합니다.' });
+            return res.status(401).send({ error: 'AI 키 인증 헤더(cs-auth-key: Bearer <key>)가 필요합니다.' });
         }
         const token = authHeader.split(' ')[1];
         if (!token) {
