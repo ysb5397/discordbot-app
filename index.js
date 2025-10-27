@@ -219,7 +219,7 @@ app.get('/api/config', verifyJwt, async (req, res) => { // JWT 문지기 적용!
     }
 });
 
-app.post('/api/chat', authenticateApiKey, async (req, res) => {
+app.post('/api/chat', authenticateApiKey, verifyJwt, async (req, res) => {
     try {
         // 1. 클라이언트가 보낸 질문을 받음 (JSON body)
         const { question, sessionId } = req.body;
@@ -285,16 +285,16 @@ const startBot = async () => {
                 );
 
             const confirmMsg = await logChannel.send({
-                content: `✨ 봇이 시작되었습니다! Discord 슬래시 명령어를 새로 등록할까요? (60초 후 자동 취소)`,
+                content: `✨ 봇이 시작되었습니다! Discord 슬래시 명령어를 새로 등록할까요? (30초 후 자동 취소)`,
                 components: [row]
             });
 
-            // 2. 버튼 클릭 기다리기 (10초 제한)
+            // 2. 버튼 클릭 기다리기 (30초 제한)
             try {
                 const interaction = await confirmMsg.awaitMessageComponent({
                     filter: i => i.member.permissions.has(PermissionsBitField.Flags.Administrator),
                     componentType: ComponentType.Button,
-                    time: 10000 // 10초
+                    time: 30000 // 30초
                 });
 
                 if (interaction.customId === 'confirm_register_commands') {
