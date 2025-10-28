@@ -93,21 +93,44 @@ async function handleRegularConversation(interaction) {
         const aiResponseText = await callFlowise(requestBody, sessionId, 'chat-conversation');
         
         // 2. 무조건 성공할테니, 바로 JSON 파싱
-        const aiResponse = JSON.parse(aiResponseText); 
+        const aiResponse = JSON.parse(aiResponseText);
+
+        let descriptionText = 'AI로부터 답변을 받지 못했습니다.';
+
+        if (typeof flowiseResponse.text === 'string') {
+            // 1. text가 문자열이면 그대로 사용
+            descriptionText = flowiseResponse.text;
+        } else if (flowiseResponse.text) {
+            // 2. text가 존재하는데 문자열이 아니면 (객체 등), JSON 문자열로 변환 (보기 좋게)
+            try {
+                 descriptionText = '```json\n' + JSON.stringify(flowiseResponse.text, null, 2) + '\n```';
+            } catch (stringifyError) {
+                 descriptionText = '[객체를 문자열로 변환 실패]'; // JSON 변환마저 실패하면
+            }
+        }
 
         // 3. embed 만들기
         const replyEmbed = new EmbedBuilder()
             .setColor(aiResponse.text.includes('Flowise 에이전트 연결에 실패') ? 0xFFA500 : 0x00FA9A) // (폴백이면 주황색)
-            .setDescription(aiResponse.text || 'AI로부터 답변을 받지 못했습니다.')
+            .setDescription(descriptionText)
             .setTimestamp()
-            .setFooter({ text: '⚠️ Flowise 오류로 인해 Gemini Pro (Fallback)가 응답했습니다.' });
+            .setFooter({ text: '⚠️ Flowise 오류로 인해 Gemini Flash (Fallback)가 응답했습니다.' });
+
+        if (flowiseResponse.imageUrl) {
+            replyEmbed.setImage(flowiseResponse.imageUrl);
+        }
 
         await interaction.editReply({ content: `<@${sessionId}>`, embeds: [replyEmbed] });
 
     } catch (error) {
-        // 4. (이건 callFlowise가 아닌, JSON 파싱이나 editReply에서 날 수 있는 진짜 에러)
-        console.error(`[Chat Command] AI 응답 처리 중 심각한 오류:`, error);
-        await interaction.editReply({ content: `<@${sessionId}> 미안... 응답을 처리하다가 알 수 없는 오류가 났어. 😭` });
+        if (error instanceof SyntaxError && error.message.includes('JSON')) {
+            console.error(`[Chat Command] AI 응답 JSON 파싱 실패:`, aiResponseText);
+            await logToDiscord(interaction.client, 'ERROR', 'AI 응답을 해석(JSON 파싱)하는 데 실패했습니다.', interaction, error, 'handleRegularConversation');
+       } else {
+            console.error(`[Chat Command] AI 응답 처리 중 오류:`, error);
+            await logToDiscord(interaction.client, 'ERROR', 'AI 응답 처리 중 오류가 발생했습니다.', interaction, error, 'handleRegularConversation');
+       }
+       await interaction.editReply({ content: `<@${interaction.user.id}> 미안... 응답을 처리하다가 오류가 났어. 😭` }).catch(console.error);
     }
 }
 
