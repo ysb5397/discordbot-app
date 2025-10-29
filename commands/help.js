@@ -1,4 +1,5 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder } = require('discord.js');
+const { createBaseEmbed } = require('../utils/embed_builder.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -27,13 +28,13 @@ module.exports = {
             return { name: `🔹 /${command.data.name}`, value: command.data.description };
         });
 
-        const helpEmbed = new EmbedBuilder()
-            .setColor(0x0099FF)
-            .setTitle('🤖 봇 도움말')
-            .setDescription('사용 가능한 모든 명령어 목록이야!')
-            .addFields(commandFields)
-            .setTimestamp()
-            .setFooter({ text: `요청한 사람: ${interaction.user.tag}` });
+        const helpEmbed = createBaseEmbed({
+            title: '🤖 봇 도움말',
+            description: '사용 가능한 모든 명령어 목록이야!',
+            fields: commandFields,
+            footerText: `요청한 사람: ${interaction.user.tag}`,
+            color: 0x0099FF
+        });
 
         await interaction.reply({ embeds: [helpEmbed], ephemeral: true });
     },

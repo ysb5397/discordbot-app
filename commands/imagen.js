@@ -1,5 +1,6 @@
-const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder, InteractionContextType } = require('discord.js');
+const { SlashCommandBuilder, AttachmentBuilder, InteractionContextType } = require('discord.js');
 const { generateImage } = require('../utils/ai_helper.js');
+const { createImageGenEmbed } = require('../utils/embed_builder.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -22,6 +23,7 @@ module.exports = {
                 .setMaxValue(4)),
 
     async execute(interaction) {
+        const startTime = Date.now();
         await interaction.deferReply();
 
         const prompt = interaction.options.getString('prompt');
@@ -33,13 +35,16 @@ module.exports = {
             return new AttachmentBuilder(buffer, { name: `gemini-image-${index + 1}.png` });
         });
 
-        const replyEmbed = new EmbedBuilder()
-            .setColor(0x4A90E2)
-            .setTitle(`"${prompt}"`)
-            .setDescription(`${attachments.length}개의 이미지가 생성되었습니다.`)
-            .setImage(`attachment://${attachments[0].name}`)
-            .setTimestamp()
-            .setFooter({ text: `Requested by ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() });
+        const endTime = Date.now();
+        const duration = (endTime - startTime) / 1000;
+
+        const replyEmbed = createImageGenEmbed({
+            prompt: prompt.substring(0, 250) + (prompt.length > 250 ? '...' : ''),
+            imageCount: imageCount,
+            attachmentUrl: `attachment://${attachments[0].name}`,
+            duration: duration,
+            user: interaction.user
+        });
         
         await interaction.editReply({
             content: `<@${interaction.user.id}>`,

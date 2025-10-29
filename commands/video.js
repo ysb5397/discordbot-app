@@ -1,5 +1,6 @@
-const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } = require('discord.js');
+const { SlashCommandBuilder, AttachmentBuilder } = require('discord.js');
 const { startVideoGeneration, checkVideoGenerationStatus, downloadVideoFromUri } = require('../utils/ai_helper.js');
+const { createVideoGenEmbed } = require('../utils/embed_builder.js');
 
 const POLLING_INTERVAL = 10000;
 const MAX_ATTEMPTS = 18;
@@ -14,6 +15,7 @@ module.exports = {
                 .setRequired(true)),
 
     async execute(interaction) {
+        const startTime = Date.now();
         await interaction.deferReply();
 
         const prompt = interaction.options.getString('prompt');
@@ -44,13 +46,16 @@ module.exports = {
                     const videoBuffer = await downloadVideoFromUri(videoUri);
                     const attachment = new AttachmentBuilder(videoBuffer, { name: 'generated-video.mp4' });
 
+                    const endTime = Date.now();
+                    const duration = (endTime - startTime) / 1000;
+                    
                     const embedTitle = prompt.length > 250 ? prompt.substring(0, 250) + '...' : prompt;
-                    const resultEmbed = new EmbedBuilder()
-                        .setColor(0x5865F2)
-                        .setTitle(embedTitle)
-                        .setDescription(`영상 생성이 완료되었어!`)
-                        .setFooter({ text: `Requested by ${interaction.user.tag}` })
-                        .setTimestamp();
+
+                    const resultEmbed = createVideoGenEmbed({
+                        prompt: embedTitle,
+                        duration: duration,
+                        user: interaction.user
+                    });
                         
                     await interaction.editReply({
                         content: `🎉 영상이 준비됐어!`,
@@ -63,7 +68,7 @@ module.exports = {
                 await new Promise(resolve => setTimeout(resolve, POLLING_INTERVAL));
             }
 
-            throw new Error('영상 생성 시간이 너무 오래 걸려 타임아웃되었습니다.');
+            throw new Error(`영상 생성 시간이 너무 오래 걸려 타임아웃되었습니다. (${((Date.now() - startTime) / 1000).toFixed(0)}초 경과)`);
 
         } catch (error) {
             console.error('[/video] Error:', error);

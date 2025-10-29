@@ -1,4 +1,4 @@
-const { EmbedBuilder } = require('discord.js');
+const { createEarthquakeEmbed } = require('./embed_builder.js');
 const { JSDOM } = require('jsdom');
 const { Interaction } = require('./database.js');
 
@@ -123,19 +123,14 @@ async function sendEarthquakeAlert(info, client) {
     const rawTime = info.querySelector("eqDate")?.textContent || "정보 없음"; // tmEqk -> eqDate
     const formattedTime = `${rawTime.substring(0, 4)}년 ${rawTime.substring(4, 6)}월 ${rawTime.substring(6, 8)}일 ${rawTime.substring(8, 10)}시 ${rawTime.substring(10, 12)}분`;
 
-    const embed = new EmbedBuilder()
-        .setColor(embedColor)
-        .setTitle('📢 실시간 국내 지진 정보')
-        .setDescription(info.querySelector("ReFer")?.textContent || "상세 정보 없음") // rem -> ReFer
-        .addFields(
-            { name: '📍 진원지', value: info.querySelector("eqPt")?.textContent || "정보 없음", inline: true },
-            { name: '⏳ 발생시각', value: formattedTime, inline: true },
-            { name: '📏 규모', value: `M ${info.querySelector("magMl")?.textContent || "정보 없음"}`, inline: true },
-            { name: '💥 최대진도', value: rawIntensity, inline: true },
-            { name: ' 깊이', value: `${info.querySelector("eqDt")?.textContent || "?"}km`, inline: true }
-        )
-        .setTimestamp()
-        .setFooter({ text: '출처: 기상청' });
+    const embed = createEarthquakeEmbed({
+        jdLoc: rawIntensity,
+        eqDate: formattedTime,
+        magMl: info.querySelector("magMl")?.textContent || "정보 없음",
+        eqPt: info.querySelector("eqPt")?.textContent || "정보 없음",
+        eqDt: info.querySelector("eqDt")?.textContent || "정보 없음",
+        ReFer: info.querySelector("ReFer")?.textContent || "상세 정보 없음"
+    });
 
     try {
         const channel = await client.channels.fetch(targetChannelId);

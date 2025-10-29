@@ -1,6 +1,7 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, StringSelectMenuBuilder } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, StringSelectMenuBuilder } = require('discord.js');
 const { Interaction } = require('../utils/database.js');
 const { generateMongoFilter } = require('../utils/ai_helper.js');
+const { createBaseEmbed } = require('../utils/embed_builder.js');
 
 /** 헬퍼: 내용 축약 */
 function formatContent(doc) {
@@ -58,16 +59,21 @@ module.exports = {
                 .addOptions(options);
 
             const row = new ActionRowBuilder().addComponents(selectMenu);
-            const embed = new EmbedBuilder()
-                .setColor(0x3498DB)
-                .setTitle('기억 선택')
-                .setDescription(`"${query}"에 대한 검색 결과가 여러 개 발견되었어. 아래 메뉴에서 원하는 기억을 하나 골라줘.`);
+
+            const embed = createBaseEmbed({
+                title: '기억 관리',
+                description: `"${query}"에 대한 검색 결과가 여러 개 발견되었어. 아래 메뉴에서 원하는 기억을 하나 골라줘.`,
+                color: 0x3498DB
+            });
 
             await interaction.editReply({ embeds: [embed], components: [row] });
 
         } else {
             const doc = results[0];
-            const embed = new EmbedBuilder().setTitle('기억 관리').setColor(0xFFD700);
+            const embed = createBaseEmbed({
+                title: '기억 관리',
+                color: 0xFFD700
+            });
             let description = `**요청 내용:** "${query}"\n**선택된 기억:**\n[메시지 바로가기](https://discord.com/channels/${interaction.guildId}/${doc.channelId}/${doc.interactionId}) "${formatContent(doc)}"`;
 
             if (subcommand === 'update') {
@@ -96,7 +102,11 @@ module.exports = {
                 const selectedId = i.values[0];
                 const selectedDoc = results.find(r => r._id.toString() === selectedId);
                 
-                const embed = new EmbedBuilder().setTitle('기억 관리').setColor(0xFFD700);
+                const embed = createBaseEmbed({
+                    title: '기억 관리',
+                    color: 0xFFD700
+                });
+                
                 let description = `**요청 내용:** "${query}"\n**선택된 기억:**\n[메시지 바로가기](https://discord.com/channels/${interaction.guildId}/${selectedDoc.channelId}/${selectedDoc.interactionId}) "${formatContent(selectedDoc)}"`;
                 if (subcommand === 'update') {
                         description += `\n\n**[새로운 내용]**\n"${newContent}"\n\n이 기억을 새로운 내용으로 수정할까요? (DB만 수정되며, 원본 메시지에 답글이 달립니다)`;

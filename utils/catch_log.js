@@ -1,5 +1,6 @@
 // 파일 위치: /utils/logger.js
-const { EmbedBuilder, Client, Interaction } = require('discord.js');
+const { Client, Interaction } = require('discord.js');
+const { createLogEmbed } = require('./embed_builder.js');
 
 const LOG_CHANNEL_ID = process.env.DISCORD_LOG_CHANNEL_ID;
 
@@ -59,11 +60,7 @@ async function logToDiscord(client, level, message, interaction = null, error = 
             return;
         }
 
-        const embed = new EmbedBuilder()
-            .setColor(levelInfo.color)
-            .setTitle(`${levelInfo.emoji} ${levelInfo.titlePrefix}`)
-            .setDescription(message)
-            .setTimestamp();
+        const embed = createLogEmbed({ message, commandName: interaction?.commandName, user: interaction?.user, type: level });
 
         if (error) {
             embed.addFields([{ 
