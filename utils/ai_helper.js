@@ -216,7 +216,7 @@ async function generateMongoFilter(query, userId) {
     - The 'type' can be 'MESSAGE', 'MENTION', or 'EARTHQUAKE'. Search all these types unless specified otherwise.
     - For text matching, use the '$regex' operator with '$options: "i"' for case-insensitivity.
 
-    Respond ONLY with the raw JSON filter object. Do not include any other text or markdown formatting (like \`\`\`json).
+    Respond ONLY with a valid JSON object representing the MongoDB filter. Do not include any other text, explanations, or markdown formatting.
     `;
 
     let aiResponseJsonString = '{}';
