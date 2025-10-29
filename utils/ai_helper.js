@@ -1,6 +1,6 @@
 // utils/ai_helper.js
 
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require('@google/generative-ai');
 const { GoogleGenAI, Modality } = require('@google/genai'); // Live API용
 const { logToDiscord } = require('./catch_log.js');
 
