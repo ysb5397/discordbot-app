@@ -205,18 +205,58 @@ async function callFlowise(prompt, sessionId, task, client = null, interaction =
 
 async function generateMongoFilter(query, userId) {
     const prompt = `
-    You are a MongoDB query filter generator. A user wants to find an entry in their interaction history.
-    Based on their request, create a JSON filter for a MongoDB 'find' operation.
+    You are an expert MongoDB query filter generator. Your task is to analyze a user's natural language request and generate a valid JSON filter object for a MongoDB 'find' operation.
 
-    - The user's ID is: "${userId}"
-    - The user's natural language query is: "${query}"
-    - The current date is: "${new Date().toISOString()}"
+    **--- ⚡️ VERY STRICT OUTPUT RULES ---**
+    1.  Your **entire response MUST be a valid JSON object**.
+    2.  Do NOT include any explanations, comments, greetings, or markdown (like \`\`\`json\`).
+    3.  Do NOT include the 'userId' field in the filter. The calling system adds this automatically.
+    4.  For text matching, use the '$regex' operator with '$options: "i"'.
+    5.  For time-related queries (e.g., "yesterday", "last week", "October"), use the 'timestamp' field with '$gte' and/or '$lt'.
 
-    - The schema has these fields: 'userId', 'type', 'content', 'timestamp', 'channelId'.
-    - The 'type' can be 'MESSAGE', 'MENTION', or 'EARTHQUAKE'. Search all these types unless specified otherwise.
-    - For text matching, use the '$regex' operator with '$options: "i"' for case-insensitivity.
+    **--- 📖 Schema Information (User-searchable fields) ---**
+    - content: (String) The text content of the message.
+    - type: (String) Can be 'MESSAGE', 'MENTION', 'EARTHQUAKE'.
+    - timestamp: (ISODate) The time the interaction was saved.
+    - channelId: (String) The ID of the channel.
 
-    Respond ONLY with a valid JSON object representing the MongoDB filter. Do not include any other text, explanations, or markdown formatting.
+    **--- ✍️ Examples ---**
+
+    [Request]: "yesterday's pizza talk"
+    [Current Time]: "2025-10-30T08:30:00.000Z"
+    [Your Response]:
+    {
+      "$and": [
+        { "content": { "$regex": "pizza", "$options": "i" } },
+        { "timestamp": { "$gte": "2025-10-29T00:00:00.000Z", "$lt": "2025-10-30T00:00:00.000Z" } }
+      ]
+    }
+
+    [Request]: "images from last week, not messages"
+    [Current Time]: "2025-10-30T08:30:00.000Z"
+    [Your Response]:
+    {
+      "$and": [
+        { "content": { "$regex": "image", "$options": "i" } },
+        { "type": { "$ne": "MESSAGE" } },
+        { "timestamp": { "$gte": "2025-10-20T00:00:00.000Z", "$lt": "2025-10-27T00:00:00.000Z" } }
+      ]
+    }
+
+    [Request]: "earthquake"
+    [Current Time]: "2025-10-30T08:30:00.000Z"
+    [Your Response]:
+    {
+      "type": "EARTHQUAKE"
+    }
+
+    **--- 🚀 Current Task ---**
+
+    - User (for context only): "${userId}"
+    - User's natural language query: "${query}"
+    - Current date (ISO): "${new Date().toISOString()}"
+
+    Respond ONLY with the valid JSON object.
     `;
 
     let aiResponseJsonString = '{}';
