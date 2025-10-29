@@ -67,9 +67,20 @@ async function* getChatResponseStreamOrFallback(promptData, attachment, sessionI
     // --- 2. Gemini 스트리밍 시도 ---
     try {
         console.log(`[/chat ${task}] Gemini 스트리밍 시작...`);
-        // Gemini 설정 (필요 시 조정)
-        const generationConfig = { /* temperature, maxOutputTokens 등 */ };
-        const safetySettings = [ /* 안전 설정 */ ];
+        // Gemini 설정
+        const generationConfig = {
+            // temperature: 0.7, // 창의성 조절 (0 ~ 1)
+            // topP: 0.9,       // 단어 선택 다양성 (0 ~ 1)
+            // topK: 40,        // 고려할 단어 수
+            maxOutputTokens: 1000, // 최대 출력 토큰 제한
+        };
+
+        const safetySettings = [ // 기본 안전 설정
+            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+            { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+            { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+        ];
 
         const chat = model.startChat({ history, generationConfig, safetySettings });
         const result = await chat.sendMessageStream(currentPromptParts);
@@ -95,7 +106,18 @@ async function* getChatResponseStreamOrFallback(promptData, attachment, sessionI
              // Flowise 요청 본문 준비 (Flowise 형식으로 변환)
              const flowiseRequestBody = {
                  question: promptData.question,
-                 overrideConfig: { sessionId: `flowise-fallback-${task}-${sessionId}`, vars: { /* bot_name 등 */ } },
+                 overrideConfig: {
+                     sessionId: `flowise-fallback-${task}-${sessionId}`,
+                     vars: {
+                         // 여기에 변수 추가
+                         // options 객체에서 interaction 정보를 가져와 사용
+                         bot_name: client?.user?.username || 'AI 비서', // client가 있으면 봇 이름 사용
+                         user_name: interaction?.user?.username || '사용자' // interaction이 있으면 사용자 이름 사용
+                         // 필요하다면 다른 변수들도 추가 가능:
+                         // channel_name: interaction?.channel?.name,
+                         // guild_name: interaction?.guild?.name,
+                     }
+                 },
                  history: history.map(turn => ({
                       role: turn.role === 'model' ? 'ai' : 'user',
                       content: turn.parts[0].text
