@@ -1,5 +1,5 @@
 # 파일 이름: .github/workflows/deploy.yml
-# (모든 들여쓰기를 일반 공백으로 수정함)
+# (최종 - DB 플래그 방식)
 
 name: Deploy to Google Cloud Run
 
@@ -18,46 +18,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. Node.js 환경 설정
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      # 3. (신규) C++ 빌드 도구 설치 (네이티브 모듈 컴파일용)
-      - name: Install Build Essentials
-        run: sudo apt-get update && sudo apt-get install -y python3 build-essential
-      # ---------------------------------
-
-      # 4. 봇의 의존성 패키지 설치
-      - name: Install Dependencies
-        run: yarn install --frozen-lockfile
-
-      # 5. deploy-commands.js 스크립트를 실행하여 명령어 등록
-      - name: Register Discord Slash Commands
-        run: node deploy-commands.js
-        env:
-          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
-          DISCORD_CLIENT_ID: ${{ secrets.DISCORD_CLIENT_ID }}
-
-      # 6. GCP 서비스 계정 키(JSON)를 사용해 로그인
+      # 2. GCP 서비스 계정 키(JSON)를 사용해 로그인
       - name: Authenticate to Google Cloud
         uses: 'google-github-actions/auth@v2'
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      # 7. gcloud 명령어 사용 준비
+      # 3. gcloud 명령어 사용 준비
       - name: Set up Cloud SDK
         uses: 'google-github-actions/setup-gcloud@v2'
         with:
-          project_id: 'gen-lang-client-0683011321'
+          project_id: 'gen-lang-client-0683011321' # 네 프로젝트 ID
 
-      # 8. 이미지 빌드 및 푸시
+      # 4. 이미지 빌드 및 푸시 (Dockerfile이 빌드 및 설치를 모두 처리)
       - name: Build and Push Docker image
         run: |-
           gcloud builds submit --tag us-central1-docker.pkg.dev/gen-lang-client-0683011321/my-spring-repo/gemini-discord-bot
 
-      # 9. Cloud Run에 배포
+      # 5. Cloud Run에 배포
       - name: Deploy to Cloud Run
         run: |-
           gcloud run deploy gemini-discord-bot \
@@ -68,5 +46,5 @@ jobs:
             --memory=1Gi \
             --min-instances=1 \
             --no-cpu-throttling \
-            --set-env-vars="DISCORD_BOT_TOKEN=${{ secrets.DISCORD_BOT_TOKEN }},GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }},MONGODB_URI=${{ secrets.MONGODB_URI }},FLOWISE_ENDPOINT=${{ secrets.FLOWISE_ENDPOINT }},FLOWISE_API_KEY=${{ secrets.FLOWISE_API_KEY }},DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }},DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }},EQK_AUTH_KEY=${{ secrets.EQK_AUTH_KEY }},GOOGLE_SEARCH_API=${{ secrets.GOOGLE_SEARCH_API }},GOOGLE_SEARCH_ENGINE_ID=${{ secrets.GOOGLE_SEARCH_ENGINE_ID }},DISCORD_LOG_CHANNEL_ID=${{ secrets.DISCORD_LOG_CHANNEL_ID }},JWT_SECRET=${{ secrets.JWT_SECRET }},MY_DISCORD_USER_ID=${{ secrets.MY_DISCORD_USER_ID }}" \
+            --set-env-vars="COMMIT_SHA=${{ github.sha }},DISCORD_BOT_TOKEN=${{ secrets.DISCORD_BOT_TOKEN }},GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }},MONGODB_URI=${{ secrets.MONGODB_URI }},FLOWISE_ENDPOINT=${{ secrets.FLOWISE_ENDPOINT }},FLOWISE_API_KEY=${{ secrets.FLOWISE_API_KEY }},DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }},DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }},EQK_AUTH_KEY=${{ secrets.EQK_AUTH_KEY }},GOOGLE_SEARCH_API=${{ secrets.GOOGLE_SEARCH_API }},GOOGLE_SEARCH_ENGINE_ID=${{ secrets.GOOGLE_SEARCH_ENGINE_ID }},DISCORD_LOG_CHANNEL_ID=${{ secrets.DISCORD_LOG_CHANNEL_ID }},JWT_SECRET=${{ secrets.JWT_SECRET }},MY_DISCORD_USER_ID=${{ secrets.MY_DISCORD_USER_ID }}" \
             --allow-unauthenticated

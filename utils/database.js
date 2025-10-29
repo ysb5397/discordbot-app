@@ -26,6 +26,13 @@ const apiKeySchema = new mongoose.Schema({
 
 const ApiKey = mongoose.model('ApiKey', apiKeySchema);
 
+const deploymentStatusSchema = new mongoose.Schema({
+    commitSha: { type: String, required: true, unique: true }, // GitHub 커밋 해시
+    commandsRegistered: { type: Boolean, default: false }, // 명령어 등록 성공 여부
+    timestamp: { type: Date, default: Date.now }
+});
+
+const DeploymentStatus = mongoose.model('DeploymentStatus', deploymentStatusSchema);
 
 const Interaction = mongoose.model('Interaction', interactionSchema);
 
@@ -64,6 +71,7 @@ const reconnectDB = async () => {
 module.exports = {
     Interaction,
     ApiKey,
+    DeploymentStatus,
     connectDB,
     disconnectDB,
     reconnectDB,
