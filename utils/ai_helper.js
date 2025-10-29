@@ -41,16 +41,18 @@ async function buildGeminiPrompt(promptData, attachment) {
  * @param {object | null} attachment - Discord 첨부 파일 객체 (선택)
  * @param {string} sessionId - 세션 ID
  * @param {object} options - 추가 옵션 { client, interaction, task }
+ * @param {string} model - 사용할 AI 모델 ('gemini-2.5-flash' 또는 'gemini-2.5-pro')
+ * @param {number} tokenLimit - AI 응답의 최대 토큰 수
  * @yields {object} 스트리밍 상태 객체: { textChunk?: string, finalResponse?: { text: string, message: string | null }, error?: Error, isFallback?: boolean }
  */
-async function* getChatResponseStreamOrFallback(promptData, attachment, sessionId, { client, interaction, task = 'chat' }) {
+async function* getChatResponseStreamOrFallback(promptData, attachment, sessionId, { client, interaction, task = 'chat' }, model, tokenLimit) {
     let history = promptData.history || [];
     let currentPromptParts;
     let model;
 
     // --- 1. 모델 및 프롬프트 준비 ---
     try {
-        if (attachment) {
+        if (attachment || model === 'gemini-2.5-pro') {
             model = proModel; // 이미지 처리용 모델
             // buildGeminiPrompt가 attachment 처리 및 에러 throw
             currentPromptParts = await buildGeminiPrompt(promptData, attachment);
@@ -72,7 +74,7 @@ async function* getChatResponseStreamOrFallback(promptData, attachment, sessionI
             // temperature: 0.7, // 창의성 조절 (0 ~ 1)
             // topP: 0.9,       // 단어 선택 다양성 (0 ~ 1)
             // topK: 40,        // 고려할 단어 수
-            maxOutputTokens: 1000, // 최대 출력 토큰 제한
+            maxOutputTokens: tokenLimit, // 최대 출력 토큰 제한
         };
 
         const safetySettings = [ // 기본 안전 설정

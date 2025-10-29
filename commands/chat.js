@@ -81,7 +81,7 @@ async function handleMemoryFound(interaction, searchResults, startTime) {
 /**
  * getChatResponseStreamOrFallback 제너레이터를 사용하여 응답 처리
  */
-async function handleRegularConversation(interaction, startTime) {
+async function handleRegularConversation(interaction, startTime, model, tokenLimit) {
     const client = interaction.client;
     const userQuestion = interaction.options.getString('question');
     const sessionId = interaction.user.id;
@@ -155,7 +155,7 @@ async function handleRegularConversation(interaction, startTime) {
 
 
     try {
-        const stream = getChatResponseStreamOrFallback(promptData, attachment, sessionId, { client, interaction, task: 'chat' });
+        const stream = getChatResponseStreamOrFallback(promptData, attachment, sessionId, { client, interaction, task: 'chat' }, model, tokenLimit);
 
         // 스트림 처리 루프
         for await (const result of stream) {
@@ -219,9 +219,23 @@ module.exports = {
             InteractionContextType.PrivateChannel,
         ])
         .addStringOption(option =>
+            option.setName('model')
+                .setDescription('사용할 AI 모델을 선택합니다. (기본: Gemini 2.5 Flash)')
+                .setRequired(true)
+                .addChoices(
+                    { name: 'Gemini 2.5 Flash', value: 'gemini-2.5-flash' },
+                    { name: 'Gemini 2.5 Pro', value: 'gemini-2.5-pro' },
+                ))
+        .addStringOption(option =>
             option.setName('question')
                 .setDescription('AI에게 할 질문 또는 검색할 내용')
                 .setRequired(true))
+        .addIntegerOption(option =>
+            option.setName('tokenLimit')
+                .setDescription('AI 응답의 최대 토큰 수를 설정합니다. (기본: 1000)')
+                .setRequired(false)
+                .setMinValue(0)
+                .setMaxValue(1200))
         .addAttachmentOption(option =>
             option.setName('file')
                 .setDescription('AI에게 보여줄 파일을 첨부하세요 (이미지, 코드 등).')
@@ -230,7 +244,9 @@ module.exports = {
     async execute(interaction) {
         const startTime = Date.now();
         await interaction.deferReply();
+        const model = interaction.options.getString('model');
         const userQuestion = interaction.options.getString('question');
+        const tokenLimit = interaction.options.getInteger('tokenLimit') || 1000;
         const sessionId = interaction.user.id;
 
         const filter = await generateMongoFilter(userQuestion, sessionId);
@@ -239,7 +255,7 @@ module.exports = {
         if (searchResults.length > 0) {
             await handleMemoryFound(interaction, searchResults, startTime);
         } else {
-            await handleRegularConversation(interaction, startTime);
+            await handleRegularConversation(interaction, startTime, model, tokenLimit);
         }
     },
 };
