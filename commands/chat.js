@@ -249,12 +249,12 @@ module.exports = {
         const tokenLimit = interaction.options.getInteger('token_limit') || 1000;
         const sessionId = interaction.user.id;
 
-        const filter = await generateMongoFilter(userQuestion, sessionId);
-        const searchResults = await Interaction.find(filter).sort({ timestamp: -1 }).limit(5).lean();
-
-        if (searchResults.length > 0) {
+        try {
+            const filter = await generateMongoFilter(userQuestion, sessionId);
+            const searchResults = await Interaction.find(filter).sort({ timestamp: -1 }).limit(5).lean();
             await handleMemoryFound(interaction, searchResults, startTime);
-        } else {
+        } catch (error) {
+            // Mongo 필터 생성 또는 기억 검색 실패 시 일반 대화 처리로 강제 폴백
             await handleRegularConversation(interaction, startTime, selectedModel, tokenLimit);
         }
     },
