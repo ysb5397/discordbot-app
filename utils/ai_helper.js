@@ -219,27 +219,47 @@ async function generateMongoFilter(query, userId) {
     Respond ONLY with the raw JSON filter object. Do not include any other text or markdown formatting (like \`\`\`json).
     `;
 
-    const aiResponseJsonString = await callFlowise(prompt, userId, 'mongo-filter-gen');
+    let aiResponseJsonString = '{}';
+    try {
+        aiResponseJsonString = await callFlowise(prompt, userId, 'mongo-filter-gen');
+        console.log(`[DEBUG] generateMongoFilter AI Response: ${aiResponseJsonString}`);
+    } catch (aiError) {
+        console.error("Mongo 필터 생성 AI 호출 실패:", aiError);
+        throw new Error(`AI 호출에 실패하여 필터를 생성할 수 없습니다: ${aiError.message}`);
+    }
+
 
     try {
         const aiResponse = JSON.parse(aiResponseJsonString);
         let filterJsonString = aiResponse.text || '{}';
 
-        if (!filterJsonString.trim().startsWith('{')) {
-             const jsonMatch = filterJsonString.match(/\{.*\}/s);
-             if (jsonMatch) {
-                 filterJsonString = jsonMatch[0];
+        // JSON 문자열 추출 로직 강화
+        if (filterJsonString.trim().startsWith('{') && filterJsonString.trim().endsWith('}')) {
+             // 이미 JSON 형태면 그대로 사용
+        } else {
+             // ```json ... ``` 블록 추출 시도
+             const codeBlockMatch = filterJsonString.match(/```json\s*(\{.*\})\s*```/s);
+             if (codeBlockMatch && codeBlockMatch[1]) {
+                 filterJsonString = codeBlockMatch[1];
              } else {
-                 if(aiResponse.message) console.warn(`Mongo 필터 생성 AI가 JSON 대신 메시지 반환: ${aiResponse.message}`);
-                 throw new Error("AI 응답에서 유효한 JSON 필터 객체를 찾을 수 없습니다.");
+                 // 그냥 중괄호로 시작하는 부분 추출 시도
+                 const jsonMatch = filterJsonString.match(/\{.*\}/s);
+                 if (jsonMatch) {
+                     filterJsonString = jsonMatch[0];
+                 } else {
+                     if(aiResponse.message) console.warn(`Mongo 필터 생성 AI가 JSON 대신 메시지 반환: ${aiResponse.message}`);
+                     throw new Error(`AI 응답에서 유효한 JSON 필터 객체를 찾을 수 없습니다. 응답 내용: ${aiResponseJsonString.substring(0, 200)}...`);
+                 }
              }
         }
-        const filter = JSON.parse(filterJsonString);
+
+        const filter = JSON.parse(filterJsonString); // 여기서 실패할 수도 있음
         filter.userId = userId;
         return filter;
-    } catch (e) {
-        console.error("AI 생성 필터 파싱/처리 실패:", aiResponseJsonString, e);
-        throw new Error(`AI가 생성한 필터를 분석하는 데 실패했습니다: ${e.message}`);
+
+    } catch (parseError) {
+        console.error("AI 생성 필터 파싱/처리 실패:", aiResponseJsonString, parseError);
+        throw new Error(`AI가 생성한 필터를 분석하는 데 실패했습니다 (${parseError.message}). AI 응답: ${aiResponseJsonString.substring(0, 200)}...`);
     }
 }
 
