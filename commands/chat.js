@@ -81,7 +81,7 @@ async function handleMemoryFound(interaction, searchResults, startTime) {
 /**
  * getChatResponseStreamOrFallback 제너레이터를 사용하여 응답 처리
  */
-async function handleRegularConversation(interaction, startTime, model, tokenLimit) {
+async function handleRegularConversation(interaction, startTime, selectedModel, tokenLimit) {
     const client = interaction.client;
     const userQuestion = interaction.options.getString('question');
     const sessionId = interaction.user.id;
@@ -155,7 +155,7 @@ async function handleRegularConversation(interaction, startTime, model, tokenLim
 
 
     try {
-        const stream = getChatResponseStreamOrFallback(promptData, attachment, sessionId, { client, interaction, task: 'chat' }, model, tokenLimit);
+        const stream = getChatResponseStreamOrFallback(promptData, attachment, sessionId, { client, interaction, task: 'chat' }, selectedModel, tokenLimit);
 
         // 스트림 처리 루프
         for await (const result of stream) {
@@ -244,7 +244,7 @@ module.exports = {
     async execute(interaction) {
         const startTime = Date.now();
         await interaction.deferReply();
-        const model = interaction.options.getString('model');
+        const selectedModel = interaction.options.getString('model');
         const userQuestion = interaction.options.getString('question');
         const tokenLimit = interaction.options.getInteger('tokenLimit') || 1000;
         const sessionId = interaction.user.id;
@@ -255,7 +255,7 @@ module.exports = {
         if (searchResults.length > 0) {
             await handleMemoryFound(interaction, searchResults, startTime);
         } else {
-            await handleRegularConversation(interaction, startTime, model, tokenLimit);
+            await handleRegularConversation(interaction, startTime, selectedModel, tokenLimit);
         }
     },
 };

@@ -45,14 +45,14 @@ async function buildGeminiPrompt(promptData, attachment) {
  * @param {number} tokenLimit - AI 응답의 최대 토큰 수
  * @yields {object} 스트리밍 상태 객체: { textChunk?: string, finalResponse?: { text: string, message: string | null }, error?: Error, isFallback?: boolean }
  */
-async function* getChatResponseStreamOrFallback(promptData, attachment, sessionId, { client, interaction, task = 'chat' }, model, tokenLimit) {
+async function* getChatResponseStreamOrFallback(promptData, attachment, sessionId, { client, interaction, task = 'chat' }, selectedModel, tokenLimit) {
     let history = promptData.history || [];
     let currentPromptParts;
     let model;
 
     // --- 1. 모델 및 프롬프트 준비 ---
     try {
-        if (attachment || model === 'gemini-2.5-pro') {
+        if (attachment || selectedModel === 'gemini-2.5-pro') {
             model = proModel; // 이미지 처리용 모델
             // buildGeminiPrompt가 attachment 처리 및 에러 throw
             currentPromptParts = await buildGeminiPrompt(promptData, attachment);
