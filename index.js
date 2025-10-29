@@ -1,7 +1,7 @@
 const express = require('express');
 const fs = require('node:fs');
 const path = require('node:path');
-const { Client, GatewayIntentBits, Collection } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
 const dotenv = require('dotenv');
 const jwt = require('jsonwebtoken');
 const { connectDB, ApiKey, DeploymentStatus } = require('./utils/database');
