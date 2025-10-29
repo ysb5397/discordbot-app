@@ -46,7 +46,6 @@ module.exports = {
         ),
 
     async execute(interaction) {
-        
         const subcommand = interaction.options.getSubcommand();
 
         try {
@@ -114,11 +113,12 @@ module.exports = {
                 await interaction.editReply(`✅ 이벤트 "${name}"이(가) 성공적으로 삭제되었습니다!`);
             }
         } catch (error) {
-            console.error(`Error during /event ${subcommand}:`, error);
-            if (error.message.includes("Invalid time value")) {
-                return interaction.editReply("❌ 시간 형식이 잘못되었습니다. 'YYYY-MM-DD HH:MM' 형식으로 입력해주세요.");
+            if (error.message.includes("Invalid time value") || error.message.includes("Invalid date format")) {
+                await interaction.editReply("❌ 시간 형식이 잘못되었습니다. 'YYYY-MM-DD HH:MM' 형식으로 입력해주세요.");
+            } else {
+                console.error(`Error during /event ${subcommand}:`, error);
+                throw error;
             }
-            await interaction.editReply('❌ 명령을 처리하는 중 오류가 발생했습니다.');
         }
     },
 };

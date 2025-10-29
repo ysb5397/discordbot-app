@@ -67,10 +67,13 @@ module.exports = {
 
         } catch (error) {
             console.error('[/video] Error:', error);
+            
             if (error.message.includes('Request entity too large')) {
                 await interaction.editReply({ content: `❌ 영상 생성에는 성공했지만, 파일 크기가 너무 커서(25MB 이상) 디스코드에 업로드할 수 없어... 😥` });
+            } else if (error.message.includes('타임아웃되었습니다')) {
+                 await interaction.editReply({ content: `❌ ${error.message}` });
             } else {
-                await interaction.editReply({ content: `❌ 영상을 생성하는 중 오류가 발생했습니다.\n> ${error.message}` });
+                throw error;
             }
         }
     },

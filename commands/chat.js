@@ -58,79 +58,107 @@ async function handleRegularConversation(interaction) {
     const attachment = interaction.options.getAttachment('file');
     const botName = interaction.client.user.username;
 
-    const recentInteractions = await Interaction.find({ 
-        userId: sessionId, 
-        type: { $in: ['MESSAGE', 'MENTION'] } 
-    }).sort({ timestamp: -1 }).limit(10);
-    
-    const history = recentInteractions.reverse().flatMap(doc => {
-        const userMessage = typeof doc.content === 'string' ? doc.content : JSON.stringify(doc.content);
-        const userTurn = { role: 'user', content: userMessage };
-        if (doc.type === 'MENTION' && doc.botResponse) {
-            return [userTurn, { role: 'assistant', content: doc.botResponse }];
-        }
-        return userTurn;
-    });
-
-    const requestBody = {
-        question: userQuestion,
-        overrideConfig: { sessionId, vars: { bot_name: botName } },
-    };
-
-    if (history.length > 0) {
-        requestBody.history = history;
-    }
-
-    if (attachment) {
-        const response = await fetch(attachment.url);
-        if (!response.ok) throw new Error(`첨부파일을 가져오는 데 실패했습니다: ${response.statusText}`);
-        const imageBuffer = Buffer.from(await response.arrayBuffer());
-        requestBody.uploads = [{ data: imageBuffer.toString('base64'), type: 'file' }];
-    }
+    let aiResponseText;
 
     try {
-        // 1. 그냥 callFlowise 호출 (이제부턴 실패해도 Gemini가 응답해줌)
-        const aiResponseText = await callFlowise(requestBody, sessionId, 'chat-conversation');
+        const recentInteractions = await Interaction.find({ 
+            userId: sessionId, 
+            type: { $in: ['MESSAGE', 'MENTION'] } 
+        }).sort({ timestamp: -1 }).limit(10);
         
-        // 2. 무조건 성공할테니, 바로 JSON 파싱
+        const history = recentInteractions.reverse().flatMap(doc => {
+            const userMessage = typeof doc.content === 'string' ? doc.content : JSON.stringify(doc.content);
+            const userTurn = { role: 'user', content: userMessage };
+            if (doc.type === 'MENTION' && doc.botResponse) {
+                return [userTurn, { role: 'assistant', content: doc.botResponse }];
+            }
+            return userTurn;
+        });
+
+        const requestBody = {
+            question: userQuestion,
+            overrideConfig: { sessionId, vars: { bot_name: botName } },
+        };
+
+        if (history.length > 0) {
+            requestBody.history = history;
+        }
+
+        if (attachment) {
+            const response = await fetch(attachment.url);
+            if (!response.ok) throw new Error(`첨부파일을 가져오는 데 실패했습니다: ${response.statusText}`);
+            const imageBuffer = Buffer.from(await response.arrayBuffer());
+            requestBody.uploads = [{ data: imageBuffer.toString('base64'), type: 'file' }];
+        }
+
+        aiResponseText = await callFlowise(requestBody, sessionId, 'chat-conversation');
+        
         const aiResponse = JSON.parse(aiResponseText);
 
         let descriptionText = 'AI로부터 답변을 받지 못했습니다.';
-
-        if (typeof flowiseResponse.text === 'string') {
-            // 1. text가 문자열이면 그대로 사용
-            descriptionText = flowiseResponse.text;
-        } else if (flowiseResponse.text) {
-            // 2. text가 존재하는데 문자열이 아니면 (객체 등), JSON 문자열로 변환 (보기 좋게)
+        if (typeof aiResponse.text === 'string') {
+            descriptionText = aiResponse.text;
+        } else if (aiResponse.text) {
             try {
-                 descriptionText = '```json\n' + JSON.stringify(flowiseResponse.text, null, 2) + '\n```';
+                 descriptionText = '```json\n' + JSON.stringify(aiResponse.text, null, 2) + '\n```';
             } catch (stringifyError) {
-                 descriptionText = '[객체를 문자열로 변환 실패]'; // JSON 변환마저 실패하면
+                 descriptionText = '[객체를 문자열로 변환 실패]';
             }
         }
+    
+        const newChat = new Interaction({
+            interactionId: interaction.id,
+            channelId: interaction.channelId,
+            userId: sessionId,
+            userName: interaction.user.username,
+            type: 'MENTION',
+            content: userQuestion,
+            botResponse: descriptionText
+        });
+        await newChat.save();
+        console.log(`[Chat Command] '/chat' 대화 내용을 DB에 저장했습니다. (ID: ${interaction.id})`);
 
-        // 3. embed 만들기
+
         const replyEmbed = new EmbedBuilder()
-            .setColor(aiResponse.text.includes('Flowise 에이전트 연결에 실패') ? 0xFFA500 : 0x00FA9A) // (폴백이면 주황색)
+            .setColor(aiResponse.text.includes('Flowise 에이전트 연결에 실패') ? 0xFFA500 : 0x00FA9A)
             .setDescription(descriptionText)
             .setTimestamp()
             .setFooter({ text: '⚠️ Flowise 오류로 인해 Gemini Flash (Fallback)가 응답했습니다.' });
 
-        if (flowiseResponse.imageUrl) {
-            replyEmbed.setImage(flowiseResponse.imageUrl);
+        if (aiResponse.imageUrl) {
+            replyEmbed.setImage(aiResponse.imageUrl);
         }
 
         await interaction.editReply({ content: `<@${sessionId}>`, embeds: [replyEmbed] });
 
     } catch (error) {
+        
         if (error instanceof SyntaxError && error.message.includes('JSON')) {
             console.error(`[Chat Command] AI 응답 JSON 파싱 실패:`, aiResponseText);
-            await logToDiscord(interaction.client, 'ERROR', 'AI 응답을 해석(JSON 파싱)하는 데 실패했습니다.', interaction, error, 'handleRegularConversation');
-       } else {
+            await logToDiscord(interaction.client, 'ERROR', 'AI 응답을 해석(JSON 파싱)하는 데 실패했습니다.', interaction, error, aiResponseText);
+        } else {
             console.error(`[Chat Command] AI 응답 처리 중 오류:`, error);
             await logToDiscord(interaction.client, 'ERROR', 'AI 응답 처리 중 오류가 발생했습니다.', interaction, error, 'handleRegularConversation');
-       }
-       await interaction.editReply({ content: `<@${interaction.user.id}> 미안... 응답을 처리하다가 오류가 났어. 😭` }).catch(console.error);
+        }
+
+        try {
+            const errorInteraction = new Interaction({
+                interactionId: interaction.id,
+                channelId: interaction.channelId,
+                userId: sessionId,
+                userName: interaction.user.username,
+                type: 'ERROR',
+                content: `/chat 질문: ${userQuestion}`,
+                botResponse: error.message 
+            });
+            await errorInteraction.save();
+            console.log(`[Chat Command] '/chat' 오류 내역을 DB에 저장했습니다. (ID: ${interaction.id})`);
+        } catch (dbError) {
+             console.error(`[Chat Command] DB에 오류 내역 저장조차 실패...`, dbError);
+             await logToDiscord(interaction.client, 'ERROR', '오류가 발생한 상호작용을 DB에 기록하는 데에도 실패했습니다.', interaction, dbError, 'handleRegularConversation_CATCH');
+        }
+
+        await interaction.editReply({ content: `<@${interaction.user.id}> 미안... 응답을 처리하다가 오류가 났어. 😭\n> ${error.message}` }).catch(console.error);
     }
 }
 
@@ -157,18 +185,13 @@ module.exports = {
         const userQuestion = interaction.options.getString('question');
         const sessionId = interaction.user.id;
 
-        try {
-            const filter = await generateMongoFilter(userQuestion, sessionId);
-            const searchResults = await Interaction.find(filter).sort({ timestamp: -1 }).limit(5);
+        const filter = await generateMongoFilter(userQuestion, sessionId);
+        const searchResults = await Interaction.find(filter).sort({ timestamp: -1 }).limit(5);
 
-            if (searchResults.length > 0) {
-                await handleMemoryFound(interaction, searchResults);
-            } else {
-                await handleRegularConversation(interaction);
-            }
-        } catch (error) {
-            console.error(`'/chat' 명령어 처리 중 오류 발생:`, error);
-            await interaction.editReply({ content: `<@${sessionId}> 죄송합니다, 요청을 처리하는 중에 예상치 못한 오류가 발생했어요.` }).catch(console.error);
+        if (searchResults.length > 0) {
+            await handleMemoryFound(interaction, searchResults);
+        } else {
+            await handleRegularConversation(interaction);
         }
     },
 };

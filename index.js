@@ -1,7 +1,7 @@
 const express = require('express');
 const fs = require('node:fs');
 const path = require('node:path');
-const { Client, GatewayIntentBits, Collection, REST, Routes,ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, PermissionsBitField } = require('discord.js');
+const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const dotenv = require('dotenv');
 const jwt = require('jsonwebtoken');
 const { connectDB, ApiKey } = require('./utils/database');
@@ -9,7 +9,6 @@ const { callFlowise } = require('./utils/ai_helper');
 const { logToDiscord } = require('./utils/catch_log');
 
 const jwtSecret = process.env.JWT_SECRET;
-let commandRegistrationChecked = false;
 
 dotenv.config();
 
@@ -259,88 +258,9 @@ const startBot = async () => {
         // 봇 로그인
         await client.login(process.env.DISCORD_BOT_TOKEN);
         console.log(`✅ ${client.user.tag}으로 성공적으로 로그인했습니다!`);
-        
-        const logChannelId = process.env.DISCORD_LOG_CHANNEL_ID; // 로그 채널 ID 가져오기
-        let logChannel;
-        if (logChannelId) {
-            try {
-                logChannel = await client.channels.fetch(logChannelId);
-            } catch (e) {
-                console.error(`[시작] 로그 채널(ID: ${logChannelId})을 찾을 수 없습니다.`);
-            }
-        }
-
-        if (!commandRegistrationChecked && logChannel && logChannel.isTextBased()) {
-            // 1. 확인 메시지 + 버튼 만들기
-            const row = new ActionRowBuilder()
-                .addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('confirm_register_commands')
-                        .setLabel('예 (재등록)')
-                        .setStyle(ButtonStyle.Success),
-                    new ButtonBuilder()
-                        .setCustomId('cancel_register_commands')
-                        .setLabel('아니요 (건너뛰기)')
-                        .setStyle(ButtonStyle.Danger)
-                );
-
-            const confirmMsg = await logChannel.send({
-                content: `✨ 봇이 시작되었습니다! Discord 슬래시 명령어를 새로 등록할까요? (30초 후 자동 취소)`,
-                components: [row]
-            });
-
-            // 2. 버튼 클릭 기다리기 (30초 제한)
-            try {
-                const interaction = await confirmMsg.awaitMessageComponent({
-                    filter: i => i.member.permissions.has(PermissionsBitField.Flags.Administrator),
-                    componentType: ComponentType.Button,
-                    time: 30000 // 30초
-                });
-
-                if (interaction.customId === 'confirm_register_commands') {
-                    await interaction.update({ content: '👌 알겠습니다! 관리자 권한으로 명령어 등록을 시작합니다...', components: [] });
-                    const commands = [];
-                    const commandsPath = path.join(__dirname, 'commands');
-                    const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
-
-                    for (const file of commandFiles) {
-                        const command = require(`./commands/${file}`);
-                        if (command.data) { // data 속성만 확인해도 충분
-                            commands.push(command.data.toJSON());
-                        }
-                    }
-
-                    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
-
-                    try {
-                        const data = await rest.put(
-                            Routes.applicationCommands(process.env.DISCORD_CLIENT_ID),
-                            { body: commands },
-                        );
-                        console.log(`(/) 관리자가 ${data.length}개의 슬래시 명령어를 성공적으로 등록했습니다.`);
-                    } catch (error) {
-                        console.error('(/) 슬래시 명령어 등록 중 오류 발생:', error);
-                    }
-
-                } else { // 'cancel_register_commands' 클릭 시
-                    await interaction.update({ content: '👌 알겠습니다. 명령어 등록을 건너뛰었습니다.', components: [] });
-                    console.log('(/) 관리자가 명령어 등록을 건너뛰었습니다.');
-                }
-
-            } catch (err) { // 타임아웃 또는 다른 에러
-                await confirmMsg.edit({ content: '⏰ 시간 초과 또는 오류로 명령어 등록이 취소되었습니다.', components: [] });
-                console.log('(/) 명령어 등록 확인 시간 초과 또는 오류 발생.');
-            }
-            commandRegistrationChecked = true;
-
-        } else {
-            console.warn('(/) 이미 등록이 되었거나 로그 채널을 찾을 수 없어 명령어 등록 확인을 건너뜁니다. (자동 등록 안 함)');
-        }
-
         console.log('✅ 봇이 성공적으로 시작되었습니다!');
 
     } catch (error) {
-        // 3. DB 연결이나 봇 로그인 실패 시
         console.error("!!! 봇 시작 중 치명적인 오류 발생 !!!", error);
         throw error;
     }

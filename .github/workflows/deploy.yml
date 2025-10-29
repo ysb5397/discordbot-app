@@ -22,30 +22,42 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22' # Dockerfile 버전에 맞춤
+          node-version: '22'
 
-      # 3. 봇의 의존성 패키지 설치
+      # 3. (신규) C++ 빌드 도구 설치 (네이티브 모듈 컴파일용)
+      - name: Install Build Essentials
+        run: sudo apt-get update && sudo apt-get install -y python3 build-essential
+      # ---------------------------------
+
+      # 4. 봇의 의존성 패키지 설치
       - name: Install Dependencies
         run: yarn install --frozen-lockfile
 
-      # 4. GCP 서비스 계정 키(JSON)를 사용해 로그인
+      # 5. deploy-commands.js 스크립트를 실행하여 명령어 등록
+      - name: Register Discord Slash Commands
+        run: node deploy-commands.js
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_CLIENT_ID: ${{ secrets.DISCORD_CLIENT_ID }}
+
+      # 6. GCP 서비스 계정 키(JSON)를 사용해 로그인
       - name: Authenticate to Google Cloud
         uses: 'google-github-actions/auth@v2'
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      # 5. gcloud 명령어 사용 준비
+      # 7. gcloud 명령어 사용 준비
       - name: Set up Cloud SDK
         uses: 'google-github-actions/setup-gcloud@v2'
         with:
-          project_id: 'gen-lang-client-0683011321' # 네 프로젝트 ID
+          project_id: 'gen-lang-client-0683011321'
 
-      # 6. 이미지 빌드 및 푸시
+      # 8. 이미지 빌드 및 푸시
       - name: Build and Push Docker image
         run: |-
           gcloud builds submit --tag us-central1-docker.pkg.dev/gen-lang-client-0683011321/my-spring-repo/gemini-discord-bot
 
-      # 7. Cloud Run에 배포 (모든 최신 env var 포함)
+      # 9. Cloud Run에 배포
       - name: Deploy to Cloud Run
         run: |-
           gcloud run deploy gemini-discord-bot \
