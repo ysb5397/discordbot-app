@@ -231,7 +231,7 @@ module.exports = {
                 .setDescription('AI에게 할 질문 또는 검색할 내용')
                 .setRequired(true))
         .addIntegerOption(option =>
-            option.setName('tokenLimit')
+            option.setName('token_limit')
                 .setDescription('AI 응답의 최대 토큰 수를 설정합니다. (기본: 1000)')
                 .setRequired(false)
                 .setMinValue(0)
@@ -246,7 +246,7 @@ module.exports = {
         await interaction.deferReply();
         const selectedModel = interaction.options.getString('model');
         const userQuestion = interaction.options.getString('question');
-        const tokenLimit = interaction.options.getInteger('tokenLimit') || 1000;
+        const tokenLimit = interaction.options.getInteger('token_limit') || 1000;
         const sessionId = interaction.user.id;
 
         const filter = await generateMongoFilter(userQuestion, sessionId);
