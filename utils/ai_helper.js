@@ -1,6 +1,6 @@
 // utils/ai_helper.js
 
-const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require('@google/generative-ai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { GoogleGenAI, Modality } = require('@google/genai'); // Live API용
 const { logToDiscord } = require('./catch_log.js');
 
@@ -76,15 +76,7 @@ async function* getChatResponseStreamOrFallback(promptData, attachment, sessionI
             // topK: 40,        // 고려할 단어 수
             maxOutputTokens: tokenLimit, // 최대 출력 토큰 제한
         };
-
-        const safetySettings = [ // 기본 안전 설정
-            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-            { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-            { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-        ];
-
-        const chat = model.startChat({ history, generationConfig, safetySettings });
+        const chat = model.startChat({ history, generationConfig });
         const result = await chat.sendMessageStream(currentPromptParts);
 
         let fullResponseText = "";
