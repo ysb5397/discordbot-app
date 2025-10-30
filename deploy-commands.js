@@ -9,6 +9,10 @@ dotenv.config();
 const { DISCORD_BOT_TOKEN, DISCORD_CLIENT_ID, DISCORD_GUILD_ID } = process.env;
 const rest = new REST({ version: '10' }).setToken(DISCORD_BOT_TOKEN);
 
+const commands = [];
+const commandsPath = path.join(__dirname, 'commands');
+const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+
 /**
  * (index.js가 호출할 함수)
  * DB 플래그를 확인하여 글로벌 명령어만을 갱신하는 함수
@@ -34,29 +38,8 @@ async function registerGlobalCommands(commitSha) {
 
         // 2. 등록되지 않았다면 명령어 로드 및 등록 시도
         console.log(`(/) 현재 커밋(${commitSha.substring(0, 7)})에 대한 [글로벌] 명령어 등록을 시작합니다...`);
-        
-        const commands = [];
-        const commandsPath = path.join(__dirname, 'commands');
-        const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
 
-        for (const file of commandFiles) {
-            const filePath = path.join(commandsPath, file);
-            const command = require(filePath);
-            if ('data' in command && 'execute' in command) {
-                commands.push(command.data.toJSON());
-            } else {
-                console.log(`[경고] ${filePath} 명령어에 필요한 "data" 또는 "execute" 속성이 없습니다.`);
-            }
-        }
-
-        console.log(`(/) ${commands.length}개의 명령어를 [글로벌]로 등록 시도 중...`);
-        
-        await rest.put(
-            Routes.applicationCommands(DISCORD_CLIENT_ID), // 글로벌로 등록
-            { body: commands },
-        );
-        
-        console.log(`(/) ${commands.length}개의 [글로벌] 명령어 등록 성공.`);
+        await addAllCommands(commands, commandFiles);
 
         // 3. 성공 시 DB에 상태 업데이트 (upsert 사용)
         await DeploymentStatus.findOneAndUpdate(
@@ -104,6 +87,27 @@ async function cleanAllCommands() {
     }
 }
 
+async function addAllCommands(commands, commandFiles) {
+for (const file of commandFiles) {
+        const filePath = path.join(commandsPath, file);
+        const command = require(filePath);
+        if ('data' in command && 'execute' in command) {
+            commands.push(command.data.toJSON());
+        } else {
+            console.log(`[경고] ${filePath} 명령어에 필요한 "data" 또는 "execute" 속성이 없습니다.`);
+        }
+    }
+
+    console.log(`(/) ${commands.length}개의 명령어를 [글로벌]로 등록 시도 중...`);
+    
+    await rest.put(
+        Routes.applicationCommands(DISCORD_CLIENT_ID), // 글로벌로 등록
+        { body: commands },
+    );
+    
+    console.log(`(/) ${commands.length}개의 [글로벌] 명령어 등록 성공.`);
+}
+
 // --- 이 파일을 `require`할 땐 이 함수만 내보냄 ---
 module.exports = {
     registerGlobalCommands
@@ -115,10 +119,11 @@ if (require.main === module) {
     console.log('현재 꼬여있는 [글로벌] 및 [길드] 명령어를 모두 청소합니다...');
     
     // DB 연결이 필요할 수 있으므로, connectDB를 임포트해서 실행
-    const { connectDB, disconnectDB } = require('./utils/database');
+    const { connectDB } = require('./utils/database');
     (async () => {
-        await connectDB(); // DB가 필요한 작업은 아니지만, 혹시 모르니 연결
         await cleanAllCommands();
-        await disconnectDB(); // DB 연결 종료
+        await addAllCommands(commands, commandFiles);
+        await connectDB();
+        console.log('DB 연결 완료. 모든 명령어 청소 및 재등록이 완료되었습니다.');
     })();
 }
