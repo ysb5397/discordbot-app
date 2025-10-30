@@ -1,12 +1,13 @@
 const express = require('express');
 const fs = require('node:fs');
 const path = require('node:path');
-const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, } = require('discord.js');
 const dotenv = require('dotenv');
 const jwt = require('jsonwebtoken');
-const { connectDB, ApiKey, DeploymentStatus } = require('./utils/database');
+const { connectDB, ApiKey } = require('./utils/database');
 const { callFlowise } = require('./utils/ai_helper');
 const { logToDiscord } = require('./utils/catch_log');
+const { registerGlobalCommands } = require('./deploy-commands.js');
 
 const jwtSecret = process.env.JWT_SECRET;
 
@@ -249,81 +250,6 @@ app.post('/api/chat', authenticateApiKey, verifyJwt, async (req, res) => {
     }
 });
 
-/**
- * DB 플래그를 확인하여 길드 명령어를 갱신하는 함수
- */
-async function registerGuildCommandsIfNeeded() {
-    const commitSha = process.env.COMMIT_SHA; // CI/CD에서 주입할 커밋 해시
-    if (!commitSha) {
-        console.warn('(/) COMMIT_SHA 환경 변수가 없어 명령어 등록 상태 확인을 건너<0xEB><0x9B><0x81>니다. 로컬 개발 환경일 수 있습니다.');
-        return;
-    }
-
-    try {
-        // 1. 현재 커밋에 대해 명령어가 이미 등록되었는지 DB 확인
-        const status = await DeploymentStatus.findOne({ commitSha: commitSha });
-
-        if (status && status.commandsRegistered) {
-            console.log(`(/) 현재 커밋(${commitSha.substring(0, 7)})에 대한 명령어는 이미 등록되었습니다. 건너<0xEB><0x9B><0x81>니다.`);
-            return;
-        }
-
-        // 2. 등록되지 않았다면 등록 시도
-        console.log(`(/) 현재 커밋(${commitSha.substring(0, 7)})에 대한 명령어 등록을 시작합니다...`);
-        await registerGuildCommands(commitSha);
-
-    } catch (error) {
-        console.error(`(/) 명령어 등록 상태 확인/처리 중 오류 발생 (Commit: ${commitSha}):`, error);
-    }
-}
-
-/**
- * 실제 명령어 등록 로직 (DB 업데이트 포함)
- * @param {string} commitSha - 현재 배포의 커밋 해시
- */
-async function registerGuildCommands(commitSha) {
-    const { DISCORD_BOT_TOKEN, DISCORD_CLIENT_ID, DISCORD_GUILD_ID } = process.env;
-    if (!DISCORD_CLIENT_ID || !DISCORD_GUILD_ID) {
-        throw new Error('CLIENT_ID 또는 GUILD_ID가 설정되지 않았습니다.');
-    }
-
-    try {
-        const commands = [];
-        const commandsPath = path.join(__dirname, 'commands');
-        const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
-
-        for (const file of commandFiles) {
-            const command = require(`./commands/${file}`);
-            if (command.data) {
-                commands.push(command.data.toJSON());
-            }
-        }
-
-        const rest = new REST({ version: '10' }).setToken(DISCORD_BOT_TOKEN);
-        
-        console.log(`(/) ${commands.length}개의 명령어를 '${DISCORD_GUILD_ID}' 길드에 등록 시도 중...`);
-        
-        await rest.put(
-            Routes.applicationGuildCommands(DISCORD_CLIENT_ID, DISCORD_GUILD_ID),
-            { body: commands },
-        );
-        
-        console.log(`(/) ${commands.length}개의 길드 명령어 등록 성공.`);
-
-        // 3. 성공 시 DB에 상태 업데이트 (upsert 사용)
-        await DeploymentStatus.findOneAndUpdate(
-            { commitSha: commitSha },
-            { $set: { commandsRegistered: true, timestamp: new Date() } },
-            { upsert: true, new: true }
-        );
-        console.log(`(/) DB에 명령어 등록 완료 상태를 기록했습니다 (Commit: ${commitSha.substring(0, 7)}).`);
-
-    } catch (error) {
-        console.error('(/) 명령어 등록 실패:', error);
-        throw error;
-    }
-}
-
 const startBot = async () => {
     try {
         // 1. DB 연결
@@ -333,10 +259,8 @@ const startBot = async () => {
         // 2. 봇 로그인
         await client.login(process.env.DISCORD_BOT_TOKEN);
         console.log(`✅ ${client.user.tag}으로 성공적으로 로그인했습니다!`);
-        
-        // 3. DB 플래그 확인 후 필요 시 명령어 등록
-        await registerGuildCommandsIfNeeded();
 
+        await registerGlobalCommands(process.env.COMMIT_SHA);
         console.log('✅ 봇이 성공적으로 시작되었습니다!');
 
     } catch (error) {
