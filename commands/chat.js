@@ -250,7 +250,7 @@ module.exports = {
         const sessionId = interaction.user.id;
 
         try {
-            const filter = await generateMongoFilter(userQuestion, sessionId);
+            const filter = await generateMongoFilter(userQuestion, sessionId, interaction);
             const searchResults = await Interaction.find(filter).sort({ timestamp: -1 }).limit(5).lean();
             await handleMemoryFound(interaction, searchResults, startTime);
         } catch (error) {

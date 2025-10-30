@@ -175,6 +175,11 @@ async function callFlowise(prompt, sessionId, task, client = null, interaction =
 
         if (!response.ok) {
             const errorBody = await response.text();
+            if (client && interaction) {
+                logToDiscord(client, 'WARN', `Flowise API 호출 실패 ('${task}'): ${response.status}`, interaction, new Error(errorBody), `callFlowise/${task}`);
+            } else if (client) {
+                logToDiscord(client, 'WARN', `Flowise API 호출 실패 ('${task}'): ${response.status}`, null, new Error(errorBody), `callFlowise/${task}`);
+            }
             throw new Error(`Flowise API 호출 실패 ('${task}'): ${response.status} ${response.statusText} - ${errorBody}`);
         }
 
@@ -184,6 +189,11 @@ async function callFlowise(prompt, sessionId, task, client = null, interaction =
             const aiResponse = await response.json();
             if (!aiResponse.hasOwnProperty('message')) aiResponse.message = null;
             if (!aiResponse.hasOwnProperty('text')) aiResponse.text = "";
+
+            if (client) {
+                logToDiscord(client, 'INFO', `Flowise 폴백 ('${task}') JSON 응답 수신`, interaction, null, `callFlowise/${task}`);
+            }
+
             logToDiscord(client, 'INFO', `Flowise 폴백 ('${task}') JSON 응답 수신`, interaction, null, `callFlowise/${task}`);
             return JSON.stringify(aiResponse);
         } else {
@@ -194,8 +204,11 @@ async function callFlowise(prompt, sessionId, task, client = null, interaction =
 
     } catch (flowiseError) {
         console.error(`[Flowise Fallback Error] ('${task}') ${flowiseError.message}`);
-        logToDiscord(client, 'ERROR', `Flowise 폴백 ('${task}') 호출 실패`, interaction, flowiseError, `callFlowise/${task}`);
         
+        if (client) {
+            logToDiscord(client, 'ERROR', `Flowise 폴백 ('${task}') 호출 실패`, interaction, flowiseError, `callFlowise/${task}`);
+        }
+
         return JSON.stringify({
             text: "",
             message: `미안... Gemini 연결 실패 후 Flowise 폴백도 실패했어... 😭 (${flowiseError.message})`
@@ -261,8 +274,8 @@ async function generateMongoFilter(query, userId) {
 
     let aiResponseJsonString = '{}';
     try {
-        aiResponseJsonString = await callFlowise(prompt, userId, 'mongo-filter-gen');
-        console.log(`[DEBUG] generateMongoFilter AI Response: ${aiResponseJsonString}`);
+        const client = interaction ? interaction.client : null;
+        aiResponseJsonString = await callFlowise(prompt, userId, 'mongo-filter-gen', client, interaction);
     } catch (aiError) {
         console.error("Mongo 필터 생성 AI 호출 실패:", aiError);
         throw new Error(`AI 호출에 실패하여 필터를 생성할 수 없습니다: ${aiError.message}`);

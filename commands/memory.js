@@ -39,7 +39,7 @@ module.exports = {
         await interaction.deferReply({ ephemeral: true });
 
         
-        const filter = await generateMongoFilter(query, userId);
+        const filter = await generateMongoFilter(query, userId, interaction);
         const results = await Interaction.find(filter).sort({ timestamp: -1 }).limit(10);
 
         if (results.length === 0) {
