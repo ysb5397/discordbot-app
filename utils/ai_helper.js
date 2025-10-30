@@ -175,6 +175,11 @@ async function callFlowise(prompt, sessionId, task, client = null, interaction =
 
         if (!response.ok) {
             const errorBody = await response.text();
+            if (client && interaction) {
+                logToDiscord(client, 'WARN', `Flowise API 호출 실패 ('${task}'): ${response.status}`, interaction, new Error(errorBody), `callFlowise/${task}`);
+            } else if (client) {
+                logToDiscord(client, 'WARN', `Flowise API 호출 실패 ('${task}'): ${response.status}`, null, new Error(errorBody), `callFlowise/${task}`);
+            }
             throw new Error(`Flowise API 호출 실패 ('${task}'): ${response.status} ${response.statusText} - ${errorBody}`);
         }
 
@@ -184,6 +189,11 @@ async function callFlowise(prompt, sessionId, task, client = null, interaction =
             const aiResponse = await response.json();
             if (!aiResponse.hasOwnProperty('message')) aiResponse.message = null;
             if (!aiResponse.hasOwnProperty('text')) aiResponse.text = "";
+
+            if (client) {
+                logToDiscord(client, 'INFO', `Flowise 폴백 ('${task}') JSON 응답 수신`, interaction, null, `callFlowise/${task}`);
+            }
+
             logToDiscord(client, 'INFO', `Flowise 폴백 ('${task}') JSON 응답 수신`, interaction, null, `callFlowise/${task}`);
             return JSON.stringify(aiResponse);
         } else {
@@ -194,8 +204,11 @@ async function callFlowise(prompt, sessionId, task, client = null, interaction =
 
     } catch (flowiseError) {
         console.error(`[Flowise Fallback Error] ('${task}') ${flowiseError.message}`);
-        logToDiscord(client, 'ERROR', `Flowise 폴백 ('${task}') 호출 실패`, interaction, flowiseError, `callFlowise/${task}`);
         
+        if (client) {
+            logToDiscord(client, 'ERROR', `Flowise 폴백 ('${task}') 호출 실패`, interaction, flowiseError, `callFlowise/${task}`);
+        }
+
         return JSON.stringify({
             text: "",
             message: `미안... Gemini 연결 실패 후 Flowise 폴백도 실패했어... 😭 (${flowiseError.message})`
@@ -203,26 +216,66 @@ async function callFlowise(prompt, sessionId, task, client = null, interaction =
     }
 }
 
-async function generateMongoFilter(query, userId) {
+async function generateMongoFilter(query, userId, interaction = null) {
     const prompt = `
-    You are a MongoDB query filter generator. A user wants to find an entry in their interaction history.
-    Based on their request, create a JSON filter for a MongoDB 'find' operation.
+    You are an expert MongoDB query filter generator. Your task is to analyze a user's natural language request and generate a valid JSON filter object for a MongoDB 'find' operation.
 
-    - The user's ID is: "${userId}"
-    - The user's natural language query is: "${query}"
-    - The current date is: "${new Date().toISOString()}"
+    **--- ⚡️ VERY STRICT OUTPUT RULES ---**
+    1.  Your **entire response MUST be a valid JSON object**.
+    2.  Do NOT include any explanations, comments, greetings, or markdown (like \`\`\`json\`).
+    3.  Do NOT include the 'userId' field in the filter. The calling system adds this automatically.
+    4.  For text matching, use the '$regex' operator with '$options: "i"'.
+    5.  For time-related queries (e.g., "yesterday", "last week", "October"), use the 'timestamp' field with '$gte' and/or '$lt'.
 
-    - The schema has these fields: 'userId', 'type', 'content', 'timestamp', 'channelId'.
-    - The 'type' can be 'MESSAGE', 'MENTION', or 'EARTHQUAKE'. Search all these types unless specified otherwise.
-    - For text matching, use the '$regex' operator with '$options: "i"' for case-insensitivity.
+    **--- 📖 Schema Information (User-searchable fields) ---**
+    - content: (String) The text content of the message.
+    - type: (String) Can be 'MESSAGE', 'MENTION', 'EARTHQUAKE'.
+    - timestamp: (ISODate) The time the interaction was saved.
+    - channelId: (String) The ID of the channel.
 
-    Respond ONLY with a valid JSON object representing the MongoDB filter. Do not include any other text, explanations, or markdown formatting.
+    **--- ✍️ Examples ---**
+
+    [Request]: "yesterday's pizza talk"
+    [Current Time]: "2025-10-30T08:30:00.000Z"
+    [Your Response]:
+    {
+      "$and": [
+        { "content": { "$regex": "pizza", "$options": "i" } },
+        { "timestamp": { "$gte": "2025-10-29T00:00:00.000Z", "$lt": "2025-10-30T00:00:00.000Z" } }
+      ]
+    }
+
+    [Request]: "images from last week, not messages"
+    [Current Time]: "2025-10-30T08:30:00.000Z"
+    [Your Response]:
+    {
+      "$and": [
+        { "content": { "$regex": "image", "$options": "i" } },
+        { "type": { "$ne": "MESSAGE" } },
+        { "timestamp": { "$gte": "2025-10-20T00:00:00.000Z", "$lt": "2025-10-27T00:00:00.000Z" } }
+      ]
+    }
+
+    [Request]: "earthquake"
+    [Current Time]: "2025-10-30T08:30:00.000Z"
+    [Your Response]:
+    {
+      "type": "EARTHQUAKE"
+    }
+
+    **--- 🚀 Current Task ---**
+
+    - User (for context only): "${userId}"
+    - User's natural language query: "${query}"
+    - Current date (ISO): "${new Date().toISOString()}"
+
+    Respond ONLY with the valid JSON object.
     `;
 
     let aiResponseJsonString = '{}';
     try {
-        aiResponseJsonString = await callFlowise(prompt, userId, 'mongo-filter-gen');
-        console.log(`[DEBUG] generateMongoFilter AI Response: ${aiResponseJsonString}`);
+        const client = interaction ? interaction.client : null;
+        aiResponseJsonString = await callFlowise(prompt, userId, 'mongo-filter-gen', client, interaction);
     } catch (aiError) {
         console.error("Mongo 필터 생성 AI 호출 실패:", aiError);
         throw new Error(`AI 호출에 실패하여 필터를 생성할 수 없습니다: ${aiError.message}`);

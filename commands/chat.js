@@ -2,80 +2,9 @@
 
 const { SlashCommandBuilder, InteractionContextType } = require('discord.js');
 const { Interaction } = require('../utils/database.js');
-const { generateMongoFilter, getChatResponseStreamOrFallback } = require('../utils/ai_helper.js');
+const { getChatResponseStreamOrFallback } = require('../utils/ai_helper.js');
 const { logToDiscord } = require('../utils/catch_log.js');
 const { createAiResponseEmbed } = require('../utils/embed_builder.js');
-
-
-function formatMemoryContent(doc) {
-    let contentText = '';
-    if (typeof doc.content === 'string') {
-        contentText = doc.content;
-    } else if (typeof doc.content === 'object' && doc.content !== null) {
-        if (doc.type === 'EARTHQUAKE' && doc.content.eqPt) {
-            contentText = `[지진] ${doc.content.eqPt} (규모 ${doc.content.magMl})`;
-        } else {
-            try { contentText = JSON.stringify(doc.content); } catch { contentText = '[내용 표시 불가]'; }
-        }
-    } else { contentText = String(doc.content || '내용 없음'); }
-    const maxLength = 100;
-    return contentText.length > maxLength ? contentText.substring(0, maxLength - 3) + '...' : contentText;
-}
-
-async function handleMemoryFound(interaction, searchResults, startTime) {
-    const client = interaction.client;
-    const userQuestion = interaction.options.getString('question');
-    const sessionId = interaction.user.id;
-    let aiComment = '';
-    let isFallbackComment = false;
-    try {
-        const commentPrompt = `사용자가 "${userQuestion}" 라고 질문해서 관련 기억을 찾았어. 사용자가 찾던 기억이 맞을 것 같다는 뉘앙스로 짧고 자연스러운 코멘트를 한국어로 해줘.`;
-
-        const { callFlowise } = require('../utils/ai_helper.js'); // 임시 require
-        const aiResponseText = await callFlowise(commentPrompt, sessionId, 'memory-comment', client, interaction);
-        try {
-            const aiResponse = JSON.parse(aiResponseText);
-            aiComment = aiResponse.text || '';
-            if (aiResponse.message) {
-                console.log(`[/chat memory comment] AI 메시지: ${aiResponse.message}`);
-                logToDiscord(client, 'INFO', `기억 코멘트 AI 메시지: ${aiResponse.message}`, interaction, null, 'handleMemoryFound');
-                if (aiResponse.message.includes('Flowise 에이전트 연결에 실패')) isFallbackComment = true;
-            }
-        } catch (parseError) {
-            console.error(`[/chat memory comment] AI 코멘트 파싱 실패:`, aiResponseText, parseError);
-            logToDiscord(client, 'WARN', '기억 검색 코멘트 AI 응답 파싱 실패', interaction, parseError, 'handleMemoryFound');
-            aiComment = aiResponseText;
-        }
-    } catch (commentError) {
-        console.error(`[/chat memory comment] AI 코멘트 생성 실패:`, commentError);
-        logToDiscord(client, 'WARN', '기억 검색 코멘트 생성 실패', interaction, commentError, 'handleMemoryFound');
-    }
-
-    const description = searchResults.map((doc, index) => {
-        const content = formatMemoryContent(doc);
-        const messageLink = doc.channelId && interaction.guildId
-            ? `https://discord.com/channels/${interaction.guildId}/${doc.channelId}/${doc.interactionId}`
-            : '(메시지 링크는 서버 채널에서만 가능)';
-        const timestamp = new Date(doc.timestamp).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
-        return `**${index + 1}.** ${messageLink.startsWith('http') ? `[메시지 바로가기](${messageLink})` : messageLink} "${content}"\n*(${timestamp})*`;
-    }).join('\n\n');
-
-    const endTime = Date.now();
-    const duration = endTime - startTime;
-
-    const embedData = {
-        title: '혹시 이 기억들을 찾고 있었어? 🤔',
-        description: description,
-        footerPrefix: '기억 검색 완료',
-        duration: duration,
-        user: interaction.user,
-        fields: aiComment ? [{ name: "AI의 코멘트", value: aiComment.substring(0, 1024) }] : undefined,
-        isFallback: isFallbackComment
-    };
-    const embed = createAiResponseEmbed(embedData);
-    embed.setColor(0xFFD700);
-    await interaction.editReply({ content: `<@${sessionId}>`, embeds: [embed] });
-}
 
 
 /**
@@ -244,18 +173,9 @@ module.exports = {
     async execute(interaction) {
         const startTime = Date.now();
         await interaction.deferReply();
+        
         const selectedModel = interaction.options.getString('model');
-        const userQuestion = interaction.options.getString('question');
         const tokenLimit = interaction.options.getInteger('token_limit') || 1000;
-        const sessionId = interaction.user.id;
-
-        try {
-            const filter = await generateMongoFilter(userQuestion, sessionId);
-            const searchResults = await Interaction.find(filter).sort({ timestamp: -1 }).limit(5).lean();
-            await handleMemoryFound(interaction, searchResults, startTime);
-        } catch (error) {
-            // Mongo 필터 생성 또는 기억 검색 실패 시 일반 대화 처리로 강제 폴백
-            await handleRegularConversation(interaction, startTime, selectedModel, tokenLimit);
-        }
+        await handleRegularConversation(interaction, startTime, selectedModel, tokenLimit);
     },
 };
