@@ -3,6 +3,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Client, GatewayIntentBits, Collection, } = require('discord.js');
 const dotenv = require('dotenv');
+
+dotenv.config();
 const jwt = require('jsonwebtoken');
 const { connectDB, ApiKey } = require('./utils/database');
 const { callFlowise } = require('./utils/ai_helper');
@@ -10,8 +12,6 @@ const { logToDiscord } = require('./utils/catch_log');
 const { registerGlobalCommands } = require('./deploy-commands.js');
 
 const jwtSecret = process.env.JWT_SECRET;
-
-dotenv.config();
 
 const client = new Client({
     intents: [
