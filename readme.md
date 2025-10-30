@@ -102,7 +102,7 @@ GOOGLE_SEARCH_API= # Google Cloud Console에서 발급받은 Custom Search API �
 GOOGLE_SEARCH_ENGINE_ID= # 프로그래밍 가능 검색 엔진 ID
 
 # ETC APIs
-EQK_AUTH_KEY= # 공공데이터포털에서 발급받은 기상청 지진통보 API 키 (readme.md와 다름. EQK_API_KEY 아님)
+EQK_AUTH_KEY= # 기상청 API 허브에서 발급받은 기상청 지진통보 API 키
 JWT_SECRET= # 외부 앱 연동 시 사용할 JWT 비밀 키
 ```
 
