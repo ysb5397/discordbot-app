@@ -208,7 +208,7 @@ async function callFlowise(prompt, sessionId, task, client = null, interaction =
     }
 }
 
-async function generateMongoFilter(query, userId, interaction = null) {
+async function generateMongoFilter(query, userId, client = null, interaction = null) {
     const prompt = `
     You are an expert MongoDB query filter generator. Your task is to analyze a user's natural language request and generate a valid JSON filter object for a MongoDB 'find' operation.
 
@@ -266,8 +266,8 @@ async function generateMongoFilter(query, userId, interaction = null) {
 
     let aiResponseJsonString = '{}';
     try {
-        const client = interaction ? interaction.client : null;
-        aiResponseJsonString = await callFlowise(prompt, userId, 'mongo-filter-gen', client, interaction);
+        const filterClient = client || (interaction ? interaction.client : null);
+        aiResponseJsonString = await callFlowise(prompt, userId, 'mongo-filter-gen', filterClient, interaction);
     } catch (aiError) {
         console.error("Mongo 필터 생성 AI 호출 실패:", aiError);
         throw new Error(`AI 호출에 실패하여 필터를 생성할 수 없습니다: ${aiError.message}`);
@@ -432,39 +432,95 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream) {
     console.log('[디버그] Live API 연결을 시도합니다...');
     let session;
     try {
+        const configForConnect = {
+            responseModalities: [Modality.AUDIO],
+        };
+
+        console.log('[디버그] 전송할 config 객체:', JSON.stringify(configForConnect));
+
         session = await ai_live.live.connect({
             model: liveApiModel,
             callbacks: {
                 onmessage: (m) => responseQueue.push(m),
-                onerror: (e) => { console.error('Live API Error:', e.message); closeReason = e.message; connectionClosed = true; },
+                onerror: (e) => { 
+                    console.error('Live API Error (Full Object):', e); // <--- 객체 전체를 상세히 찍음
+                    closeReason = e.message || JSON.stringify(e); 
+                    connectionClosed = true; 
+                },
                 onclose: (e) => { console.log('Live API Close:', e.reason); closeReason = e.reason; connectionClosed = true; }
             },
-            config: {
-                inputModalities: [Modality.AUDIO],
-                responseModalities: [Modality.AUDIO],
-                systemInstruction: { parts: [{ text: systemPrompt }] }
-            },
+            config: configForConnect,
         });
-        console.log('[디버그] Live API 세션 연결 성공. 오디오 전송 시작.');
+        console.log('[디버그] Live API 세션 연결 성공.');
+
+        if (systemPrompt) {
+            console.log('[디버그] 시스템 프롬프트를 텍스트로 먼저 전송합니다...');
+            session.sendClientContent({
+                turns: [{ role: "user", parts: [{ text: systemPrompt }] }],
+                turnComplete: false // <--- 오디오가 이어지므로 턴 종료 아님
+            });
+        }
+        
+        console.log('[디버그] 오디오 전송 시작.');
+
+
     } catch (connectError) {
          console.error('[디버그] Live API 연결 실패:', connectError);
          throw connectError;
     }
 
     async function sendAudioToSession(stream) {
-        try {
-            for await (const chunk of stream) {
-                if (connectionClosed) { console.warn('[디버그] 오디오 전송 중단 (연결 종료)'); break; }
-                session.sendAudio({ data: chunk });
-            }
-            if (!connectionClosed) { console.log('[디버그] 사용자 오디오 스트림 전송 완료.'); }
-        } catch (error) {
-            console.error('[디버그] 오디오 전송 중 오류:', error);
-            if (session && !connectionClosed) session.close();
-            connectionClosed = true;
-        } finally {
-             console.log('[디버그] 오디오 전송 함수 종료.');
-        }
+        return new Promise((resolve, reject) => {
+            
+            // 'data' 이벤트: FFMPEG가 오디오 청크를 만들 때마다 발생
+            stream.on('data', (chunk) => {
+                try {
+                    if (connectionClosed) {
+                        console.warn('[디버그] 오디오 전송 중단 (연결 종료)');
+                        stream.destroy(); // 스트림 중단
+                        return;
+                    }
+                    
+                    // (Blob_2 형식 + 모델 정보 MIME 타입)
+                    session.sendRealtimeInput({
+                        media: {
+                            data: chunk.toString('base64'),
+                            mimeType: 'audio/pcm; rate=16000'
+                        }
+                    });
+                } catch (e) {
+                    // 청크 전송 중 동기적 에러 발생 시
+                    console.error('[디버그] 오디오 청크 전송 중 동기 오류:', e);
+                    if (!connectionClosed) session.close();
+                    connectionClosed = true;
+                    reject(e);
+                }
+            });
+
+            // 'end' 이벤트: 오디오 스트림이 (정상적으로) 끝났을 때
+            stream.on('end', () => {
+                try {
+                    if (!connectionClosed) {
+                        console.log('[디버그] 사용자 오디오 스트림 전송 완료.');
+                        // 턴이 끝났다고 AI에게 알림
+                        session.sendClientContent({ turnComplete: true });
+                    }
+                    console.log('[디버그] 오디오 전송 함수 종료 (end event).');
+                    resolve(); // Promise 성공
+                } catch (e) {
+                    console.error('[디버그] 오디오 전송 end/resolve 중 오류:', e);
+                    reject(e);
+                }
+            });
+
+            // 'error' 이벤트: FFMPEG 등 스트림 자체에서 에러 발생 시
+            stream.on('error', (err) => {
+                console.error('[디버그] 오디오 전송 스트림 오류:', err);
+                if (session && !connectionClosed) session.close();
+                connectionClosed = true;
+                reject(err); // Promise 실패
+            });
+        });
     }
 
     sendAudioToSession(userAudioStream).catch(e => console.error("sendAudioToSession 내부 오류:", e));

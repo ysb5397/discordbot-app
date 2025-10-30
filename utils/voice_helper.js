@@ -10,6 +10,7 @@ const { getTranscript, getLiveAiAudioResponse, generateMongoFilter } = require('
 const AUDIO_CONFIG = {
     DISCORD_SAMPLE_RATE: 48000,
     AI_SAMPLE_RATE: 16000,
+    AI_OUTPUT_SAMPLE_RATE: 24000,
     CHANNELS: 1,
     FRAME_SIZE: 960,
     FORMAT: 's16le'
@@ -86,16 +87,22 @@ class VoiceManager {
         try {
             console.log(`[디버그] 1. [${userId}]님의 음성 스트림 처리를 시작합니다.`);
             const userAudioStream = this.#recordUserAudio(userId);
+
+            if (!userAudioStream) {
+                console.error('[디버그] ❌ #recordUserAudio가 스트림을 반환하지 않아 파이프라인을 중단합니다. (아마도 너무 짧은 발화)');
+                this.#endSession();
+                return;
+            }
             
             console.log(`[디버그] 2. AI 답변 생성을 요청합니다. (이제 STT를 건너뜁니다)`);
-            const tempTranscript = "사용자가 무언가 말함";
-
-            const { audioBuffers, aiTranscript, session } = await this.#getAiResponse(tempTranscript, userId, userAudioStream);
+            
+            const { audioBuffers, aiTranscript, session } = await this.#getAiResponse(userId, userAudioStream);
             this.activeSession.liveSession = session;
             console.log(`[디버그] ✅ 3. AI 답변 생성 완료 (텍스트: "${aiTranscript}", 오디오 버퍼 개수: ${audioBuffers.length}).`);
             
             console.log(`[디버그] 4. 대화 내용을 DB에 저장합니다.`);
-            await this.#saveInteraction(userId, aiTranscript, aiTranscript);
+            const botResponseToSave = aiTranscript.trim() || `(AI가 ${audioBuffers.length}개의 오디오 버퍼로 응답함)`;
+            await this.#saveInteraction(userId, "(User spoke)", botResponseToSave);
 
             if (audioBuffers && audioBuffers.length > 0) {
                 console.log(`[디버그] 5. 생성된 AI 음성을 채널에 재생합니다.`);
@@ -112,7 +119,11 @@ class VoiceManager {
 
     #recordUserAudio(userId) {
         console.log(`[디버그] -> 녹음: [${userId}]님의 오디오 스트림을 구독합니다.`);
-        const opusStream = this.connection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 1200 } });
+        const opusStream = this.connection.receiver.subscribe(userId, { 
+            end: { 
+                behavior: EndBehaviorType.Manual // <--- "AfterSilence"를 "Manual"로 변경!
+            } 
+        });
         
         const pcmStream = new prism.opus.Decoder({ 
             frameSize: AUDIO_CONFIG.FRAME_SIZE, 
@@ -142,15 +153,17 @@ class VoiceManager {
     }
 
     async #getAiResponse(transcript, userId, userAudioStream) {
-        console.log(`[디버그] -> AI 응답: 기억 검색을 시작합니다 (임시 쿼리: "${transcript}").`);
-        const searchResults = await this.#searchMemories(transcript, userId);
+        // ▼▼▼ 기억 검색 로직을 일단 제거 (STT가 없으므로) ▼▼▼
+        // console.log(`[디버그] -> AI 응답: 기억 검색을 시작합니다 (임시 쿼리: "${transcript}").`);
+        // const searchResults = await this.#searchMemories(transcript, userId);
         
         let systemPrompt = `You are a friendly and helpful AI assistant. Respond in Korean.`;
-        if (searchResults.length > 0) {
-            const memories = searchResults.map(r => ` - ${r.content}`).join('\n');
-            systemPrompt += `\nHere are some related past memories to provide context:\n${memories}`;
-            console.log(`[디버그] -> AI 응답: ${searchResults.length}개의 기억을 찾아 프롬프트에 추가했습니다.`);
-        }
+        // if (searchResults.length > 0) {
+        //     const memories = searchResults.map(r => ` - ${r.content}`).join('\n');
+        //     systemPrompt += `\nHere are some related past memories to provide context:\n${memories}`;
+        //     console.log(`[디버그] -> AI 응답: ${searchResults.length}개의 기억을 찾아 프롬프트에 추가했습니다.`);
+        // }
+        // ▲▲▲ 기억 검색 로직 제거 ▲▲▲
         
         console.log(`[디버그] -> AI 응답: 최종 프롬프트와 오디오 스트림으로 Gemini Live API를 호출합니다.`);
         return getLiveAiAudioResponse(systemPrompt, userAudioStream);
@@ -158,7 +171,7 @@ class VoiceManager {
     
     async #searchMemories(transcript, userId) {
         try {
-            const filter = await generateMongoFilter(transcript, userId);
+            const filter = await generateMongoFilter(transcript, userId, this.channel.client);
             const results = await Interaction.find(filter).limit(3);
             if (results.length > 0) console.log(`DB에서 ${results.length}개의 관련 기억을 찾았습니다.`);
             return results;
@@ -194,7 +207,7 @@ class VoiceManager {
 
         console.log(`[디버그] -> 재생: AI 오디오(버퍼 크기: ${combinedBuffer.length})를 Discord 샘플링 레이트로 변환합니다.`);
         const ffmpegOutput = ffmpeg(inputAudioStream)
-            .inputFormat(AUDIO_CONFIG.FORMAT).inputOptions([`-ar ${AUDIO_CONFIG.AI_SAMPLE_RATE}`])
+            .inputFormat(AUDIO_CONFIG.FORMAT).inputOptions([`-ar ${AUDIO_CONFIG.AI_OUTPUT_SAMPLE_RATE}`])
             .outputFormat(AUDIO_CONFIG.FORMAT).outputOptions([`-ar ${AUDIO_CONFIG.DISCORD_SAMPLE_RATE}`])
             .on('start', cmd => console.log(`[디버그] -> 재생: FFmpeg 재생 프로세스 시작.`))
             .on('error', err => console.error('[디버그] ❌ -> 재생: FFmpeg 오류:', err))
