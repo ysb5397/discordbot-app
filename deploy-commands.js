@@ -29,7 +29,7 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN)
 
         const data = await rest.put(
             Routes.applicationCommands(process.env.DISCORD_CLIENT_ID),
-            { body: commands },
+            { body: [] },
         );
 
         console.log(`(/) ${data.length}개의 슬래시 명령어를 성공적으로 등록했습니다.`);
