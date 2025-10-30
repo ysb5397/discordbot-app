@@ -216,7 +216,7 @@ async function callFlowise(prompt, sessionId, task, client = null, interaction =
     }
 }
 
-async function generateMongoFilter(query, userId) {
+async function generateMongoFilter(query, userId, interaction = null) {
     const prompt = `
     You are an expert MongoDB query filter generator. Your task is to analyze a user's natural language request and generate a valid JSON filter object for a MongoDB 'find' operation.
 
