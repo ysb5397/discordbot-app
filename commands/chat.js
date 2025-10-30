@@ -28,10 +28,11 @@ async function handleRegularConversation(interaction, startTime, selectedModel, 
             history = recentInteractions.reverse().flatMap(doc => {
                  const userMessage = typeof doc.content === 'string' ? doc.content : JSON.stringify(doc.content);
                  const userTurn = { role: 'user', parts: [{ text: userMessage }] };
-                 if (doc.type === 'MENTION' && doc.botResponse) {
+                 
+                 if (doc.botResponse) { 
                      return [userTurn, { role: 'model', parts: [{ text: doc.botResponse }] }];
                  }
-                 return userTurn;
+                 return []; 
              });
              promptData.history = history; // 프롬프트 데이터에 기록 추가
         }
@@ -161,10 +162,10 @@ module.exports = {
                 .setRequired(true))
         .addIntegerOption(option =>
             option.setName('token_limit')
-                .setDescription('AI 응답의 최대 토큰 수를 설정합니다. (기본: 1000)')
+                .setDescription('AI 응답의 최대 토큰 수를 설정합니다. (기본: 2048)')
                 .setRequired(false)
                 .setMinValue(0)
-                .setMaxValue(1200))
+                .setMaxValue(8192))
         .addAttachmentOption(option =>
             option.setName('file')
                 .setDescription('AI에게 보여줄 파일을 첨부하세요 (이미지, 코드 등).')
@@ -175,7 +176,7 @@ module.exports = {
         await interaction.deferReply();
         
         const selectedModel = interaction.options.getString('model');
-        const tokenLimit = interaction.options.getInteger('token_limit') || 1000;
+        const tokenLimit = interaction.options.getInteger('token_limit') || 2048;
         await handleRegularConversation(interaction, startTime, selectedModel, tokenLimit);
     },
 };
