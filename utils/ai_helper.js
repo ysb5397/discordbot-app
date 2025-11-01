@@ -471,6 +471,12 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream) {
 
     async function sendAudioToSession(stream) {
         return new Promise((resolve, reject) => {
+
+            if (!stream || typeof stream.on !== 'function') {
+                console.error('[디버그] ❌ sendAudioToSession: 유효하지 않은 스트림 객체(undefined)가 전달되었습니다.');
+                reject(new Error('Invalid audio stream object passed to sendAudioToSession.'));
+                return; // Promise 실행 중단
+            }
             
             // 'data' 이벤트: FFMPEG가 오디오 청크를 만들 때마다 발생
             stream.on('data', (chunk) => {
@@ -485,7 +491,7 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream) {
                     session.sendRealtimeInput({
                         media: {
                             data: chunk.toString('base64'),
-                            mimeType: 'audio/pcm; rate=16000'
+                            mimeType: 'audio/pcm;rate=16000'
                         }
                     });
                 } catch (e) {
@@ -526,7 +532,21 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream) {
     sendAudioToSession(userAudioStream).catch(e => console.error("sendAudioToSession 내부 오류:", e));
 
     try {
-        const turns = await handleTurn();
+        const AI_RESPONSE_TIMEOUT_MS = 30000;
+
+        const aiTurnPromise = handleTurn();
+
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => {
+                reject(new Error(`AI가 ${AI_RESPONSE_TIMEOUT_MS}ms 내에 응답하지 않았습니다 (타임아웃).`));
+            }, AI_RESPONSE_TIMEOUT_MS);
+        });
+
+        const turns = await Promise.race([
+            aiTurnPromise,
+            timeoutPromise
+        ]);
+
         const audioBuffers = turns.map(t => t.data ? Buffer.from(t.data, 'base64') : null).filter(Boolean);
         const aiTranscript = turns.map(t => t.text).filter(Boolean).join(' ');
         return { audioBuffers, aiTranscript, session };
