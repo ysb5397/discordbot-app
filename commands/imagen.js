@@ -48,7 +48,7 @@ module.exports = {
             });
 
             const endTime = Date.now();
-            const duration = (endTime - startTime) / 1000;
+            const duration = endTime - startTime;
 
             const replyEmbed = createImageGenEmbed({
                 prompt: prompt.substring(0, 250) + (prompt.length > 250 ? '...' : ''),

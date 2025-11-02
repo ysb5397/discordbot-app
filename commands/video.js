@@ -47,7 +47,7 @@ module.exports = {
                     const attachment = new AttachmentBuilder(videoBuffer, { name: 'generated-video.mp4' });
 
                     const endTime = Date.now();
-                    const duration = (endTime - startTime) / 1000;
+                    const duration = endTime - startTime;
                     
                     const embedTitle = prompt.length > 250 ? prompt.substring(0, 250) + '...' : prompt;
 

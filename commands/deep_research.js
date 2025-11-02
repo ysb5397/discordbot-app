@@ -162,7 +162,7 @@ module.exports = {
         }
 
         const endTime = Date.now();
-        const duration = (endTime - startTime) / 1000;
+        const duration = endTime - startTime;
 
         const resultEmbed = createAiResponseEmbed({
             title: userQuestion.substring(0, 250) + (userQuestion.length > 250 ? '...' : ''),
