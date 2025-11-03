@@ -139,8 +139,8 @@ function createEarthquakeEmbed(eqData) {
     const embedColor = getColorByIntensity(rawIntensity); // 기존 색상 함수 재활용
     const rawTime = eqData.eqDate || "정보 없음";
     let formattedTime = "정보 없음";
-    if (rawTime.length === 12) { // YYYYMMDDHHMM 형식 확인
-         formattedTime = `${rawTime.substring(0, 4)}년 ${rawTime.substring(4, 6)}월 ${rawTime.substring(6, 8)}일 ${rawTime.substring(8, 10)}시 ${rawTime.substring(10, 12)}분`;
+    if (rawTime.length === 14) { // YYYYMMDDHHMMSS 형식 확인
+         formattedTime = `${rawTime.substring(0, 4)}년 ${rawTime.substring(4, 6)}월 ${rawTime.substring(6, 8)}일 ${rawTime.substring(8, 10)}시 ${rawTime.substring(10, 12)}분 ${rawTime.substring(12, 14)}초`;
     }
 
     const fields = [

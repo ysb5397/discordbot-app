@@ -114,11 +114,10 @@ async function sendEarthquakeAlert(info, client) {
     const targetChannelId = '1388443793589538899';
     const rawIntensity = info.querySelector("jdLoc")?.textContent || "정보 없음";
     const rawTime = info.querySelector("eqDate")?.textContent || "정보 없음"; // tmEqk -> eqDate
-    const formattedTime = `${rawTime.substring(0, 4)}년 ${rawTime.substring(4, 6)}월 ${rawTime.substring(6, 8)}일 ${rawTime.substring(8, 10)}시 ${rawTime.substring(10, 12)}분`;
 
     const embed = createEarthquakeEmbed({
         jdLoc: rawIntensity,
-        eqDate: formattedTime,
+        eqDate: rawTime,
         magMl: info.querySelector("magMl")?.textContent || "정보 없음",
         eqPt: info.querySelector("eqPt")?.textContent || "정보 없음",
         eqDt: info.querySelector("eqDt")?.textContent || "정보 없음",
