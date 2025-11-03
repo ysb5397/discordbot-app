@@ -152,7 +152,7 @@ function createEarthquakeEmbed(eqData) {
     ];
 
     return createBaseEmbed({
-        title: '📢 실시간 국내 지진 정보',
+        title: '📢 실시간 지진 정보',
         description: eqData.ReFer || "상세 정보 없음",
         color: embedColor,
         fields: fields,

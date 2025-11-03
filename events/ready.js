@@ -8,8 +8,8 @@ module.exports = {
     name: Events.ClientReady,
     once: true,
     async execute(client) {
-        console.log(`Logged in as ${client.user.tag}.`);
-        console.log('Bot is ready and background tasks are starting.');
+        console.log(`${client.user.tag}으로 로그인했습니다.`);
+        console.log('봇이 준비되었으며 백그라운드 작업을 시작합니다.');
 
         // 지진 정보 모니터링 시작 (내부 스케줄러 사용)
         startEarthquakeMonitor(client);
@@ -18,7 +18,7 @@ module.exports = {
         if (targetChannel && targetChannel.type === ChannelType.GuildVoice) {
             const humanMembers = targetChannel.members.filter(member => !member.user.bot);
             if (humanMembers.size > 0) {
-                console.log(`'${targetChannel.name}' 채널에 이미 유저가 있어서 접속할게!`);
+                console.log(`'${targetChannel.name}' 채널에 이미 유저가 있어 접속합니다!`);
                 joinVoiceChannel({
                     channelId: targetChannel.id,
                     guildId: targetChannel.guild.id,

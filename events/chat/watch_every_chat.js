@@ -133,7 +133,7 @@ module.exports = {
                     content: contentToSave
                 });
                 await newMessage.save();
-                console.log(`'${message.author.username}'의 메시지를 저장했어: "${contentToSave.substring(0, 50)}..."`);
+                console.log(`'${message.author.username}'의 메시지를 저장했습니다: "${contentToSave.substring(0, 50)}..."`);
             }
         }
     },

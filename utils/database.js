@@ -45,9 +45,9 @@ const connectDB = async () => {
 
     try {
         await mongoose.connect(process.env.MONGODB_URI, { family: 4 });
-        console.log('성공적으로 MongoDB에 연결되었어! ✅');
+        console.log('성공적으로 MongoDB에 연결되었습니다! ✅');
     } catch (err) {
-        console.error('MongoDB 연결에 실패했어... 😭', err);
+        console.error('MongoDB 연결에 실패했습니다... 😭', err);
         throw err; 
     }
 };
@@ -55,7 +55,7 @@ const connectDB = async () => {
 const disconnectDB = async () => {
     try {
         await mongoose.disconnect();
-        console.log('MongoDB 연결이 성공적으로 종료되었어. 🛑');
+        console.log('MongoDB 연결이 성공적으로 종료되었습니다. 🛑');
     } catch (err) {
         console.error('MongoDB 연결 종료 중 오류 발생:', err);
         throw err;

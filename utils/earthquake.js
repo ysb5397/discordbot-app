@@ -59,12 +59,6 @@ async function checkEarthquakeAndNotify(client) {
             return;
         }
 
-        const isDomestic = eqInfo.querySelector("cntDiv")?.textContent === 'Y';
-        if (!isDomestic) {
-            console.log('[EQK] 최신 정보가 국외 지진이므로 건너뜁니다.');
-            return;
-        }
-
         const eqTime = eqInfo.querySelector("eqDate")?.textContent;
         if (!eqTime) {
             console.log('[EQK] 지진 정보에 발생 시각이 없어 처리를 중단합니다.');
@@ -119,7 +113,6 @@ async function scheduleCheck(client) {
 async function sendEarthquakeAlert(info, client) {
     const targetChannelId = '1388443793589538899';
     const rawIntensity = info.querySelector("jdLoc")?.textContent || "정보 없음";
-    const embedColor = getColorByIntensity(rawIntensity);
     const rawTime = info.querySelector("eqDate")?.textContent || "정보 없음"; // tmEqk -> eqDate
     const formattedTime = `${rawTime.substring(0, 4)}년 ${rawTime.substring(4, 6)}월 ${rawTime.substring(6, 8)}일 ${rawTime.substring(8, 10)}시 ${rawTime.substring(10, 12)}분`;
 
@@ -144,22 +137,6 @@ async function sendEarthquakeAlert(info, client) {
         console.error('[EQK] Discord 메시지 전송 중 오류 발생:', error);
         throw error;
     }
-}
-
-function getColorByIntensity(rawIntensityString) {
-    if (!rawIntensityString) return 0x808080;
-    const upperIntensity = rawIntensityString.toUpperCase();
-    if (upperIntensity.includes('Ⅹ') || upperIntensity.includes('10')) return 0x000000;
-    if (upperIntensity.includes('Ⅸ') || upperIntensity.includes('IX') || upperIntensity.includes('9')) return 0x4C2600;
-    if (upperIntensity.includes('Ⅷ') || upperIntensity.includes('VIII') || upperIntensity.includes('8')) return 0x632523;
-    if (upperIntensity.includes('Ⅶ') || upperIntensity.includes('VII') || upperIntensity.includes('7')) return 0xA32977;
-    if (upperIntensity.includes('Ⅵ') || upperIntensity.includes('VI') || upperIntensity.includes('6')) return 0xFF0000;
-    if (upperIntensity.includes('Ⅴ') || upperIntensity.includes('V') || upperIntensity.includes('5')) return 0xFFC000;
-    if (upperIntensity.includes('Ⅳ') || upperIntensity.includes('IV') || upperIntensity.includes('4')) return 0xFFFF00;
-    if (upperIntensity.includes('Ⅲ') || upperIntensity.includes('III') || upperIntensity.includes('3')) return 0x92D050;
-    if (upperIntensity.includes('Ⅱ') || upperIntensity.includes('II') || upperIntensity.includes('2')) return 0xADE8FF;
-    if (upperIntensity.includes('Ⅰ') || upperIntensity.includes('I') || upperIntensity.includes('1')) return 0xFFFFFF;
-    return 0x808080;
 }
 
 function startEarthquakeMonitor(client) {
