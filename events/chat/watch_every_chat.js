@@ -2,6 +2,8 @@ const { Events } = require('discord.js');
 const { Interaction } = require('../../utils/database');
 const { generateAttachmentDescription, callFlowise } = require('../../utils/ai_helper');
 
+const excludeChannelId = "1434714087388086304";
+
 /**
  * AI를 사용하여 문맥에 맞는 답변을 생성하는 함수
  * (Flowise 실패 시 Gemini로 폴백 기능은 callFlowise가 담당)
@@ -50,6 +52,7 @@ module.exports = {
     name: Events.MessageCreate,
     async execute(message, client) {
         if (message.author.bot) return;
+        if (message.channelId == excludeChannelId) return;
 
         const shouldBotReply = message.mentions.has(client.user);
 
