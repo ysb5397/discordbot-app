@@ -77,13 +77,14 @@ class VoiceManager {
                 console.log(`[디버그] [${userId}]님이 말을 시작했지만, 이미 다른 세션이 진행 중이라 무시합니다.`);
                 return;
             }
-            this.activeSession = { userId, liveSession: null };
+            this.activeSession = { userId, liveSession: null, streams: null, aiAudioStream: null };
             console.log(`[디버그] 🎤 [${userId}] 님의 발화가 감지되었습니다. 음성 처리 파이프라인을 시작합니다.`);
             this.#processUserSpeech(userId);
         });
     }
     
     async #processUserSpeech(userId) {
+        let aiAudioStream;
         try {
             console.log(`[디버그] 1. [${userId}]님의 음성 스트림 처리를 시작합니다.`);
             const { opusStream, pcmStream, outputStream } = this.#recordUserAudio(userId);
@@ -95,25 +96,69 @@ class VoiceManager {
             }
             
             this.activeSession.streams = { opusStream, pcmStream };
-            console.log(`[디버그] 2. AI 답변 생성을 요청합니다. (이제 STT를 건너뜁니다)`);
+
+            console.log(`[디버그] 2. AI 오디오 스트리밍 파이프라인을 설정합니다.`);
+            aiAudioStream = new Readable({ read() {} });
+            this.activeSession.aiAudioStream = aiAudioStream;
+
+            const ffmpegOutput = ffmpeg(aiAudioStream)
+                .inputFormat(AUDIO_CONFIG.FORMAT)
+                .inputOptions([
+                    `-ar ${AUDIO_CONFIG.AI_OUTPUT_SAMPLE_RATE}`, 
+                    `-ac ${AUDIO_CONFIG.CHANNELS}`
+                ])
+                .addOption('-fflags', '+nobuffer')
+                .outputFormat(AUDIO_CONFIG.FORMAT)
+                .outputOptions([
+                    `-ar ${AUDIO_CONFIG.DISCORD_SAMPLE_RATE}`,
+                    `-ac 2`
+                ])
+                .on('start', cmd => console.log(`[디버그] -> 재생: (스트리밍) FFmpeg 재생 프로세스 시작.`))
+                .on('error', err => console.error('[디버그] ❌ -> 재생: (스트리밍) FFmpeg 오류:', err))
+                .stream();
+
+            const resource = createAudioResource(ffmpegOutput, { inputType: StreamType.Raw });
+            console.log('[디버그] -> 재생: 오디오 리소스를 생성하여 플레이어에서 재생을 *시작*합니다.');
+            this.player.play(resource);
+
+            console.log(`[디버그] 3. AI 답변 생성을 요청합니다.`);
+
+            const aiResponsePromise = this.#getAiResponse(userId, outputStream, this.activeSession, aiAudioStream);
+
+            outputStream.on('end', () => {
+                console.log(`[디버그] (voice_helper) FFmpeg 스트림 종료 감지!`);
+                
+                // ai_helper가 session을 할당해 주길 기다림 (아주 잠깐)
+                // 만약의 레이스 컨디션을 위해 1초 지연된 체크를 추가 (안전장치)
+                if (this.activeSession && this.activeSession.liveSession) {
+                    console.log(`[디버그] ➡️ AI에게 'turnComplete: true' 신호를 전송합니다!`);
+                    this.activeSession.liveSession.sendClientContent({ turnComplete: true });
+                } else {
+                    console.warn(`[디버그] ⚠️ FFmpeg 스트림은 끝났지만, AI 세션이 (아직) 활성화되지 않았습니다. 1초 후 재시도...`);
+                    setTimeout(() => {
+                        if (this.activeSession && this.activeSession.liveSession) {
+                            console.log(`[디버그] (1초 지연) ➡️ AI에게 'turnComplete: true' 신호를 전송합니다!`);
+                            this.activeSession.liveSession.sendClientContent({ turnComplete: true });
+                        } else {
+                             console.error(`[디버그] ❌ (1초 지연) AI 세션이 여전히 없습니다. turnComplete 전송 실패.`);
+                        }
+                    }, 1000);
+                }
+            });
             
-            const { audioBuffers, aiTranscript, session } = await this.#getAiResponse(userId, outputStream);
-            this.activeSession.liveSession = session;
-            console.log(`[디버그] ✅ 3. AI 답변 생성 완료 (텍스트: "${aiTranscript}", 오디오 버퍼 개수: ${audioBuffers.length}).`);
+            const { aiTranscript } = await aiResponsePromise;
+            console.log(`[디버그] ✅ 4. AI 답변 스트리밍 완료 (전체 텍스트: "${aiTranscript}").`);
             
-            console.log(`[디버그] 4. 대화 내용을 DB에 저장합니다.`);
-            const botResponseToSave = aiTranscript.trim() || `(AI가 ${audioBuffers.length}개의 오디오 버퍼로 응답함)`;
+            const botResponseToSave = aiTranscript.trim() || `(AI가 오디오로 응답함)`;
+            
+            console.log(`[디버그] 5. 대화 내용을 DB에 저장합니다.`);
             await this.#saveInteraction(userId, "(User spoke)", botResponseToSave);
 
-            if (audioBuffers && audioBuffers.length > 0) {
-                console.log(`[디버그] 5. 생성된 AI 음성을 채널에 재생합니다.`);
-                this.#playAiAudio(audioBuffers);
-            } else {
-                console.log("[디버그] ⚠️ AI로부터 받은 오디오 데이터가 없어 재생할 수 없습니다.");
-                this.#endSession();
-            }
         } catch (error) {
             console.error(`[디버그] ❌ 음성 처리 파이프라인 전체 과정에서 오류 발생:`, error);
+            if (this.activeSession && this.activeSession.aiAudioStream && !this.activeSession.aiAudioStream.destroyed) {
+                 this.activeSession.aiAudioStream.push(null);
+            }
             this.#endSession();
         }
     }
@@ -122,8 +167,9 @@ class VoiceManager {
         console.log(`[디버그] -> 녹음: [${userId}]님의 오디오 스트림을 구독합니다.`);
         const opusStream = this.connection.receiver.subscribe(userId, { 
             end: { 
-                behavior: EndBehaviorType.Manual
-            } 
+                behavior: EndBehaviorType.AfterSilence,
+                duration: 1000 // 1초간 침묵
+            }
         });
         
         const pcmStream = new prism.opus.Decoder({ 
@@ -137,6 +183,7 @@ class VoiceManager {
         const ffmpegProcess = ffmpeg(pcmStream)
             .inputFormat(AUDIO_CONFIG.FORMAT)
             .inputOptions([`-ar ${AUDIO_CONFIG.DISCORD_SAMPLE_RATE}`, `-ac ${AUDIO_CONFIG.CHANNELS}`])
+            .addOption('-fflags', '+nobuffer')
             .outputFormat(AUDIO_CONFIG.FORMAT)
             .outputOptions([`-ar ${AUDIO_CONFIG.AI_SAMPLE_RATE}`])
             .on('start', cmd => console.log(`[디버그] -> 녹음: FFmpeg 리샘플링 프로세스 시작.`))
@@ -157,7 +204,7 @@ class VoiceManager {
         };
     }
 
-    async #getAiResponse(userId, userAudioStream) {
+    async #getAiResponse(userId, userAudioStream, activeSession, aiAudioStream) {
         // ▼▼▼ 기억 검색 로직을 일단 제거 (STT가 없으므로) ▼▼▼
         // console.log(`[디버그] -> AI 응답: 기억 검색을 시작합니다 (임시 쿼리: "${transcript}").`);
         // const searchResults = await this.#searchMemories(transcript, userId);
@@ -171,7 +218,7 @@ class VoiceManager {
         // ▲▲▲ 기억 검색 로직 제거 ▲▲▲
         
         console.log(`[디버그] -> AI 응답: 최종 프롬프트와 오디오 스트림으로 Gemini Live API를 호출합니다.`);
-        return getLiveAiAudioResponse(systemPrompt, userAudioStream);
+        return getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSession, aiAudioStream);
     }
     
     async #searchMemories(transcript, userId) {

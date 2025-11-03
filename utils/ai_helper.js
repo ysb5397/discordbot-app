@@ -394,41 +394,45 @@ async function generateImage(prompt, count = 1) {
     }
 }
 
-async function getLiveAiAudioResponse(systemPrompt, userAudioStream) {
+async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSession, aiPlaybackStream) {
+    
     const liveApiModel = "gemini-2.5-flash-native-audio-preview-09-2025";
     const responseQueue = [];
     let connectionClosed = false;
     let closeReason = null;
 
-    const waitMessage = () => new Promise((resolve, reject) => {
+    let fullTranscript = "";
+
+    // AI의 응답 메시지를 '스트리밍'으로 처리하는 헬퍼 함수
+    const processMessages = () => new Promise((resolve, reject) => {
         const check = () => {
-            if (connectionClosed) return reject(new Error(`Live API 연결 종료됨: ${closeReason || 'Unknown'}`));
+            if (connectionClosed) {
+                if (!aiPlaybackStream.destroyed) aiPlaybackStream.push(null); // 재생 파이프 닫기
+                return reject(new Error(`Live API 연결 종료됨: ${closeReason || 'Unknown'}`));
+            }
+            
             const msg = responseQueue.shift();
-            if (msg) resolve(msg);
-            else setTimeout(check, 100);
+            if (msg) {
+                if (msg.data) {
+                    if (!aiPlaybackStream.destroyed) aiPlaybackStream.push(Buffer.from(msg.data, 'base64'));
+                }
+                if (msg.text) {
+                    fullTranscript += msg.text + " ";
+                }
+                if (msg.serverContent && msg.serverContent.turnComplete) {
+                    console.log('[디버그] Live API로부터 Turn Complete 수신');
+                    if (!aiPlaybackStream.destroyed) aiPlaybackStream.push(null); // 재생 파이프 닫기
+                    resolve(fullTranscript.trim()); // 수집한 전체 텍스트 반환
+                    return; // 루프 종료
+                }
+            }
+            
+            setTimeout(check, 50);
         };
         check();
     });
 
-    const handleTurn = async () => {
-        const turns = [];
-        try {
-            while (!connectionClosed) {
-                const message = await waitMessage();
-                turns.push(message);
-                if (message.serverContent && message.serverContent.turnComplete) {
-                     console.log('[디버그] Live API로부터 Turn Complete 수신');
-                     return turns;
-                }
-            }
-             console.warn('[디버그] Live API 연결이 종료되어 Turn 처리 중단');
-             return turns;
-        } catch (error) {
-             console.error('[디버그] Live API Turn 처리 중 오류:', error);
-             throw error;
-        }
-    };
-
+    // --- 1. AI 세션 연결 ---
     console.log('[디버그] Live API 연결을 시도합니다...');
     let session;
     try {
@@ -441,9 +445,9 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream) {
         session = await ai_live.live.connect({
             model: liveApiModel,
             callbacks: {
-                onmessage: (m) => responseQueue.push(m),
+                onmessage: (m) => responseQueue.push(m), // 메시지를 큐에 넣기만 함
                 onerror: (e) => { 
-                    console.error('Live API Error (Full Object):', e); // <--- 객체 전체를 상세히 찍음
+                    console.error('Live API Error (Full Object):', e);
                     closeReason = e.message || JSON.stringify(e); 
                     connectionClosed = true; 
                 },
@@ -452,6 +456,13 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream) {
             config: configForConnect,
         });
         console.log('[디버그] Live API 세션 연결 성공.');
+
+        if (activeSession) {
+            activeSession.liveSession = session;
+            console.log('[디버그] (ai_helper) activeSession에 liveSession을 성공적으로 할당했습니다.');
+        } else {
+            console.warn('[디버그] (ai_helper) activeSession이 null이라 liveSession을 할당할 수 없습니다. (주의!)');
+        }
 
         if (systemPrompt) {
             console.log('[디버그] 시스템 프롬프트를 텍스트로 먼저 전송합니다...');
@@ -463,7 +474,6 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream) {
         
         console.log('[디버그] 오디오 전송 시작.');
 
-
     } catch (connectError) {
          console.error('[디버그] Live API 연결 실패:', connectError);
          throw connectError;
@@ -471,23 +481,18 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream) {
 
     async function sendAudioToSession(stream) {
         return new Promise((resolve, reject) => {
-
             if (!stream || typeof stream.on !== 'function') {
-                console.error('[디버그] ❌ sendAudioToSession: 유효하지 않은 스트림 객체(undefined)가 전달되었습니다.');
-                reject(new Error('Invalid audio stream object passed to sendAudioToSession.'));
-                return; // Promise 실행 중단
+                console.error('[디버그] ❌ sendAudioToSession: 유효하지 않은 스트림 객체...');
+                reject(new Error('Invalid audio stream object...'));
+                return;
             }
             
-            // 'data' 이벤트: FFMPEG가 오디오 청크를 만들 때마다 발생
             stream.on('data', (chunk) => {
                 try {
                     if (connectionClosed) {
-                        console.warn('[디버그] 오디오 전송 중단 (연결 종료)');
-                        stream.destroy(); // 스트림 중단
+                        stream.destroy();
                         return;
                     }
-                    
-                    // (Blob_2 형식 + 모델 정보 MIME 타입)
                     session.sendRealtimeInput({
                         media: {
                             data: chunk.toString('base64'),
@@ -495,64 +500,43 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream) {
                         }
                     });
                 } catch (e) {
-                    // 청크 전송 중 동기적 에러 발생 시
-                    console.error('[디버그] 오디오 청크 전송 중 동기 오류:', e);
                     if (!connectionClosed) session.close();
                     connectionClosed = true;
                     reject(e);
                 }
             });
 
-            // 'end' 이벤트: 오디오 스트림이 (정상적으로) 끝났을 때
             stream.on('end', () => {
-                try {
-                    if (!connectionClosed) {
-                        console.log('[디버그] 사용자 오디오 스트림 전송 완료.');
-                        // 턴이 끝났다고 AI에게 알림
-                        session.sendClientContent({ turnComplete: true });
-                    }
-                    console.log('[디버그] 오디오 전송 함수 종료 (end event).');
-                    resolve(); // Promise 성공
-                } catch (e) {
-                    console.error('[디버그] 오디오 전송 end/resolve 중 오류:', e);
-                    reject(e);
-                }
+                console.log('[디버그] (ai_helper) FFmpeg 스트림 종료 감지. 데이터 전송 완료.');
+                resolve(); // 'turnComplete' 안 보냄!
             });
 
-            // 'error' 이벤트: FFMPEG 등 스트림 자체에서 에러 발생 시
             stream.on('error', (err) => {
                 console.error('[디버그] 오디오 전송 스트림 오류:', err);
                 if (session && !connectionClosed) session.close();
                 connectionClosed = true;
-                reject(err); // Promise 실패
+                reject(err);
             });
         });
     }
 
-    sendAudioToSession(userAudioStream).catch(e => console.error("sendAudioToSession 내부 오류:", e));
-
     try {
-        const AI_RESPONSE_TIMEOUT_MS = 30000;
-
-        const aiTurnPromise = handleTurn();
-
-        const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => {
-                reject(new Error(`AI가 ${AI_RESPONSE_TIMEOUT_MS}ms 내에 응답하지 않았습니다 (타임아웃).`));
-            }, AI_RESPONSE_TIMEOUT_MS);
+        sendAudioToSession(userAudioStream).catch(e => {
+            console.error("sendAudioToSession 내부 오류:", e);
+            if (!aiPlaybackStream.destroyed) aiPlaybackStream.push(null);
         });
+        
+        console.log('[디버그] AI 응답 스트리밍 및 처리를 시작합니다...');
+        const finalTranscript = await processMessages();
+        
+        console.log('[디버그] AI 응답 스트리밍 완료.');
+        
+        return { aiTranscript: finalTranscript };
 
-        const turns = await Promise.race([
-            aiTurnPromise,
-            timeoutPromise
-        ]);
-
-        const audioBuffers = turns.map(t => t.data ? Buffer.from(t.data, 'base64') : null).filter(Boolean);
-        const aiTranscript = turns.map(t => t.text).filter(Boolean).join(' ');
-        return { audioBuffers, aiTranscript, session };
     } catch (error) {
          console.error('[디버그] Live API 응답 처리 중 최종 오류:', error);
          if (session && !connectionClosed) session.close();
+         if (!aiPlaybackStream.destroyed) aiPlaybackStream.push(null);
          throw error;
     }
 }
