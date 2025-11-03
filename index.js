@@ -92,10 +92,10 @@ for (const folder of eventFolders) {
     loadEvents(path.join(eventsPath, folder));
 }
 
-// Cloud Run의 헬스 체크(PORT=8080)를 통과하기 위한 더미 웹서버
+// Cloud Run의 헬스 체크(PORT=5000)를 통과하기 위한 더미 웹서버
 const app = express();
 app.use(express.json());
-const port = process.env.PORT || 8080;
+const port = process.env.PORT || 5000;
 
 const authenticateApiKey = async (req, res, next) => {
     try {
