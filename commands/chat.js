@@ -165,7 +165,6 @@ module.exports = {
                 .setDescription('AI 응답의 최대 토큰 수를 설정합니다. (기본: 2048)')
                 .setRequired(false)
                 .setMinValue(0)
-                .setMaxValue(8192))
         .addAttachmentOption(option =>
             option.setName('file')
                 .setDescription('AI에게 보여줄 파일을 첨부하세요 (이미지, 코드 등).')
