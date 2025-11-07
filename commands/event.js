@@ -14,7 +14,7 @@ async function findEventByName(interaction, name) {
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('event')
+        .setName('dev_event')
         .setDescription('서버 이벤트를 관리합니다.')
         .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageEvents)
         .addSubcommand(subcommand =>

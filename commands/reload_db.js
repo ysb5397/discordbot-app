@@ -3,7 +3,7 @@ const { reconnectDB } = require('../utils/database');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('reload_db')
+        .setName('dev_reload_db')
         .setDescription('MongoDB 데이터베이스 연결을 다시 시작합니다.')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     async execute(interaction) {

@@ -16,7 +16,7 @@ function createCustomId(action, interactionId, docId = null) {
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('memory')
+        .setName('dev_memory')
         .setDescription('저장된 당신의 기억(대화)을 관리합니다.')
         .addSubcommand(subcommand =>
             subcommand

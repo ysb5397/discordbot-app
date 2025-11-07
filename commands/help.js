@@ -3,7 +3,7 @@ const { createBaseEmbed } = require('../utils/embed_builder.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('help')
+        .setName('dev_help')
         .setDescription('봇 도움말을 표시합니다.'),
     async execute(interaction) {
         const { commands } = interaction.client;

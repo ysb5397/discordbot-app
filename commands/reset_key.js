@@ -4,7 +4,7 @@ const crypto = require('crypto');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('reset_key')
+        .setName('dev_reset_key')
         .setDescription('Flutter 앱의 API 키를 재발급합니다. (관리자 전용)')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     

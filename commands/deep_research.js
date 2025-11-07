@@ -89,7 +89,7 @@ function formatSearchResults(items) {
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('deep_research')
+        .setName('dev_deep_research')
         .setDescription('AI가 질문을 분석하여 심층 리서치를 수행합니다.')
         .setContexts([
             InteractionContextType.Guild,

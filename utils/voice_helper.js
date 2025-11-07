@@ -100,6 +100,26 @@ class VoiceManager {
             
             this.activeSession.streams = { opusStream, pcmStream };
 
+            outputStream.on('end', () => {
+                console.log(`[디버그] (voice_helper) FFmpeg 스트림 종료 감지!`);
+
+                const checkSessionAndSend = () => {
+                    if (this.activeSession && this.activeSession.liveSession) {
+                        console.log(`[디버그] ➡️ AI에게 'turnComplete: true' 신호를 전송합니다!`);
+                        this.activeSession.liveSession.sendClientContent({ turnComplete: true });
+                    } else {
+                         console.error(`[디버그] ❌ (1초 지연) AI 세션이 없습니다. turnComplete 전송 실패.`);
+                    }
+                };
+                
+                if (this.activeSession && this.activeSession.liveSession) {
+                    checkSessionAndSend();
+                } else {
+                    console.warn(`[디버그] ⚠️ FFmpeg 스트림은 끝났지만, AI 세션이 (아직) 활성화되지 않았습니다. 1초 후 재시도...`);
+                    setTimeout(checkSessionAndSend, 1000);
+                }
+            });
+
             console.log(`[디버그] 2. AI 답변 생성을 요청하고 '완충 버퍼'와 '텍스트'를 받습니다.`);
             
             const { aiTranscript, smoothingBufferStream: apiBuffer } = await this.#getAiResponse(userId, outputStream, this.activeSession);
@@ -125,25 +145,6 @@ class VoiceManager {
             
             console.log('[디버그] -> 재생: 오디오 리소스를 생성하여 플레이어에서 재생을 *시작*합니다.');
             this.player.play(resource);
-
-            outputStream.on('end', () => {
-                console.log(`[디버그] (voice_helper) FFmpeg 스트림 종료 감지!`);
-                
-                if (this.activeSession && this.activeSession.liveSession) {
-                    console.log(`[디버그] ➡️ AI에게 'turnComplete: true' 신호를 전송합니다!`);
-                    this.activeSession.liveSession.sendClientContent({ turnComplete: true });
-                } else {
-                    console.warn(`[디버그] ⚠️ FFmpeg 스트림은 끝났지만, AI 세션이 (아직) 활성화되지 않았습니다. 1초 후 재시도...`);
-                    setTimeout(() => {
-                        if (this.activeSession && this.activeSession.liveSession) {
-                            console.log(`[디버그] (1초 지연) ➡️ AI에게 'turnComplete: true' 신호를 전송합니다!`);
-                            this.activeSession.liveSession.sendClientContent({ turnComplete: true });
-                        } else {
-                             console.error(`[디버그] ❌ (1초 지연) AI 세션이 여전히 없습니다. turnComplete 전송 실패.`);
-                        }
-                    }, 1000);
-                }
-            });
             
             console.log(`[디버그] ✅ 4. AI 답변 스트리밍 완료 (전체 텍스트: "${aiTranscript}").`);
             

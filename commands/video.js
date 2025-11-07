@@ -7,7 +7,7 @@ const MAX_ATTEMPTS = 18;
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('video')
+        .setName('dev_video')
         .setDescription('Veo AI에게 영상 생성을 요청합니다.')
         .addStringOption(option =>
             option.setName('prompt')
