@@ -35,6 +35,7 @@ function parseEqInfoToObject(info) {
         eqLt: getText("eqLt"),
         eqLn: getText("eqLn"),
         jdLoc: getText("jdLoc"),
+        jdLocA: getText("jdLocA"),
         ReFer: getText("ReFer"),
     };
 }
@@ -118,9 +119,11 @@ async function sendEarthquakeAlert(info, client) {
     const embed = createEarthquakeEmbed({
         jdLoc: rawIntensity,
         eqDate: rawTime,
+        msgCode: info.querySelector("msgCode")?.textContent || "알 수 없음",
         magMl: info.querySelector("magMl")?.textContent || "정보 없음",
         eqPt: info.querySelector("eqPt")?.textContent || "정보 없음",
         eqDt: info.querySelector("eqDt")?.textContent || "정보 없음",
+        jdLocA: info.querySelector("jdLocA")?.textContent || "영향 지역 없음",
         ReFer: info.querySelector("ReFer")?.textContent || "상세 정보 없음"
     });
 
