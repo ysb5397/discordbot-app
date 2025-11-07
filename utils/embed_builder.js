@@ -14,6 +14,16 @@ const COLORS = {
     HELP: 0x0099FF          // 파랑 (도움말)
 };
 
+// 지진 메시지 코드 매핑
+const EQ_MSG_TYPES = {
+    '지진조기경보': { text: '지진조기경보', emoji: '🚨' },
+    '지진속보': { text: '지진속보', emoji: '📢' },
+    '지진정보': { text: '지진정보', emoji: '📢' },
+    '지진정보(재통보)': { text: '지진정보(재통보)', emoji: '📢' },
+    '국외지진정보': { text: '국외지진정보', emoji: '🌍' },
+    '국외지진조기경보(시범)': { text: '국외지진조기경보', emoji: '🌍' }
+};
+
 /**
  * 기본 Embed 틀을 생성하는 내부 헬퍼 함수
  * @param {object} options - 기본 Embed 옵션
@@ -135,6 +145,12 @@ function createVideoGenEmbed({ prompt, duration, user }) {
  * @returns {EmbedBuilder}
  */
 function createEarthquakeEmbed(eqData) {
+    const msgTypeInfo = EQ_MSG_TYPES[eqData.msgCode] || { 
+        text: eqData.msgCode || '지진정보', // 모르는 코드가 오면 그냥 그 코드를 텍스트로 사용
+        emoji: '📢' // 기본 이모지
+    };
+    const title = `${msgTypeInfo.emoji} 실시간 ${msgTypeInfo.text}`;
+
     const rawIntensity = eqData.jdLoc || "정보 없음";
 
     const embedColor = getColorByIntensity(rawIntensity); // 기존 색상 함수 재활용
@@ -145,7 +161,6 @@ function createEarthquakeEmbed(eqData) {
     }
 
     const fields = [
-        { name: '통보문 종류', value: eqData.msgCode, inline: true},
         { name: '진원지', value: eqData.eqPt || "정보 없음", inline: true },
         { name: '발생시각', value: formattedTime, inline: true },
         { name: '규모', value: `M ${eqData.magMl || "정보 없음"}`, inline: true },
@@ -155,7 +170,7 @@ function createEarthquakeEmbed(eqData) {
     ];
 
     return createBaseEmbed({
-        title: '📢 실시간 지진 정보',
+        title: title,
         description: eqData.ReFer || "상세 정보 없음",
         color: embedColor,
         fields: fields,
