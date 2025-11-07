@@ -1,7 +1,7 @@
 const { Events } = require('discord.js');
 const VoiceManager = require('../../utils/voice_helper.js');
 
-const TARGET_CHANNEL_ID = "1353292092016693282";
+const TARGET_CHANNEL_ID = "1436212310623518730";
 const voiceManagers = new Map();
 
 module.exports = {

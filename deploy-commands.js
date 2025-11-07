@@ -6,7 +6,7 @@ const { DeploymentStatus } = require('./utils/database');
 
 dotenv.config();
 
-const { DISCORD__DEV_BOT_TOKEN, DISCORD_DEV_CLIENT_ID, DISCORD_GUILD_ID } = process.env;
+const { DISCORD_DEV_BOT_TOKEN, DISCORD_DEV_CLIENT_ID, DISCORD_GUILD_ID } = process.env;
 const rest = new REST({ version: '10' }).setToken(DISCORD_DEV_BOT_TOKEN);
 
 const commands = [];
@@ -23,7 +23,7 @@ async function registerGlobalCommands(commitSha) {
         console.warn('(/) COMMIT_SHA 환경 변수가 없어 명령어 등록 상태 확인을 건너뜁니다. 로컬 개발 환경일 수 있습니다.');
         return;
     }
-    if (!DISCORD_CLIENT_ID) {
+    if (!DISCORD_DEV_CLIENT_ID) {
         throw new Error('CLIENT_ID가 설정되지 않았습니다.');
     }
 
@@ -60,21 +60,21 @@ async function registerGlobalCommands(commitSha) {
  * 글로벌과 길드 명령어를 모두 청소합니다.
  */
 async function cleanAllCommands() {
-    if (!DISCORD_CLIENT_ID || !DISCORD_GUILD_ID) {
+    if (!DISCORD_DEV_CLIENT_ID || !DISCORD_GUILD_ID) {
         console.error('오류: .env 파일에 DISCORD_CLIENT_ID와 DISCORD_GUILD_ID가 모두 필요합니다.');
         process.exit(1);
     }
     try {
         console.log('(/) 모든 [글로벌] 명령어 청소를 시작합니다...');
         await rest.put(
-            Routes.applicationCommands(DISCORD_CLIENT_ID),
+            Routes.applicationCommands(DISCORD_DEV_CLIENT_ID),
             { body: [] }, // 글로벌 명령어 비우기
         );
         console.log('(/) [글로벌] 명령어 청소 완료.');
 
         console.log(`(/) '${DISCORD_GUILD_ID}' 서버의 [길드] 명령어 청소를 시작합니다...`);
         await rest.put(
-            Routes.applicationGuildCommands(DISCORD_CLIENT_ID, DISCORD_GUILD_ID),
+            Routes.applicationGuildCommands(DISCORD_DEV_CLIENT_ID, DISCORD_GUILD_ID),
             { body: [] }, // 길드 명령어 비우기
         );
         console.log('(/) [길드] 명령어 청소 완료.');
@@ -101,7 +101,7 @@ for (const file of commandFiles) {
     console.log(`(/) ${commands.length}개의 명령어를 [글로벌]로 등록 시도 중...`);
     
     await rest.put(
-        Routes.applicationCommands(DISCORD_CLIENT_ID), // 글로벌로 등록
+        Routes.applicationCommands(DISCORD_DEV_CLIENT_ID), // 글로벌로 등록
         { body: commands },
     );
     
