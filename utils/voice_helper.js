@@ -61,13 +61,12 @@ class VoiceManager {
             console.log(`[디버그] 오디오 플레이어 상태 변경: ${oldState.status} -> ${newState.status}`);
             if (newState.status === AudioPlayerStatus.Idle && oldState.status !== AudioPlayerStatus.Idle) {
                 console.log('[디버그] 봇의 TTS 재생이 완료되어 세션을 종료합니다.');
-                this.#endSession();
             }
         });
         this.player.on('error', error => {
             console.error('[디버그] ❌ 오디오 플레이어에서 오류 발생:', error);
             console.log('[디버그] 플레이어 오류로 인해 세션을 강제 종료합니다.');
-            this.#endSession();
+            this.#endSession(true);
         });
     }
     
@@ -101,11 +100,11 @@ class VoiceManager {
 
             if (!outputStream) {
                 console.error('[디버그] ❌ #recordUserAudio가 스트림을 반환하지 않아 파이프라인을 중단합니다.');
-                this.#endSession();
+                this.#endSession(true);
                 return;
             }
             
-            this.activeSession.streams = { opusStream, pcmStream: null };
+            this.activeSession.streams = { opusStream, pcmStream };
 
             // '말 끝남' 이벤트 리스너 (먼저 등록)
             outputStream.on('end', async () => {
@@ -151,7 +150,7 @@ class VoiceManager {
             //  여기가 "Opus"로 출력하도록 수정된 부분!
             // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
             ffmpegProcess = spawn(ffmpegStatic, [
-                '-hide_banner', '-loglevel', 'error',
+                '-hide_banner', '-loglevel', 'verbose',
                 // 입력 옵션
                 '-f', 's16le', '-ac', '1', '-ar', '24000', 
                 '-i', 'pipe:0',
@@ -159,9 +158,7 @@ class VoiceManager {
                 // 출력 옵션 (Opus로 바로 인코딩)
                 '-af', 'aresample=48000',      // 1. 48kHz로 리샘플링
                 '-ac', '2',                     // 2. 2채널(스테레오)로
-                '-c:a', 'libopus',              // 3. 'libopus' 코덱 사용 ★
-                '-b:a', '128k',                 // 4. 비트레이트 128k (고음질)
-                '-f', 'opus',                   // 5. 포맷을 Opus로 지정 ★
+                '-f', 's16le',                   // 5. 포맷을 Opus로 지정 ★
                 'pipe:1'
             ], { 
                 stdio: ['pipe', 'pipe', 'pipe'] 
@@ -170,22 +167,47 @@ class VoiceManager {
             this.activeSession.ffmpegProcess = ffmpegProcess;
 
             // (FFmpeg 에러 로깅은 그대로)
-            ffmpegProcess.stderr.on('data', (data) => {
-                console.error(`[FFmpeg (재생) STDERR]: ${data.toString()}`);
-            });
-            ffmpegProcess.on('error', (err) => {
-                console.error('[FFmpeg (재생) SPAWN ERROR]:', err);
-            });
-            ffmpegProcess.on('close', (code) => {
-                console.log(`[FFmpeg (재생) CLOSE]: 프로세스가 코드 ${code}로 종료되었습니다.`);
-            });
+            ffmpegProcess.stdin.on('error', (err) => {
+        console.error('[디버그 LOG] ❌ FFmpeg stdin 오류:', err.message);
+      });
+      ffmpegProcess.stdin.on('close', () => {
+        console.log('[디버그 LOG] 🏁 FFmpeg stdin 닫힘');
+      });
+
+      // 2. FFmpeg 출력 파이프(stdout) 감시
+      ffmpegProcess.stdout.on('data', () => {
+        // 데이터가 잘 나오고 있는지 확인 (너무 많이 찍히면 이 줄은 지워도 됨)
+        // console.log('[디버그 LOG] ➡️ FFmpeg stdout 데이터 수신'); 
+      });
+      ffmpegProcess.stdout.on('error', (err) => {
+        console.error('[디버그 LOG] ❌ FFmpeg stdout 오류:', err.message);
+      });
+      ffmpegProcess.stdout.on('close', () => {
+        console.log('[디버그 LOG] 🏁 FFmpeg stdout 닫힘');
+      });
+
+      // 3. AI 오디오 원본 스트림(smoothingBufferStream) 감시
+      smoothingBufferStream.on('error', (err) => {
+        console.error('[디버그 LOG] ❌ smoothingBufferStream 오류:', err.message);
+      });
+      smoothingBufferStream.on('close', () => {
+        // 'end' 이벤트 이후에 'close'가 호출됨
+        console.log('[디버그 LOG] 🏁 smoothingBufferStream 닫힘 (AI 데이터 전송 완료)');
+      });
 
             smoothingBufferStream.pipe(ffmpegProcess.stdin);
             
             // ★★★ AudioResource 타입을 .Raw가 아닌 .Opus로 변경! ★★★
             const resource = createAudioResource(ffmpegProcess.stdout, { 
-                inputType: StreamType.Opus // 👈 여기가 바뀜!
+                inputType: StreamType.Raw // 👈 여기가 바뀜!
             });
+
+            resource.playStream.on('error', (err) => {
+        console.error(`[디버그 LOG] ❌ AudioResource 오류: ${err.message}`);
+      });
+      resource.playStream.on('finish', () => {
+        console.log('[디버그 LOG] 🏁 AudioResource 재생 스트림 완료 (finish)');
+      });
             
             console.log('[디버그] -> 재생: Opus 리소스를 생성하여 플레이어에서 재생을 *시작*합니다.');
             this.player.play(resource);
@@ -199,9 +221,12 @@ class VoiceManager {
             console.log(`[디버그] 5. 대화 내용을 DB에 저장합니다.`);
             await this.#saveInteraction(userId, "(User spoke)", botResponseToSave);
 
+            console.log('[디버그] (pipeline) AI 텍스트 수신 및 재생/DB저장 완료. 파이프라인을 종료합니다.');
+            this.#endSession(false);
+
         } catch (error) {
             console.error(`[디버그] ❌ 음성 처리 파이프라인 전체 과정에서 오류 발생:`, error);
-            this.#endSession();
+            this.#endSession(true);
         }
     }
 
@@ -289,7 +314,7 @@ class VoiceManager {
         }
     }
 
-    #endSession() {
+    #endSession(force = false) {
         if (!this.activeSession) return;
         console.log(`[디버그] 🌀 [${this.activeSession.userId}]님과의 활성 음성 세션을 종료합니다.`);
         const session = this.activeSession; // 복사
@@ -313,16 +338,18 @@ class VoiceManager {
             session.liveSession.close();
         }
 
-        // 3. ★★★ 추가: 완충 버퍼 스트림 파괴 [cite: 159]
-        if (session.smoothingBufferStream && !session.smoothingBufferStream.destroyed) {
-            console.log('[디버그] -> 세션 종료: 완충 버퍼(PassThrough) 스트림을 파괴합니다.');
-            session.smoothingBufferStream.destroy();
-        }
+        if (force) {
+            if (session.smoothingBufferStream && !session.smoothingBufferStream.destroyed) {
+                console.log('[디버그] -> 세션 종료 (강제): 완충 버퍼(PassThrough) 스트림을 파괴합니다.');
+                session.smoothingBufferStream.destroy();
+            }
 
-        // 4. ★★★ 추가: FFmpeg 좀비 프로세스 방지 [cite: 157, 159]
-        if (session.ffmpegProcess && !session.ffmpegProcess.killed) {
-            console.log('[디버그] -> 세션 종료: FFmpeg 프로세스(PID: ' + session.ffmpegProcess.pid + ')를 강제 종료합니다.');
-            session.ffmpegProcess.kill('SIGTERM');
+            if (session.ffmpegProcess && !session.ffmpegProcess.killed) {
+                console.log('[디버그] -> 세션 종료 (강제): FFmpeg 프로세스(PID: ' + session.ffmpegProcess.pid + ')를 강제 종료합니다.');
+                session.ffmpegProcess.kill('SIGTERM');
+            }
+        } else {
+             console.log('[디버그] -> 세션 종료 (정상): FFmpeg와 버퍼 스트림은 스스로 종료하도록 둡니다.');
         }
     }
 }

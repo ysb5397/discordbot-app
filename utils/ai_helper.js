@@ -483,7 +483,7 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSessi
             console.log('[디버그] 오디오 전송 시작.');
 
             // 3. 오디오 전송 (이제 이 async 함수 안에서 실행)
-            await sendAudioToSession(userAudioStream);
+            await sendAudioToSession(userAudioStream, session);
 
         } catch (connectError) {
              console.error('[디버그] Live API 연결 실패:', connectError);
@@ -495,7 +495,7 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSessi
     })();
 
     // --- 1. AI 세션 연결 ---
-    async function sendAudioToSession(stream) {
+    async function sendAudioToSession(stream, session) {
         return new Promise((resolve, reject) => {
             if (!stream || typeof stream.on !== 'function') {
                 console.error('[디버그] ❌ sendAudioToSession: 유효하지 않은 스트림 객체...');
