@@ -399,11 +399,19 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSessi
     
     const liveApiModel = "gemini-2.5-flash-native-audio-preview-09-2025";
     const responseQueue = [];
-    const smoothingBufferStream = new PassThrough();
+    const smoothingBufferStream = new PassThrough({
+        // 24000(Hz) * 2(bytes) = 48000. 1초 분량의 오디오를 담을 수 있는 버퍼.
+        highWaterMark: 48000 
+    }); // 완충 버퍼 (빈 상태)
     let connectionClosed = false;
     let closeReason = null;
 
     let fullTranscript = "";
+
+    let resolveSessionReady;
+    const sessionReadyPromise = new Promise(resolve => {
+        resolveSessionReady = resolve;
+    });
 
     // AI의 응답 메시지를 '스트리밍'으로 처리하는 헬퍼 함수
     const processMessages = () => new Promise((resolve, reject) => {
@@ -417,7 +425,7 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSessi
             if (msg) {
                 if (msg.data) {
                     if (!smoothingBufferStream.destroyed) {
-                        smoothingBufferStream.write(Buffer.from(msg.data, 'base64'));
+                        smoothingBufferStream.write(Buffer.from(msg.data, 'base64')); // 데이터가 오는 족족 버퍼에 씀
                     }
                 }
                 if (msg.text) {
@@ -425,8 +433,8 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSessi
                 }
                 if (msg.serverContent && msg.serverContent.turnComplete) {
                     console.log('[디버그] Live API로부터 Turn Complete 수신');
-                    if (!smoothingBufferStream.destroyed) smoothingBufferStream.push(null);
-                    resolve(fullTranscript.trim()); // 수집한 전체 텍스트 반환
+                    if (!smoothingBufferStream.destroyed) smoothingBufferStream.push(null); // 버퍼 종료
+                    resolve(fullTranscript.trim()); // 텍스트 반환
                     return; // 루프 종료
                 }
             }
@@ -436,53 +444,57 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSessi
         check();
     });
 
-    // --- 1. AI 세션 연결 ---
-    console.log('[디버그] Live API 연결을 시도합니다...');
-    let session;
-    try {
-        const configForConnect = {
-            responseModalities: [Modality.AUDIO],
-        };
-
-        console.log('[디버그] 전송할 config 객체:', JSON.stringify(configForConnect));
-
-        session = await ai_live.live.connect({
-            model: liveApiModel,
-            callbacks: {
-                onmessage: (m) => responseQueue.push(m), // 메시지를 큐에 넣기만 함
-                onerror: (e) => { 
-                    console.error('Live API Error (Full Object):', e);
-                    closeReason = e.message || JSON.stringify(e); 
-                    connectionClosed = true; 
+    (async () => {
+        let session;
+        try {
+            const configForConnect = {
+                responseModalities: [Modality.AUDIO],
+            };
+            console.log('[디버그] 전송할 config 객체:', JSON.stringify(configForConnect));
+            session = await ai_live.live.connect({
+                model: liveApiModel,
+                callbacks: {
+                    onmessage: (m) => responseQueue.push(m),
+                    onerror: (e) => { 
+                        console.error('Live API Error (Full Object):', e);
+                        closeReason = e.message || JSON.stringify(e); 
+                        connectionClosed = true; 
+                    },
+                    onclose: (e) => { console.log('Live API Close:', e.reason); closeReason = e.reason; connectionClosed = true; }
                 },
-                onclose: (e) => { console.log('Live API Close:', e.reason); closeReason = e.reason; connectionClosed = true; }
-            },
-            config: configForConnect,
-        });
-        console.log('[디버그] Live API 세션 연결 성공.');
-
-        if (activeSession) {
-            activeSession.liveSession = session;
-            console.log('[디버그] (ai_helper) activeSession에 liveSession을 성공적으로 할당했습니다.');
-        } else {
-            console.warn('[디버그] (ai_helper) activeSession이 null이라 liveSession을 할당할 수 없습니다. (주의!)');
-        }
-
-        if (systemPrompt) {
-            console.log('[디버그] 시스템 프롬프트를 텍스트로 먼저 전송합니다...');
-            session.sendClientContent({
-                turns: [{ role: "user", parts: [{ text: systemPrompt }] }],
-                turnComplete: false // <--- 오디오가 이어지므로 턴 종료 아님
+                config: configForConnect,
             });
+            console.log('[디버그] Live API 세션 연결 성공.');
+            if (activeSession) {
+                activeSession.liveSession = session;
+                console.log('[디버그] (ai_helper) activeSession에 liveSession을 성공적으로 할당했습니다.');
+            }
+            
+            // ★ 2. "세션 준비 끝!" 신호 전송 ★
+            resolveSessionReady(session); // Promise를 resolve
+
+            if (systemPrompt) {
+                console.log('[디버그] 시스템 프롬프트를 텍스트로 먼저 전송합니다...');
+                session.sendClientContent({
+                    turns: [{ role: "user", parts: [{ text: systemPrompt }] }],
+                    turnComplete: false
+                });
+            }
+            console.log('[디버그] 오디오 전송 시작.');
+
+            // 3. 오디오 전송 (이제 이 async 함수 안에서 실행)
+            await sendAudioToSession(userAudioStream);
+
+        } catch (connectError) {
+             console.error('[디버그] Live API 연결 실패:', connectError);
+             if (!smoothingBufferStream.destroyed) smoothingBufferStream.push(null);
+             // ★ 4. 세션 Promise도 에러로 처리 ★
+             if (resolveSessionReady) resolveSessionReady(null); // 또는 reject(connectError)
+             connectionClosed = true;
         }
-        
-        console.log('[디버그] 오디오 전송 시작.');
+    })();
 
-    } catch (connectError) {
-         console.error('[디버그] Live API 연결 실패:', connectError);
-         throw connectError;
-    }
-
+    // --- 1. AI 세션 연결 ---
     async function sendAudioToSession(stream) {
         return new Promise((resolve, reject) => {
             if (!stream || typeof stream.on !== 'function') {
@@ -490,18 +502,11 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSessi
                 reject(new Error('Invalid audio stream object...'));
                 return;
             }
-            
             stream.on('data', (chunk) => {
                 try {
-                    if (connectionClosed) {
-                        stream.destroy();
-                        return;
-                    }
+                    if (connectionClosed) { stream.destroy(); return; }
                     session.sendRealtimeInput({
-                        media: {
-                            data: chunk.toString('base64'),
-                            mimeType: 'audio/pcm;rate=16000'
-                        }
+                        media: { data: chunk.toString('base64'), mimeType: 'audio/pcm;rate=16000' }
                     });
                 } catch (e) {
                     if (!connectionClosed) session.close();
@@ -509,12 +514,10 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSessi
                     reject(e);
                 }
             });
-
             stream.on('end', () => {
                 console.log('[디버그] (ai_helper) FFmpeg 스트림 종료 감지. 데이터 전송 완료.');
-                resolve(); // 'turnComplete' 안 보냄!
+                resolve();
             });
-
             stream.on('error', (err) => {
                 console.error('[디버그] 오디오 전송 스트림 오류:', err);
                 if (session && !connectionClosed) session.close();
@@ -524,25 +527,12 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSessi
         });
     }
 
-    try {
-        sendAudioToSession(userAudioStream).catch(e => {
-            console.error("sendAudioToSession 내부 오류:", e);
-            if (!smoothingBufferStream.destroyed) smoothingBufferStream.push(null);
-        });
-        
-        console.log('[디버그] AI 응답 스트리밍 및 처리를 시작합니다...');
-        const finalTranscript = await processMessages();
-        
-        console.log('[디버그] AI 응답 스트리밍 완료.');
-        
-        return { aiTranscript: finalTranscript, smoothingBufferStream };
 
-    } catch (error) {
-         console.error('[디버그] Live API 응답 처리 중 최종 오류:', error);
-         if (session && !connectionClosed) session.close();
-         if (!smoothingBufferStream.destroyed) smoothingBufferStream.push(null);
-         throw error;
-    }
+    console.log('[디버그] AI 응답 스트리밍 및 처리를 시작합니다...');
+    const aiTranscriptPromise = processMessages();
+    
+    // ★ 5. "빈 버퍼", "텍스트 Promise", "세션 준비 Promise"를 *즉시* 반환! ★
+    return { aiTranscriptPromise, smoothingBufferStream, sessionReadyPromise };
 }
 
 const VEO_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";

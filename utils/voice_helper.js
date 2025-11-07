@@ -23,8 +23,8 @@ class VoiceManager {
         this.connection = null;
         this.player = createAudioPlayer();
         this.activeSession = null;
-
         ffmpeg.setFfmpegPath(ffmpegStatic);
+
         this.#setupPlayerListeners();
         console.log(`[디버그] VoiceManager 인스턴스가 채널 '${channel.name}'에 대해 생성되었습니다.`);
     }
@@ -78,7 +78,14 @@ class VoiceManager {
                 console.log(`[디버그] [${userId}]님이 말을 시작했지만, 이미 다른 세션이 진행 중이라 무시합니다.`);
                 return;
             }
-            this.activeSession = { userId, liveSession: null, streams: null, aiAudioStream: null };
+            this.activeSession = { 
+                userId, 
+                liveSession: null, 
+                streams: null, 
+                smoothingBufferStream: null, // 버퍼 스트림
+                ffmpegProcess: null, // FFmpeg 프로세스
+                sessionReadyPromise: null
+            };
             console.log(`[디버그] 🎤 [${userId}] 님의 발화가 감지되었습니다. 음성 처리 파이프라인을 시작합니다.`);
             this.#processUserSpeech(userId);
         });
@@ -89,64 +96,103 @@ class VoiceManager {
         let smoothingBufferStream = null;
         
         try {
-            console.log(`[디버그] 1. [${userId}]님의 음성 스트림 처리를 시작합니다.`);
+            console.log(`[디버그] 1. [${userId}]님의 음성 스트림 처리를 시작합니다. (입력부 수정됨)`);
             const { opusStream, pcmStream, outputStream } = this.#recordUserAudio(userId);
 
             if (!outputStream) {
-                console.error('[디버그] ❌ #recordUserAudio가 스트림을 반환하지 않아 파이프라인을 중단합니다. (아마도 너무 짧은 발화)');
+                console.error('[디버그] ❌ #recordUserAudio가 스트림을 반환하지 않아 파이프라인을 중단합니다.');
                 this.#endSession();
                 return;
             }
             
-            this.activeSession.streams = { opusStream, pcmStream };
+            this.activeSession.streams = { opusStream, pcmStream: null };
 
-            outputStream.on('end', () => {
-                console.log(`[디버그] (voice_helper) FFmpeg 스트림 종료 감지!`);
+            // '말 끝남' 이벤트 리스너 (먼저 등록)
+            outputStream.on('end', async () => {
+                console.log(`[디버그] (voice_helper) FFmpeg(녹음) 스트림 종료 감지!`);
+                
+                if (!this.activeSession) {
+                    console.warn('[디버그] (end event) 세션이 이미 종료되어 turnComplete를 보내지 않습니다.');
+                    return;
+                }
 
-                const checkSessionAndSend = () => {
+                try {
+                    // ★ 2. AI 세션이 준비될 때까지 여기서 기다림 ★
+                    console.log('[디버그] (end event) AI 세션이 준비되기를 기다립니다...');
+                    await this.activeSession.sessionReadyPromise;
+                    
+                    // ★ 3. 세션이 준비되면 전송 ★
                     if (this.activeSession && this.activeSession.liveSession) {
                         console.log(`[디버그] ➡️ AI에게 'turnComplete: true' 신호를 전송합니다!`);
                         this.activeSession.liveSession.sendClientContent({ turnComplete: true });
                     } else {
-                         console.error(`[디버그] ❌ (1초 지연) AI 세션이 없습니다. turnComplete 전송 실패.`);
+                         console.error(`[디버그] ❌ AI 세션이 준비되었어야 하지만, 여전히 없습니다. turnComplete 전송 실패.`);
                     }
-                };
-                
-                if (this.activeSession && this.activeSession.liveSession) {
-                    checkSessionAndSend();
-                } else {
-                    console.warn(`[디버그] ⚠️ FFmpeg 스트림은 끝났지만, AI 세션이 (아직) 활성화되지 않았습니다. 1초 후 재시도...`);
-                    setTimeout(checkSessionAndSend, 1000);
+                } catch (err) {
+                     console.error('[디버그] (end event) sessionReadyPromise 대기 중 오류:', err);
                 }
             });
 
-            console.log(`[디버그] 2. AI 답변 생성을 요청하고 '완충 버퍼'와 '텍스트'를 받습니다.`);
+            console.log(`[디버그] 2. AI 응답 생성을 요청하고 "버퍼링"을 시작합니다...`);
             
-            const { aiTranscript, smoothingBufferStream: apiBuffer } = await this.#getAiResponse(userId, outputStream, this.activeSession);
+            // "버퍼링" 방식 (await)
+            const { aiTranscriptPromise, smoothingBufferStream: apiBuffer, sessionReadyPromise } = await this.#getAiResponse(userId, outputStream, this.activeSession);
+
+            if (this.activeSession) { // 세션이 아직 살아있으면
+                 this.activeSession.sessionReadyPromise = sessionReadyPromise;
+            }
             
-            smoothingBufferStream = apiBuffer; // 정리(cleanup)를 위해 변수에 저장
-            this.activeSession.smoothingBufferStream = smoothingBufferStream; // 세션에도 저장
+            smoothingBufferStream = apiBuffer; 
+            this.activeSession.smoothingBufferStream = smoothingBufferStream; 
 
-            console.log(`[디버그] 3. '완충 버퍼'를 FFmpeg 실시간 변환기에 연결합니다.`);
+            console.log(`[디버그] 3. 버퍼링 완료. FFmpeg 변환기(-> Opus)에 "가득 찬 버퍼"를 연결합니다.`);
 
+            // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+            //  여기가 "Opus"로 출력하도록 수정된 부분!
+            // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
             ffmpegProcess = spawn(ffmpegStatic, [
                 '-hide_banner', '-loglevel', 'error',
-                '-f', 's16le', '-ac', '1', '-ar', '24000', '-i', 'pipe:0',
-                '-re', // 핵심 페이싱
-                '-af', 'aresample=resampler=soxr:out_sample_rate=48000:precision=28', // 고품질 리샘플링
-                '-ac', '2', 
-                '-c:a', 'pcm_s16le', '-f', 's16le',
+                // 입력 옵션
+                '-f', 's16le', '-ac', '1', '-ar', '24000', 
+                '-i', 'pipe:0',
+                
+                // 출력 옵션 (Opus로 바로 인코딩)
+                '-af', 'aresample=48000',      // 1. 48kHz로 리샘플링
+                '-ac', '2',                     // 2. 2채널(스테레오)로
+                '-c:a', 'libopus',              // 3. 'libopus' 코덱 사용 ★
+                '-b:a', '128k',                 // 4. 비트레이트 128k (고음질)
+                '-f', 'opus',                   // 5. 포맷을 Opus로 지정 ★
                 'pipe:1'
-            ], { stdio: ['pipe', 'pipe', 'ignore'] });
-
+            ], { 
+                stdio: ['pipe', 'pipe', 'pipe'] 
+            });
+            
             this.activeSession.ffmpegProcess = ffmpegProcess;
+
+            // (FFmpeg 에러 로깅은 그대로)
+            ffmpegProcess.stderr.on('data', (data) => {
+                console.error(`[FFmpeg (재생) STDERR]: ${data.toString()}`);
+            });
+            ffmpegProcess.on('error', (err) => {
+                console.error('[FFmpeg (재생) SPAWN ERROR]:', err);
+            });
+            ffmpegProcess.on('close', (code) => {
+                console.log(`[FFmpeg (재생) CLOSE]: 프로세스가 코드 ${code}로 종료되었습니다.`);
+            });
+
             smoothingBufferStream.pipe(ffmpegProcess.stdin);
-            const resource = createAudioResource(ffmpegProcess.stdout, { inputType: StreamType.Raw });
             
-            console.log('[디버그] -> 재생: 오디오 리소스를 생성하여 플레이어에서 재생을 *시작*합니다.');
+            // ★★★ AudioResource 타입을 .Raw가 아닌 .Opus로 변경! ★★★
+            const resource = createAudioResource(ffmpegProcess.stdout, { 
+                inputType: StreamType.Opus // 👈 여기가 바뀜!
+            });
+            
+            console.log('[디버그] -> 재생: Opus 리소스를 생성하여 플레이어에서 재생을 *시작*합니다.');
             this.player.play(resource);
-            
-            console.log(`[디버그] ✅ 4. AI 답변 스트리밍 완료 (전체 텍스트: "${aiTranscript}").`);
+
+            const aiTranscript = await aiTranscriptPromise;
+
+            console.log(`[디버그] ✅ 4. AI 답변 텍스트 수신 완료 (전체 텍스트: "${aiTranscript}").`);
             
             const botResponseToSave = aiTranscript.trim() || `(AI가 오디오로 응답함)`;
             
@@ -155,7 +201,7 @@ class VoiceManager {
 
         } catch (error) {
             console.error(`[디버그] ❌ 음성 처리 파이프라인 전체 과정에서 오류 발생:`, error);
-            this.#endSession(); // 에러 시 모든 리소스 정리
+            this.#endSession();
         }
     }
 
@@ -167,7 +213,7 @@ class VoiceManager {
                 duration: 1000 // 1초간 침묵
             }
         });
-        
+
         const pcmStream = new prism.opus.Decoder({ 
             frameSize: AUDIO_CONFIG.FRAME_SIZE, 
             channels: AUDIO_CONFIG.CHANNELS, 
@@ -176,18 +222,19 @@ class VoiceManager {
 
         opusStream.pipe(pcmStream);
 
+        console.log('[디버그] -> 녹음: FFmpeg (Opus -> 16kHz PCM) 프로세스를 시작합니다.');
         const ffmpegProcess = ffmpeg(pcmStream)
             .inputFormat(AUDIO_CONFIG.FORMAT)
             .inputOptions([`-ar ${AUDIO_CONFIG.DISCORD_SAMPLE_RATE}`, `-ac ${AUDIO_CONFIG.CHANNELS}`])
             .addOption('-fflags', '+nobuffer')
             .outputFormat(AUDIO_CONFIG.FORMAT)
-            .outputOptions([`-ar ${AUDIO_CONFIG.AI_SAMPLE_RATE}`])
-            .on('start', cmd => console.log(`[디버그] -> 녹음: FFmpeg 리샘플링 프로세스 시작.`))
+            .outputOptions([`-ar ${AUDIO_CONFIG.AI_SAMPLE_RATE}`]) // AI가 요구하는 16kHz
+            .on('start', cmd => console.log(`[디버그] -> 녹음: (fluent-ffmpeg) 리샘플링 프로세스 시작.`))
             .on('error', err => {
-                console.error('[디버그] ❌ -> 녹음: FFmpeg 오류 발생:', err);
+                console.error('[디버그] ❌ -> 녹음: (fluent-ffmpeg) 오류 발생:', err);
                 opusStream.destroy(err);
             });
-        
+
         opusStream.on('end', () => {
             console.log(`[디버그] -> 녹음: Opus 스트림 종료. pcmStream 종료를 알립니다.`);
             pcmStream.end();
@@ -195,8 +242,8 @@ class VoiceManager {
 
         return { 
             opusStream, 
-            pcmStream, 
-            outputStream: ffmpegProcess.stream() 
+            pcmStream, // pcmStream도 리소스 정리해야 하니 반환
+            outputStream: ffmpegProcess.stream() // 16kHz PCM 스트림
         };
     }
 
@@ -249,9 +296,15 @@ class VoiceManager {
         this.activeSession = null; // 즉시 세션 비활성화 (중복 호출 방지)
 
         // 1. 녹음 스트림 정리 (기존 코드)
-        if (session.streams && session.streams.opusStream) {
-            console.log('[디버그] -> 세션 종료: Opus 스트림(녹음)을 파괴합니다.');
-            session.streams.opusStream.destroy();
+        if (session.streams) {
+            if (session.streams.opusStream) {
+                console.log('[디버그] -> 세션 종료: Opus 스트림(녹음)을 파괴합니다.');
+                session.streams.opusStream.destroy();
+            }
+            if (session.streams.pcmStream) { // 👈 ★★★ 이거 추가 ★★★
+                 console.log('[디버그] -> 세션 종료: PCM 스트림(녹음)을 파괴합니다.');
+                session.streams.pcmStream.destroy();
+            }
         }
 
         // 2. Gemini Live API 연결 종료 (기존 코드)
