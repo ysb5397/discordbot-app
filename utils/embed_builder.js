@@ -136,6 +136,7 @@ function createVideoGenEmbed({ prompt, duration, user }) {
  */
 function createEarthquakeEmbed(eqData) {
     const rawIntensity = eqData.jdLoc || "정보 없음";
+
     const embedColor = getColorByIntensity(rawIntensity); // 기존 색상 함수 재활용
     const rawTime = eqData.eqDate || "정보 없음";
     let formattedTime = "정보 없음";
@@ -144,10 +145,12 @@ function createEarthquakeEmbed(eqData) {
     }
 
     const fields = [
-        { name: '📍 진원지', value: eqData.eqPt || "정보 없음", inline: true },
-        { name: '⏳ 발생시각', value: formattedTime, inline: true },
-        { name: '📏 규모', value: `M ${eqData.magMl || "정보 없음"}`, inline: true },
-        { name: '💥 최대진도', value: rawIntensity, inline: true },
+        { name: '통보문 종류', value: eqData.msgCode, inline: true},
+        { name: '진원지', value: eqData.eqPt || "정보 없음", inline: true },
+        { name: '발생시각', value: formattedTime, inline: true },
+        { name: '규모', value: `M ${eqData.magMl || "정보 없음"}`, inline: true },
+        { name: '최대진도', value: rawIntensity, inline: true },
+        { name: '영향지역', value: eqData.jdLocA, inline: true },
         { name: ' 깊이', value: `${eqData.eqDt || "?"}km`, inline: true }
     ];
 
