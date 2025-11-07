@@ -6,8 +6,8 @@ const { DeploymentStatus } = require('./utils/database');
 
 dotenv.config();
 
-const { DISCORD_BOT_TOKEN, DISCORD_CLIENT_ID, DISCORD_GUILD_ID } = process.env;
-const rest = new REST({ version: '10' }).setToken(DISCORD_BOT_TOKEN);
+const { DISCORD__DEV_BOT_TOKEN, DISCORD_DEV_CLIENT_ID, DISCORD_GUILD_ID } = process.env;
+const rest = new REST({ version: '10' }).setToken(DISCORD_DEV_BOT_TOKEN);
 
 const commands = [];
 const commandsPath = path.join(__dirname, 'commands');

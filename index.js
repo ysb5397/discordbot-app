@@ -259,7 +259,7 @@ const startBot = async () => {
         console.log('DB 연결 성공. 봇 로그인을 시도합니다...');
 
         // 2. 봇 로그인
-        await client.login(process.env.DISCORD_BOT_TOKEN);
+        await client.login(process.env.DISCORD__DEV_BOT_TOKEN);
         console.log(`✅ ${client.user.tag}으로 성공적으로 로그인했습니다!`);
 
         await registerGlobalCommands(process.env.COMMIT_SHA);
