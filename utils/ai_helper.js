@@ -3,6 +3,7 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { GoogleGenAI, Modality } = require('@google/genai'); // Live API용
 const { logToDiscord } = require('./catch_log.js');
+const { Readable, PassThrough } = require('stream'); // PassThrough 추가
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const ai_live = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }); // Live API용
@@ -394,10 +395,11 @@ async function generateImage(prompt, count = 1) {
     }
 }
 
-async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSession, aiPlaybackStream) {
+async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSession) {
     
     const liveApiModel = "gemini-2.5-flash-native-audio-preview-09-2025";
     const responseQueue = [];
+    const smoothingBufferStream = new PassThrough();
     let connectionClosed = false;
     let closeReason = null;
 
@@ -407,21 +409,23 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSessi
     const processMessages = () => new Promise((resolve, reject) => {
         const check = () => {
             if (connectionClosed) {
-                if (!aiPlaybackStream.destroyed) aiPlaybackStream.push(null); // 재생 파이프 닫기
+                if (!smoothingBufferStream.destroyed) smoothingBufferStream.push(null); // 재생 파이프 닫기
                 return reject(new Error(`Live API 연결 종료됨: ${closeReason || 'Unknown'}`));
             }
             
             const msg = responseQueue.shift();
             if (msg) {
                 if (msg.data) {
-                    if (!aiPlaybackStream.destroyed) aiPlaybackStream.push(Buffer.from(msg.data, 'base64'));
+                    if (!smoothingBufferStream.destroyed) {
+                        smoothingBufferStream.write(Buffer.from(msg.data, 'base64'));
+                    }
                 }
                 if (msg.text) {
                     fullTranscript += msg.text + " ";
                 }
                 if (msg.serverContent && msg.serverContent.turnComplete) {
                     console.log('[디버그] Live API로부터 Turn Complete 수신');
-                    if (!aiPlaybackStream.destroyed) aiPlaybackStream.push(null); // 재생 파이프 닫기
+                    if (!smoothingBufferStream.destroyed) smoothingBufferStream.push(null);
                     resolve(fullTranscript.trim()); // 수집한 전체 텍스트 반환
                     return; // 루프 종료
                 }
@@ -523,7 +527,7 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSessi
     try {
         sendAudioToSession(userAudioStream).catch(e => {
             console.error("sendAudioToSession 내부 오류:", e);
-            if (!aiPlaybackStream.destroyed) aiPlaybackStream.push(null);
+            if (!smoothingBufferStream.destroyed) smoothingBufferStream.push(null);
         });
         
         console.log('[디버그] AI 응답 스트리밍 및 처리를 시작합니다...');
@@ -531,12 +535,12 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSessi
         
         console.log('[디버그] AI 응답 스트리밍 완료.');
         
-        return { aiTranscript: finalTranscript };
+        return { aiTranscript: finalTranscript, smoothingBufferStream };
 
     } catch (error) {
          console.error('[디버그] Live API 응답 처리 중 최종 오류:', error);
          if (session && !connectionClosed) session.close();
-         if (!aiPlaybackStream.destroyed) aiPlaybackStream.push(null);
+         if (!smoothingBufferStream.destroyed) smoothingBufferStream.push(null);
          throw error;
     }
 }
