@@ -36,6 +36,14 @@ const DeploymentStatus = mongoose.model('DeploymentStatus', deploymentStatusSche
 
 const Interaction = mongoose.model('Interaction', interactionSchema);
 
+const urlsSchema = new mongoose.Schema({
+    url: { type: String, required: true, unique: true }, // 검사한 URL
+    isSafe: { type: Boolean, required: true }, // 안전한지 여부
+    lastChecked: { type: Date, default: Date.now } // 마지막 검사 시각
+});
+
+const Urls = mongoose.model('Url', urlsSchema);
+
 const connectDB = async () => {
     const mongoURI = process.env.MONGODB_URI;
     if (!mongoURI) {
@@ -75,4 +83,5 @@ module.exports = {
     connectDB,
     disconnectDB,
     reconnectDB,
+    Urls
 };

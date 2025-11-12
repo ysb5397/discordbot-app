@@ -1,8 +1,9 @@
 const { Events } = require('discord.js');
-const { Interaction } = require('../../utils/database');
+const { Interaction, Urls } = require('../../utils/database');
 const { generateAttachmentDescription, callFlowise } = require('../../utils/ai_helper');
 
 const excludeChannelId = "1434714087388086304";
+const urlCheckApiKey = process.env.URL_CHECK_API_KEY;
 
 /**
  * AI를 사용하여 문맥에 맞는 답변을 생성하는 함수
@@ -48,16 +49,244 @@ async function generateSmartReply(message) {
     return responseJson.text || "음... 뭐라고 답해야 할지 모르겠어.";
 }
 
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+async function submitNewUrlScan(url) {
+    try {
+        const submitResponse = await fetch('https://urlscan.io/api/v1/scan', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'API-Key': urlCheckApiKey
+            },
+            body: JSON.stringify({ "url": url, "visibility": "public" })
+        });
+
+        if (!submitResponse.ok) {
+            throw new Error(`[${url}] 스캔 제출 실패: ${submitResponse.statusText}`);
+        }
+
+        const submitData = await submitResponse.json();
+        const resultApiUrl = submitData.api;
+
+        if (!resultApiUrl) {
+            throw new Error(`[${url}] 스캔 제출 후 API URL을 받지 못함.`);
+        }
+
+        await delay(10000); 
+
+        let resultResponse = null;
+        const maxRetries = 5;
+
+        for (let i = 0; i < maxRetries; i++) {
+            resultResponse = await fetch(resultApiUrl);
+
+            if (resultResponse.status === 404) {
+                await delay(5000);
+                continue; 
+            }
+            
+            if (!resultResponse.ok) {
+                throw new Error(`[${url}] 결과 조회 실패: ${resultResponse.statusText}`);
+            }
+
+            const resultData = await resultResponse.json();
+            
+            const isMalicious = resultData.verdicts?.overall?.malicious === true;
+
+            return {
+                url: url,
+                isMalicious: isMalicious,
+                reportUrl: resultData.task.reportURL
+            };
+        }
+
+        throw new Error(`[${url}] 검사 시간 초과.`);
+
+    } catch (err) {
+        console.error(err);
+        return {
+            url: url,
+            isMalicious: false,
+            error: err.message
+        };
+    }
+}
+
+async function searchUrlScan(url) {
+    console.log(`"${url}" 검색 시도...`);
+    try {
+        const domain = new URL(url).hostname.replace(/^www\./, '');
+        
+        // 1. "검색" API를 먼저 호출 (새 스캔보다 훨씬 빠름)
+        const searchResponse = await fetch(`https://urlscan.io/api/v1/search/?q=domain:${domain}&size=1`, {
+            method: 'GET',
+            headers: { 'API-Key': urlCheckApiKey }
+        });
+
+        if (!searchResponse.ok) {
+            throw new Error(`[${url}] 검색 API 호출 실패: ${searchResponse.statusText}`);
+        }
+
+        const searchData = await searchResponse.json();
+
+        if (searchData.results && searchData.results.length > 0) {
+            console.log(`"${url}" 검색 히트! (새 스캔 안 함)`);
+            const latestResult = searchData.results[0];
+            const isMalicious = latestResult.verdicts?.overall?.malicious === true;
+            
+            return {
+                url: url,
+                isMalicious: isMalicious,
+                reportUrl: latestResult.task.reportURL
+            };
+        }
+
+        console.log(`"${url}" 검색 결과 없음. 새 스캔 제출...`);
+        return await submitNewUrlScan(url);
+
+    } catch (err) {
+        console.error(err);
+        return {
+            url: url,
+            isMalicious: false,
+            error: err.message
+        };
+    }
+}
+
+async function scanAndReply(urlsToScan, thinkingMessage, cachedReplies = []) {
+    
+    const scanPromises = urlsToScan.map(url => searchUrlScan(url));
+    const results = await Promise.allSettled(scanPromises);
+
+    let allowUrl = [];
+    let disallowUrl = [];
+    let errorUrl = [];
+    const urlsToSaveToDB = [];
+
+    results.forEach(result => {
+        if (result.status === 'fulfilled') {
+            const data = result.value;
+            const link = `[${data.url}](${data.reportUrl || 'about:blank'})`;
+
+            if (data.error) {
+                errorUrl.push(`- ${data.url} (검사 중 오류: ${data.error})`);
+            } else if (data.isMalicious) {
+                disallowUrl.push(`- ${link} ☠️`);
+            } else {
+                allowUrl.push(`- ${link} ✅`);
+            }
+
+            urlsToSaveToDB.push({
+                url: data.url,
+                isSafe: !data.isMalicious,
+                lastChecked: new Date()
+            });
+
+        } else {
+            errorUrl.push(`- 알 수 없는 URL (치명적 오류: ${result.reason.message})`);
+        }
+    });
+    
+    console.log(`${urlsToSaveToDB.length}`);
+    if (urlsToSaveToDB.length > 0) {
+        try {
+            await Urls.insertMany(urlsToSaveToDB, { ordered: false }); // 중복 에러 무시
+            console.log(`[DB] ${urlsToSaveToDB.length}개의 새 URL 검사 결과를 저장했습니다.`);
+        } catch (dbError) {
+            if (!dbError.message.includes('E11000')) {
+                console.error(`[DB] URL 저장 실패:`, dbError);
+            }
+            throw Error(dbError);
+        }
+    }
+    
+    const totalCount = urlsToScan.length + cachedReplies.length;
+    let description = [`**총 ${totalCount}개 URL 검사 완료!**\n`];
+
+    if (cachedReplies.length > 0) {
+        description.push(`**[ 💾 캐시된 결과 ${cachedReplies.length}개 ]**\n${cachedReplies.join('\n')}\n`);
+    }
+
+    if (disallowUrl.length > 0) {
+        description.push(`**[ 🚨 신규 위험 ${disallowUrl.length}개 ]**\n${disallowUrl.join('\n')}\n`);
+    }
+    if (allowUrl.length > 0) {
+        description.push(`**[ ✅ 신규 안전 ${allowUrl.length}개 ]**\n${allowUrl.join('\n')}\n`);
+    }
+    if (errorUrl.length > 0) {
+        description.push(`**[ ⚠️ 오류 ${errorUrl.length}개 ]**\n${errorUrl.join('\n')}`);
+    }
+
+    try {
+        await thinkingMessage.edit({ 
+            content: description.join('\n')
+        });
+    } catch (editError) {
+        console.error("결과 메시지 수정 실패:", editError);
+    }
+}
+
 module.exports = {
     name: Events.MessageCreate,
     async execute(message, client) {
         if (message.author.bot) return;
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        let foundUrls = message.content.match(urlRegex);
+
+        let thinkingMessage = null;
+        if (foundUrls) {
+            foundUrls = [...new Set(foundUrls)];
+            const urlsToScan = [];
+            const cachedReplies = [];
+
+            for (const url of foundUrls) {
+                console.log(`[로그 1] 검사할 URL: ${url}`);
+                const cached = await Urls.findOne({ url: url });
+                
+                console.log(`[로그 2] 캐시에서 찾음?:`, cached); // null이 나와야 정상!
+                if (cached) {
+                    if (!cached.isSafe) {
+                        try {
+                            await message.delete();
+                        } catch (err) {
+                            console.error("메시지 삭제 권한이 없거나 이미 삭제된 메시지입니다.", err);
+                        }
+                        await message.channel.send(
+                            `${message.author} 님, 메시지에 캐시된 위험 링크(${url})가 포함되어 있어 삭제했어요! ☠️`
+                        );
+                        return;
+                    } else {
+                        const status = '안전 ✅';
+                        cachedReplies.push(`- ${url} (이미 검사됨: ${status})`);
+                    }
+                } else {
+                    urlsToScan.push(url);
+                }
+            }
+            console.log(`[로그 3] 최종 스캔 목록:`, urlsToScan); // 여기에 새 링크가 담겨야 함!
+
+            if (urlsToScan.length > 0) {
+                const cachedCount = cachedReplies.length;
+                const thinkingMessage = await message.reply(
+                    `${urlsToScan.length}개의 새 링크를 검사할게. (캐시된 안전 링크 ${cachedCount}개) 잠시만 기다려줘!`
+                );
+                
+                await scanAndReply(urlsToScan, thinkingMessage, cachedReplies); 
+
+            } else if (cachedReplies.length > 0) {
+                await message.reply(`감지된 링크는 모두 이전에 검사 완료된 안전한 링크들이야!\n\n${cachedReplies.join('\n')}`);
+            }
+            
+            return;
+        }
+
         if (message.channelId == excludeChannelId) return;
 
         const shouldBotReply = message.mentions.has(client.user);
 
         if (shouldBotReply) {
-            let thinkingMessage = null;
             try {
                 thinkingMessage = await message.reply("잠깐만... 생각 중이야! 🤔");
             } catch (replyError) {
