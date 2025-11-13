@@ -9,6 +9,10 @@ const OWNER_ID = process.env.MY_DISCORD_USER_ID;
 module.exports = {
     name: Events.InteractionCreate,
     async execute(interaction, client) {
+        if (client.amIActive === false) {
+            return;
+        }
+
         if (interaction.guildId !== ALLOWED_GUILD_ID && interaction.user.id !== OWNER_ID) {
             return interaction.reply({ 
                 content: '이 봇은 승인된 서버에서만 사용할 수 있습니다. 🔒', 

@@ -44,6 +44,14 @@ const urlsSchema = new mongoose.Schema({
 
 const Urls = mongoose.model('Url', urlsSchema);
 
+const botStatusSchema = new mongoose.Schema({
+    botName: { type: String, required: true, unique: true },
+    status: { type: String, default: 'INACTIVE' },
+    lastHeartbeat: { type: Date, default: Date.now }
+});
+
+const BotStatus = mongoose.model('BotStatus', botStatusSchema);
+
 const connectDB = async () => {
     const mongoURI = process.env.MONGODB_URI;
     if (!mongoURI) {
@@ -83,5 +91,6 @@ module.exports = {
     connectDB,
     disconnectDB,
     reconnectDB,
-    Urls
+    Urls,
+    BotStatus
 };

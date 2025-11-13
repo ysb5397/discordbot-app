@@ -7,6 +7,11 @@ const voiceManagers = new Map();
 module.exports = {
     name: Events.VoiceStateUpdate,
     async execute(oldState, newState) {
+        const client = newState.client || oldState.client;
+        if (client.amIActive === false) {
+            return;
+        }
+
         if (newState.member.user.bot) return;
 
         // --- 유저가 타겟 채널에 들어왔을 때 ---

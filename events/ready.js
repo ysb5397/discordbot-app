@@ -1,8 +1,34 @@
 const { Events, ChannelType, ActivityType } = require('discord.js');
 const { startEarthquakeMonitor } = require('../utils/earthquake');
 const { joinVoiceChannel } = require('@discordjs/voice');
+const { BotStatus } = require('../utils/database');
 
 const TARGET_CHANNEL_ID = "1353292092016693282";
+
+async function checkDevBotStatus(client) {
+    try {
+        const devStatus = await BotStatus.findOne({ botName: 'DEV_BOT' });
+
+        const isDevAlive = devStatus && (Date.now() - devStatus.lastHeartbeat.getTime()) < 60000;
+
+        if (isDevAlive) {
+            if (client.amIActive) {
+                console.log('[Main Bot] Dev 봇이 감지되었습니다. 스탠바이 모드로 전환합니다...');
+                client.user.setPresence({ status: 'idle', activities: [{ name: '휴식 중 (Dev 봇 활성)' }] });
+            }
+            client.amIActive = false;
+        } else {
+            if (!client.amIActive) {
+                console.log('[Main Bot] Dev 봇이 오프라인입니다. 활성 모드로 작업을 재개합니다...');
+                client.user.setPresence({ status: 'online', activities: [{ name: 'Gemini' }] });
+            }
+            client.amIActive = true;
+        }
+    } catch (err) {
+        console.error('[Main Bot] Dev 봇 상태 확인 중 오류:', err);
+        client.amIActive = true;
+    }
+}
 
 module.exports = {
     name: Events.ClientReady,
@@ -39,6 +65,14 @@ module.exports = {
                     adapterCreator: targetChannel.guild.voiceAdapterCreator,
                 });
             }
+        }
+
+        if (process.env.IS_DEV_BOT !== 'true') { 
+            console.log('[Main Bot] Dev 봇 상태 감시를 시작합니다...');
+
+            setInterval(() => {
+                checkDevBotStatus(client);
+            }, 45000);
         }
     },
 };

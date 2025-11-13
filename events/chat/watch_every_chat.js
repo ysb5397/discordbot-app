@@ -118,8 +118,7 @@ async function searchUrlScan(url) {
     try {
         const domain = new URL(url).hostname.replace(/^www\./, '');
         
-        // 1. "검색" API를 먼저 호출 (새 스캔보다 훨씬 빠름)
-        const searchResponse = await fetch(`https://urlscan.io/api/v1/search/?q=domain:${domain}&size=1`, {
+        const searchResponse = await fetch(`https://urlscan.io/api/v1/search/?q=domain:${domain}&size=10`, {
             method: 'GET',
             headers: { 'API-Key': urlCheckApiKey }
         });
@@ -131,14 +130,18 @@ async function searchUrlScan(url) {
         const searchData = await searchResponse.json();
 
         if (searchData.results && searchData.results.length > 0) {
-            console.log(`"${url}" 검색 히트! (새 스캔 안 함)`);
-            const latestResult = searchData.results[0];
-            const isMalicious = latestResult.verdicts?.overall?.malicious === true;
+            console.log(`"${url}" 검색 히트! (결과 ${searchData.results.length}개 / 새 스캔 안 함)`);
+            
+            const isMalicious = searchData.results.some(
+                result => result.verdicts?.overall?.malicious === true
+            );
+
+            const latestReportUrl = searchData.results[0].task.reportURL;
             
             return {
                 url: url,
                 isMalicious: isMalicious,
-                reportUrl: latestResult.task.reportURL
+                reportUrl: latestReportUrl
             };
         }
 
@@ -231,6 +234,10 @@ async function scanAndReply(urlsToScan, thinkingMessage, cachedReplies = []) {
 module.exports = {
     name: Events.MessageCreate,
     async execute(message, client) {
+        if (client.amIActive === false) {
+            return;
+        }
+
         if (message.author.bot) return;
         const urlRegex = /(https?:\/\/[^\s]+)/g;
         let foundUrls = message.content.match(urlRegex);
