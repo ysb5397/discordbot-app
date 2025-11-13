@@ -1,6 +1,7 @@
 const { Events, ChannelType, ActivityType } = require('discord.js');
 const { startEarthquakeMonitor } = require('../utils/earthquake');
 const { joinVoiceChannel } = require('@discordjs/voice');
+const { BotStatus } = require('../utils/database');
 
 const TARGET_CHANNEL_ID = "1353292092016693282";
 
