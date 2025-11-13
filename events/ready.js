@@ -40,5 +40,21 @@ module.exports = {
                 });
             }
         }
+
+        if (process.env.IS_DEV_BOT === 'true') {
+            console.log('[DEV BOT] 하트비트 전송을 시작합니다...');
+            
+            setInterval(async () => {
+                try {
+                    await BotStatus.updateOne(
+                        { botName: 'DEV_BOT' },
+                        { $set: { lastHeartbeat: new Date(), status: 'ACTIVE' } },
+                        { upsert: true }
+                    );
+                } catch (err) {
+                    console.error('[DEV BOT] 하트비트 전송 실패:', err);
+                }
+            }, 30000);
+        }
     },
 };
