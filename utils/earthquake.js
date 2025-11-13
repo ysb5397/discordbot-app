@@ -95,6 +95,12 @@ async function checkEarthquakeAndNotify(client) {
 
 async function scheduleCheck(client) {
     try {
+        if (client.amIActive === false) { 
+            console.log('[EQK] [Main Bot] 스탠바이 모드이므로 지진 확인을 건너뜁니다.');
+            currentDelay = INITIAL_DELAY;
+            return;
+        }
+
         await checkEarthquakeAndNotify(client);
         earthquakeMonitorStatus = '정상';
         if (currentDelay !== INITIAL_DELAY) {
