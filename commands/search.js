@@ -64,7 +64,7 @@ function formatWebResultsForMessage(items) {
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('dev_search')
+        .setName('search')
         .setDescription('AI가 웹 또는 기억(DB)을 검색하여 질문에 답합니다.')
         .setContexts([
             InteractionContextType.Guild,
