@@ -34,7 +34,7 @@ module.exports = {
             const foundMember = await WhiteList.findOne({ memberId: member.id });
 
             if (foundMember == null) {
-                await interaction.editReply({content: '사용자를 찾지 못했어요... 화리를 새로 추가할게요!', ephemeral: true});
+                await interaction.reply({content: '사용자를 찾지 못했어요... 화리를 새로 추가할게요!', ephemeral: true});
 
                 const newWhiteList = new WhiteList({
                     memberId: member.Id,
@@ -42,7 +42,7 @@ module.exports = {
                 });
 
                 await newWhiteList.save();
-                await interaction.editReply({content: `화리 추가가 완료됐어요! / 추가된 멤버 ID : ${member.memberId}`, ephemeral: true});
+                await interaction.editReply(`화리 추가가 완료됐어요! / 추가된 멤버 ID : ${member.memberId}`);
                 return;
             }
 
@@ -59,7 +59,7 @@ module.exports = {
             await foundMember.updateOne({
                 isWhite: setSafety
             });
-            await interaction.editReply({content: `화리 수정이 완료됐어요! / 수정된 멤버 ID : ${member.id}`, ephemeral: true});
+            await interaction.reply({content: `화리 수정이 완료됐어요! / 수정된 멤버 ID : ${member.id}`, ephemeral: true});
         } catch(e) {
             console.error('whiteList 수정에 실패했어요....', e);
             throw e;
