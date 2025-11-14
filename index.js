@@ -25,6 +25,8 @@ const client = new Client({
     ]
 });
 
+client.voiceManagers = new Map();
+
 process.on('uncaughtException', (error, origin) => {
     console.error('!!! 치명적인 예외 발생 (Uncaught Exception) !!!', error);
     if (client.isReady()) {

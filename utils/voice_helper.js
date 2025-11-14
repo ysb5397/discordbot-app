@@ -17,7 +17,7 @@ const AUDIO_CONFIG = {
     FORMAT: 's16le'
 };
 
-class VoiceManager {
+class GeminiVoiceManager {
     constructor(channel) {
         this.channel = channel;
         this.connection = null;
@@ -354,4 +354,4 @@ class VoiceManager {
     }
 }
 
-module.exports = VoiceManager;
+module.exports = GeminiVoiceManager;
