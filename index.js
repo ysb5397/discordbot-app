@@ -97,7 +97,6 @@ for (const folder of eventFolders) {
     loadEvents(path.join(eventsPath, folder));
 }
 
-// Cloud Run의 헬스 체크(PORT=5000)를 통과하기 위한 더미 웹서버
 const app = express();
 app.use(express.json());
 const port = process.env.PORT || 5000;
@@ -281,18 +280,24 @@ app.listen(port, () => {
       console.error("!!! startBot() 실행 중 치명적인 오류 발생 (서버는 시작됨) !!!", err);
   });
 
-  if (PING_URL) {
-   console.log(`[PING] ${PING_URL} 주소로 4분마다 Keep-alive 핑을 보냅니다.`);
+  const FLOWISE_TO_PING = process.env.FLOWISE_ENDPOINT;
    
-   // 4분마다 핑 보내기 시작
-   setInterval(() => {
-     fetch(PING_URL)
-      .then(() => console.log(`[PING] ${new Date().toISOString()} - Keep-alive sent to ${PING_URL}`))
-      .catch(err => console.error(`[PING ERROR] Failed to ping ${PING_URL}:`, err.message));
-   }, 1000 * 60 * 4); // 4분 (240000ms)
+   if (FLOWISE_TO_PING) {
+    console.log(`[Flowise PING] 무료 플랜 Flowise가 잠들지 않도록 4분마다 핑을 보냅니다: ${FLOWISE_TO_PING}`);
+    
+    setInterval(() => {
+      fetch(FLOWISE_TO_PING)
+        .then(res => {
+          if (res.ok) {
+            console.log(`[Flowise PING] ${new Date().toISOString()} - Flowise 핑 성공 (상태: ${res.status}).`);
+          } else {
+            console.warn(`[Flowise PING] ${new Date().toISOString()} - Flowise 핑 완료 (상태: ${res.status}).`);
+          }
+        })
+        .catch(err => console.error(`[Flowise PING ERROR] Flowise 핑 실패:`, err.message));
+    }, 1000 * 60 * 4);
 
- } else {
-   // .env에 APP_URL이 설정 안 됐을 경우 경고
-   console.warn('[PING] APP_URL이 .env 파일에 설정되지 않아 Keep-alive 핑을 보내지 않습니다.');
- }
+  } else {
+    console.warn('[Flowise PING] FLOWISE_ENDPOINT가 .env 파일에 설정되지 않아 핑을 보내지 않습니다.');
+  }
 });
