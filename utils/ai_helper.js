@@ -3,6 +3,11 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { GoogleGenAI, Modality } = require('@google/genai'); // Live API용
 const { logToDiscord } = require('./catch_log.js');
+const { google } = require('googleapis');
+
+const customsearch = google.customsearch('v1');
+const googleApiKey = process.env.GOOGLE_SEARCH_API;
+const googleSearchEngineId = process.env.GOOGLE_SEARCH_ENGINE_ID;
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const ai_live = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }); // Live API용
@@ -264,47 +269,43 @@ async function generateMongoFilter(query, userId, client = null, interaction = n
     Respond ONLY with the valid JSON object.
     `;
 
-    let aiResponseJsonString = '{}';
+    let filterJsonString = '{}';
     try {
-        const filterClient = client || (interaction ? interaction.client : null);
-        aiResponseJsonString = await callFlowise(prompt, userId, 'mongo-filter-gen', filterClient, interaction);
+        console.log(`[genAI Filter Gen] '${query}'에 대한 필터 생성 시작...`);
+        const result = await flashModel.generateContent(prompt);
+        filterJsonString = result.response.text();
+        
     } catch (aiError) {
-        console.error("Mongo 필터 생성 AI 호출 실패:", aiError);
+        console.error("Mongo 필터 생성 (genAI) AI 호출 실패:", aiError);
+        const filterClient = client || (interaction ? interaction.client : null);
+        if (filterClient) {
+            logToDiscord(filterClient, 'ERROR', `Mongo 필터 생성 (genAI) 실패`, interaction, aiError, 'generateMongoFilter');
+        }
         throw new Error(`AI 호출에 실패하여 필터를 생성할 수 없습니다: ${aiError.message}`);
     }
 
-
-    try {
-        const aiResponse = JSON.parse(aiResponseJsonString);
-        let filterJsonString = aiResponse.text || '{}';
-
-        // JSON 문자열 추출 로직 강화
-        if (filterJsonString.trim().startsWith('{') && filterJsonString.trim().endsWith('}')) {
-             // 이미 JSON 형태면 그대로 사용
-        } else {
-             // ```json ... ``` 블록 추출 시도
+    try {        
+        if (!filterJsonString.trim().startsWith('{') || !filterJsonString.trim().endsWith('}')) {
              const codeBlockMatch = filterJsonString.match(/```json\s*(\{.*\})\s*```/s);
              if (codeBlockMatch && codeBlockMatch[1]) {
                  filterJsonString = codeBlockMatch[1];
              } else {
-                 // 그냥 중괄호로 시작하는 부분 추출 시도
                  const jsonMatch = filterJsonString.match(/\{.*\}/s);
                  if (jsonMatch) {
                      filterJsonString = jsonMatch[0];
                  } else {
-                     if(aiResponse.message) console.warn(`Mongo 필터 생성 AI가 JSON 대신 메시지 반환: ${aiResponse.message}`);
-                     throw new Error(`AI 응답에서 유효한 JSON 필터 객체를 찾을 수 없습니다. 응답 내용: ${aiResponseJsonString.substring(0, 200)}...`);
+                     throw new Error(`AI 응답에서 유효한 JSON 필터 객체를 찾을 수 없습니다. AI 응답: ${filterJsonString.substring(0, 200)}...`);
                  }
              }
         }
 
-        const filter = JSON.parse(filterJsonString); // 여기서 실패할 수도 있음
+        const filter = JSON.parse(filterJsonString);
         filter.userId = userId;
         return filter;
 
     } catch (parseError) {
-        console.error("AI 생성 필터 파싱/처리 실패:", aiResponseJsonString, parseError);
-        throw new Error(`AI가 생성한 필터를 분석하는 데 실패했습니다 (${parseError.message}). AI 응답: ${aiResponseJsonString.substring(0, 200)}...`);
+        console.error("AI 생성 필터 파싱/처리 실패:", filterJsonString, parseError);
+        throw new Error(`AI가 생성한 필터를 분석하는 데 실패했습니다 (${parseError.message}). AI 응답: ${filterJsonString.substring(0, 200)}...`);
     }
 }
 
@@ -605,6 +606,62 @@ async function downloadVideoFromUri(videoUri) {
     }
 }
 
+/**
+ * AI를 이용해 검색어를 생성하는 함수
+ */
+async function generateSearchQuery(userQuestion, sessionId, client, interaction) {
+    const prompt = `
+        You are a search query optimization expert. Your task is to convert a user's natural language question into a highly effective, keyword-focused search query for Google. The query should be in English to maximize search results. Avoid using quotes unless absolutely necessary for the search.
+
+        User Question: "${userQuestion}"
+
+        Optimized Google Search Query:
+    `;
+
+    const aiResponseText = await callFlowise(prompt, sessionId, 'query-generation', client, interaction);
+
+    try {
+        const aiResponse = JSON.parse(aiResponseText);
+        let query = aiResponse.text || '';
+
+        if (aiResponse.message) {
+            console.log(`[AI Helper] 검색어 생성 메시지: ${aiResponse.message}`);
+            logToDiscord(client, 'INFO', `검색어 생성 AI 메시지: ${aiResponse.message}`, interaction, null, 'generateSearchQuery');
+        }
+
+        return query.replace(/"/g, '').trim();
+
+    } catch (parseError) {
+        console.error(`[AI Helper] 검색어 생성 AI 응답 파싱 실패:`, aiResponseText, parseError);
+        logToDiscord(client, 'ERROR', '검색어 생성 AI 응답을 해석(JSON 파싱)하는 데 실패했습니다.', interaction, parseError, 'generateSearchQuery');
+        return userQuestion; // 파싱 실패 시 원본 질문 사용
+    }
+}
+
+/**
+ * 구글 웹 검색을 수행하는 함수
+ */
+async function searchWeb(query) {
+    if (!googleApiKey || !googleSearchEngineId) {
+        throw new Error("Google Search API 키 또는 엔진 ID가 설정되지 않았습니다. (.env 확인)");
+    }
+    try {
+        const searchResponse = await customsearch.cse.list({
+            auth: googleApiKey,
+            cx: googleSearchEngineId,
+            q: query,
+            num: 5,
+        });
+        return searchResponse.data.items || [];
+    } catch (searchError) {
+        console.error(`[AI Helper] Google Search API 오류:`, searchError.message);
+        if (searchError.message && searchError.message.includes('API key')) {
+            throw new Error("구글 검색 API 키가 만료되었거나 잘못되었습니다. (403 Forbidden 등)");
+        }
+        throw new Error(`웹 검색 중 예상치 못한 오류 발생: ${searchError.message}`);
+    }
+}
+
 module.exports = {
     getChatResponseStreamOrFallback,
     callFlowise,
@@ -616,4 +673,6 @@ module.exports = {
     startVideoGeneration,
     checkVideoGenerationStatus,
     downloadVideoFromUri,
+    generateSearchQuery,
+    searchWeb,
 };
