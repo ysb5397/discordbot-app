@@ -52,6 +52,14 @@ const botStatusSchema = new mongoose.Schema({
 
 const BotStatus = mongoose.model('BotStatus', botStatusSchema);
 
+const whiteListSchema = new mongoose.Schema({
+    memberId: { type: String, required: true, unique: true },
+    isWhite: { type: Boolean, required: true },
+    timestamp: { type: Date, default: Date.now }
+});
+
+const WhiteList = mongoose.model('WhiteList', whiteListSchema);
+
 const connectDB = async () => {
     const mongoURI = process.env.MONGODB_URI;
     if (!mongoURI) {
@@ -92,5 +100,6 @@ module.exports = {
     disconnectDB,
     reconnectDB,
     Urls,
-    BotStatus
+    BotStatus,
+    WhiteList
 };
