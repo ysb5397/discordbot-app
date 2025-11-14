@@ -3,7 +3,7 @@ const { WhiteList } = require('../utils/database.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('dev_white_list')
+        .setName('white_list')
         .setDescription('화리 설정을 변경 합니다.')
         .setContexts([
             InteractionContextType.Guild,          // 1. 서버

@@ -2,6 +2,7 @@
 
 const { Events } = require('discord.js');
 const { logToDiscord } = require('../utils/catch_log.js');
+const { WhiteList } = require('../utils/database.js');
 
 const ALLOWED_GUILD_ID = process.env.DISCORD_GUILD_ID;
 const OWNER_ID = process.env.MY_DISCORD_USER_ID;
@@ -13,7 +14,9 @@ module.exports = {
             return;
         }
 
-        if (interaction.guildId !== ALLOWED_GUILD_ID && interaction.user.id !== OWNER_ID) {
+        const foundUser = await WhiteList.findOne({ memberId: interaction.user.id });
+
+        if (interaction.guildId !== ALLOWED_GUILD_ID && interaction.user.id !== OWNER_ID || !foundUser.isWhite) {
             return interaction.reply({ 
                 content: '이 봇은 승인된 서버에서만 사용할 수 있습니다. 🔒', 
                 ephemeral: true

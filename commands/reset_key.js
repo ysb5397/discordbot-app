@@ -2,6 +2,8 @@ const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { ApiKey } = require('../utils/database');
 const crypto = require('crypto');
 
+const OWNER_ID = process.env.MY_DISCORD_USER_ID;
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('reset_key')
@@ -9,6 +11,10 @@ module.exports = {
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     
     async execute(interaction) {
+        if (interaction.user.id !== OWNER_ID) {
+            return;
+        }
+
         await interaction.deferReply({ ephemeral: true });
         const keyName = "Flutter AI";
 
