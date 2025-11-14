@@ -205,18 +205,6 @@ class VoiceManager {
     }
 
     async #getAiResponse(userId, userAudioStream, activeSession, aiAudioStream) {
-        // ▼▼▼ 기억 검색 로직을 일단 제거 (STT가 없으므로) ▼▼▼
-        // console.log(`[디버그] -> AI 응답: 기억 검색을 시작합니다 (임시 쿼리: "${transcript}").`);
-        // const searchResults = await this.#searchMemories(transcript, userId);
-        
-        let systemPrompt = `You are a friendly and helpful AI assistant. Respond in Korean.`;
-        // if (searchResults.length > 0) {
-        //     const memories = searchResults.map(r => ` - ${r.content}`).join('\n');
-        //     systemPrompt += `\nHere are some related past memories to provide context:\n${memories}`;
-        //     console.log(`[디버그] -> AI 응답: ${searchResults.length}개의 기억을 찾아 프롬프트에 추가했습니다.`);
-        // }
-        // ▲▲▲ 기억 검색 로직 제거 ▲▲▲
-        
         console.log(`[디버그] -> AI 응답: 최종 프롬프트와 오디오 스트림으로 Gemini Live API를 호출합니다.`);
         return getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSession, aiAudioStream);
     }
