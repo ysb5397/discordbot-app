@@ -12,6 +12,7 @@ module.exports = {
     
     async execute(interaction) {
         if (interaction.user.id !== OWNER_ID) {
+            await interaction.reply({content: "이 명령어는 관리자만 사용가능합니다.", ephemeral: true});
             return;
         }
 

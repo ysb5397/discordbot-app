@@ -1,6 +1,8 @@
 const { SlashCommandBuilder, InteractionContextType } = require('discord.js');
 const { WhiteList } = require('../utils/database.js');
 
+const OWNER_ID = process.env.MY_DISCORD_USER_ID;
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('white_list')
@@ -21,6 +23,11 @@ module.exports = {
 
     async execute(interaction) {
         try {
+            if (interaction.user.id !== OWNER_ID) {
+                await interaction.reply({content: "이 명령어는 관리자만 사용가능합니다.", ephemeral: true});
+                return;
+            }
+
             const memberId = interaction.options.getString('member_id');
             const setSafety = interaction.options.getBoolean('set_safety') || false;
 
