@@ -2,11 +2,12 @@ const { SlashCommandBuilder, InteractionContextType } = require('discord.js');
 const { WhiteList } = require('../utils/database.js');
 
 const OWNER_ID = process.env.MY_DISCORD_USER_ID;
+const BASE_MEMBER_ROLE_ID = process.env.BASE_MEMBER_ROLE_ID;
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('white_list')
-        .setDescription('화리 설정을 변경 합니다.')
+        .setDescription('화리 설정을 변경 합니다. (관리자 전용)')
         .setContexts([
             InteractionContextType.Guild,          // 1. 서버
             InteractionContextType.BotDM,          // 2. 봇과의 1:1 DM
@@ -30,6 +31,7 @@ module.exports = {
 
             const memberId = interaction.options.getString('member_id');
             const setSafety = interaction.options.getBoolean('set_safety') || false;
+            const role = await interaction.guild.roles.fetch(BASE_MEMBER_ROLE_ID);
 
             await interaction.deferReply();
             
@@ -46,6 +48,14 @@ module.exports = {
                 await newWhiteList.save();
                 await interaction.editReply(`화리 추가가 완료됐어요! / 추가된 멤버 ID : ${memberId}`);
                 return;
+            }
+
+            if (role == null) {
+                throw Error("역할을 찾을 수 없어요.");
+            }
+
+            if (!setSafety) {
+                await foundMember.roles.remove(role);
             }
 
             await foundMember.updateOne({
