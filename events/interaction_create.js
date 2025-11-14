@@ -18,7 +18,7 @@ module.exports = {
 
         if (interaction.guildId !== ALLOWED_GUILD_ID && interaction.user.id !== OWNER_ID || !foundUser.isWhite) {
             return interaction.reply({ 
-                content: '이 봇은 승인된 서버에서만 사용할 수 있습니다. 🔒', 
+                content: '이 봇은 승인된 서버 내부 또는 화이트 리스트 유저만 사용할 수 있습니다. 🔒', 
                 ephemeral: true
             });
         }
