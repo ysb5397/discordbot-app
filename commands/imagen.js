@@ -14,7 +14,7 @@ const client = new Client({
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('imagen')
+        .setName('dev_imagen')
         .setDescription('Gemini AI에게 이미지 생성을 요청합니다.')
         .setContexts([
             InteractionContextType.Guild,          // 1. 서버

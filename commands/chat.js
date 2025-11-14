@@ -141,7 +141,7 @@ async function handleRegularConversation(interaction, startTime, selectedModel, 
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('chat')
+        .setName('dev_chat')
         .setDescription('AI와 대화하거나, 저장된 기억을 검색합니다.')
         .setContexts([
             InteractionContextType.Guild,

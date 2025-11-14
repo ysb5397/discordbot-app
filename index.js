@@ -26,6 +26,8 @@ const client = new Client({
     ]
 });
 
+client.voiceManagers = new Map();
+
 process.on('uncaughtException', (error, origin) => {
     console.error('!!! 치명적인 예외 발생 (Uncaught Exception) !!!', error);
     if (client.isReady()) {
@@ -98,7 +100,7 @@ for (const folder of eventFolders) {
 // Cloud Run의 헬스 체크(PORT=5000)를 통과하기 위한 더미 웹서버
 const app = express();
 app.use(express.json());
-const port = process.env.PORT || 5000;
+const port = process.env.PORT || 5500;
 
 const authenticateApiKey = async (req, res, next) => {
     try {
@@ -278,19 +280,4 @@ app.listen(port, () => {
   startBot().catch(err => {
       console.error("!!! startBot() 실행 중 치명적인 오류 발생 (서버는 시작됨) !!!", err);
   });
-
-  if (PING_URL) {
-   console.log(`[PING] ${PING_URL} 주소로 4분마다 Keep-alive 핑을 보냅니다.`);
-   
-   // 4분마다 핑 보내기 시작
-   setInterval(() => {
-     fetch(PING_URL)
-      .then(() => console.log(`[PING] ${new Date().toISOString()} - Keep-alive sent to ${PING_URL}`))
-      .catch(err => console.error(`[PING ERROR] Failed to ping ${PING_URL}:`, err.message));
-   }, 1000 * 60 * 4); // 4분 (240000ms)
-
- } else {
-   // .env에 APP_URL이 설정 안 됐을 경우 경고
-   console.warn('[PING] APP_URL이 .env 파일에 설정되지 않아 Keep-alive 핑을 보내지 않습니다.');
- }
 });
