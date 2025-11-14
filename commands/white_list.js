@@ -27,6 +27,11 @@ module.exports = {
             console.error('[white_list] .env에 BASE_MEMBER_ROLE_ID가 없습니다.');
             return interaction.reply({ content: '❌ 봇 설정에 기본 역할 ID가 지정되지 않았어요.', ephemeral: true });
         }
+
+        if (interaction.user.id !== OWNER_ID) {
+            console.error('[white_list] 관리자가 아닙니다.');
+            return interaction.reply({ content: '❌ 관리자만 이 명령어를 사용할 수 있어요.', ephemeral: true });
+        }
         
         const member = interaction.options.getMember('member');
         const setSafety = interaction.options.getBoolean('set_safety') || false;
