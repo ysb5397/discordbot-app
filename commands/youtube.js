@@ -35,7 +35,7 @@ async function getManager(interaction) {
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('youtube')
+        .setName('dev_youtube')
         .setDescription('유튜브 음악을 재생합니다.')
         .addSubcommand(subcommand =>
             subcommand
