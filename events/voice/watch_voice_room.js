@@ -10,6 +10,10 @@ module.exports = {
     name: Events.VoiceStateUpdate,
     async execute(oldState, newState) {
         const client = newState.client || oldState.client;
+        
+        if (!client.voiceManagers) {
+            client.voiceManagers = new Map();
+        }
         const activeManagers = client.voiceManagers;
 
         if (client.amIActive === false) {
