@@ -1,5 +1,5 @@
 const ytSearch = require('yt-search');
-const youtubedl = require('youtube-dl-exec');
+const ytdl = require('@distube/ytdl-core');
 const {
     joinVoiceChannel,
     createAudioPlayer,
@@ -76,20 +76,15 @@ class YoutubeManager {
         console.log(`[YouTube] 다음 곡 재생 시도: ${nextSong.title}`);
 
         try {
-            const info = await youtubedl(nextSong.url, {
-                dumpSingleJson: true,
-                noCheckCertificates: true,
-                noWarnings: true,
-                preferFreeFormats: true,
-                youtubeSkipDashManifest: true,
+            const stream = ytdl(nextSong.url, {
+                filter: 'audioonly',
+                quality: 'highestaudio',
+                highWaterMark: 1 << 25,
             });
 
-            const audioUrl = info.url;
-            if (!audioUrl || !audioUrl.startsWith('http')) {
-                throw new Error('유효한 오디오 URL을 찾을 수 없습니다.');
-            }
+            console.log(`[YouTube] ytdl-core로 스트림 가져오기 성공: ${nextSong.title}`);
 
-            const resource = createAudioResource(audioUrl, {
+            const resource = createAudioResource(stream, {
                 inputType: StreamType.Arbitrary,
             });
 
@@ -97,6 +92,9 @@ class YoutubeManager {
 
         } catch (error) {
             console.error(`[YouTube] ❌ '${nextSong.title}' 재생 중 오류:`, error.message);
+            if (error.stack) {
+                console.error(error.stack);
+            }
             this.isQueuePlaying = false;
             this._playNextSongInQueue();
         }
