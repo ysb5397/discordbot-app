@@ -2,7 +2,7 @@
 
 const { SlashCommandBuilder, InteractionContextType } = require('discord.js');
 const { Interaction } = require('../utils/database.js');
-const { searchWeb, generateSearchQuery, generateMongoFilter, callFlowise } = require('../utils/ai_helper.js');
+const { searchWeb, generateSearchQuery, generateMongoFilter, callFlowise, deepResearch } = require('../utils/ai_helper.js');
 const { logToDiscord } = require('../utils/catch_log.js');
 const { createAiResponseEmbed } = require('../utils/embed_builder.js');
 
@@ -108,51 +108,30 @@ module.exports = {
         
         try {
             if (subcommand === 'detailed') {
-                await interaction.editReply('기억(DB)을 검색 중입니다... 🧠');
-                formattedMemoryResults = await searchMemories(userQuestion, sessionId, client, interaction);
-                fields.push({ 
-                    name: '기억(DB) 요약', 
-                    value: formattedMemoryResults.substring(0, 1020) + (formattedMemoryResults.length > 1020 ? '...' : '')
+                await interaction.editReply(`🕵️‍♂️ '${userQuestion}'에 대한 심층 리서치를 시작합니다... (최대 1~2분 소요)`);
+                
+                const reportText = await deepResearch(userQuestion);
+                
+                const buffer = Buffer.from(reportText, 'utf-8');
+                const attachment = new AttachmentBuilder(buffer, { name: 'deep_research_report.txt' });
+
+                const endTime = Date.now();
+                const duration = endTime - startTime;
+
+                const summaryEmbed = createAiResponseEmbed({
+                    title: `📑 심층 리서치 완료: ${userQuestion.substring(0, 50)}...`,
+                    description: reportText.substring(0, 300) + "...\n\n**(전체 내용은 첨부된 텍스트 파일을 확인해 주세요!)**",
+                    duration: duration,
+                    user: interaction.user,
+                    footerPrefix: "Powered by Gemini 2.0 & Google Search"
                 });
-            }
 
-            await interaction.editReply('AI가 질문을 분석해 검색어를 생성 중입니다... 🤔');
-            const searchQuery = await generateSearchQuery(userQuestion, sessionId, client, interaction);
-            logToDiscord(client, 'DEBUG', `Generated Search Query: "${searchQuery}"`, interaction, null, 'execute');
+                await interaction.editReply({
+                    content: "✅ 리서치가 완료되었습니다!",
+                    embeds: [summaryEmbed],
+                    files: [attachment]
+                });
 
-            await interaction.editReply(`AI가 생성한 검색어(\"${searchQuery}\")로 웹 검색을 시작합니다... 🕵️‍♂️`);
-
-            const webResults = await searchWeb(searchQuery);
-
-            formattedWebResultsForAI = formatWebResultsForAI(webResults);
-            formattedWebResultsForMsg = formatWebResultsForMessage(webResults);
-            
-            if (webResults.length === 0) {
-                logToDiscord(client, 'WARN', `웹 검색 결과 없음 (Query: "${searchQuery}")`, interaction, null, 'execute');
-            }
-
-            await interaction.editReply('수집된 정보를 바탕으로 AI가 최종 분석을 시작합니다... 🤖');
-
-            if (subcommand === 'detailed') {
-                finalTitle = `[심층 분석] ${userQuestion.substring(0, 240)}`;
-                analysisPrompt = `
-                    Please act as a professional researcher. Your goal is to provide a comprehensive, in-depth answer to the user's original question.
-                    You must synthesize information from *two* sources: (1) The user's past memories from our database, and (2) Real-time web search results.
-                    First, analyze the user's question. Then, see if their past memories provide any personal context or history. Finally, use the web search results to provide factual, up-to-date information.
-                    Combine both insights into a natural, cohesive answer. Cite sources used (e.g., "[기억 1]", "[웹 출처 2, 3]").
-                    If the results are insufficient, state that clearly. Respond in Korean.
-
-                    [User's Original Question]
-                    ${userQuestion}
-
-                    [Source 1: User's Past Memories (DB)]
-                    ${formattedMemoryResults}
-
-                    [Source 2: Web Search Results (Vertex AI)]
-                    ${formattedWebResultsForAI}
-                    
-                    [Your In-depth Analysis (Korean)]
-                `;
             }  else {
                     analysisPrompt = `
                         Please act as a professional researcher. Provide a concise summary answering the user's question based *only* on the provided web search results.

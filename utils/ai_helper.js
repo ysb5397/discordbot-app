@@ -1,24 +1,24 @@
 // utils/ai_helper.js
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const { GoogleGenAI, Modality } = require('@google/genai'); // Live API용
+const { GoogleGenAI, Modality } = require('@google/genai');
 const { logToDiscord } = require('./catch_log.js');
-const { google } = require('googleapis');
+const { PassThrough } = require('stream');
+const fetch = require('node-fetch');
 
-const customsearch = google.customsearch('v1');
-const googleApiKey = process.env.GOOGLE_SEARCH_API;
-const googleSearchEngineId = process.env.GOOGLE_SEARCH_ENGINE_ID;
+const PYTHON_AI_SERVICE_URL = process.env.PYTHON_AI_SERVICE_URL;
+const GOOGLE_API_KEY = process.env.GEMINI_API_KEY;
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const ai_live = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }); // Live API용
 const flowiseEndpoint = process.env.FLOWISE_ENDPOINT;
 const flowiseApiKey = process.env.FLOWISE_API_KEY;
 
-// 모델 이름 확인 필요
+const genAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
+const ai_live = new GoogleGenAI({ apiKey: GOOGLE_API_KEY });
+const flashModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" }); 
 const proModel = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
-const flashModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-// --- 헬퍼: Gemini 프롬프트 구성 ---
+
+// --- 헬퍼: Gemini 프롬프트 구성 (채팅 스트리밍용 - Node.js 유지) ---
 async function buildGeminiPrompt(promptData, attachment) {
     const parts = [];
     if (attachment) {
@@ -32,7 +32,7 @@ async function buildGeminiPrompt(promptData, attachment) {
             parts.push({ text: promptData.question + `\n(첨부 파일: ${attachment.name})` });
         } catch (attachError) {
              console.error('[AI Helper] 첨부파일 처리 중 오류:', attachError);
-             throw attachError; // 오류 전파
+             throw attachError; 
         }
     } else {
         parts.push({ text: promptData.question });
@@ -41,80 +41,57 @@ async function buildGeminiPrompt(promptData, attachment) {
 }
 
 /**
- * Gemini 스트리밍 채팅 응답을 시도하고, 실패 시 Flowise 폴백으로 전환하는 비동기 제너레이터.
- * @param {object} promptData - 프롬프트 데이터 { question: string, history?: Array<{role: string, parts: Array<{text: string}>}> }
- * @param {object | null} attachment - Discord 첨부 파일 객체 (선택)
- * @param {string} sessionId - 세션 ID
- * @param {object} options - 추가 옵션 { client, interaction, task }
- * @param {string} model - 사용할 AI 모델 ('gemini-2.5-flash' 또는 'gemini-2.5-pro')
- * @param {number} tokenLimit - AI 응답의 최대 토큰 수
- * @yields {object} 스트리밍 상태 객체: { textChunk?: string, finalResponse?: { text: string, message: string | null }, error?: Error, isFallback?: boolean }
+ * Gemini 스트리밍 채팅 (Node.js 유지)
+ * - 채팅은 스트리밍이 중요해서 일단 Node.js에 두는 게 반응 속도 면에서 유리할 수 있어.
+ * - 원한다면 이것도 나중에 파이썬으로 옮길 수 있어.
  */
 async function* getChatResponseStreamOrFallback(promptData, attachment, sessionId, { client, interaction, task = 'chat' }, selectedModel, tokenLimit) {
     let history = promptData.history || [];
     let currentPromptParts;
     let model;
 
-    // --- 1. 모델 및 프롬프트 준비 ---
     try {
-        if (attachment || selectedModel === 'gemini-2.5-pro') {
-            model = proModel; // 이미지 처리용 모델
-            // buildGeminiPrompt가 attachment 처리 및 에러 throw
+        if (attachment || selectedModel === proModel) {
+            model = proModel; 
             currentPromptParts = await buildGeminiPrompt(promptData, attachment);
         } else {
-            model = flashModel; // 텍스트 전용 모델
+            model = flashModel;
             currentPromptParts = [{ text: promptData.question }];
         }
     } catch (setupError) {
-         yield { error: setupError }; // 준비 단계 에러
+         yield { error: setupError };
          return;
     }
 
-
-    // --- 2. Gemini 스트리밍 시도 ---
     try {
         console.log(`[/chat ${task}] Gemini 스트리밍 시작...`);
-        // Gemini 설정
-        const generationConfig = {
-            // temperature: 0.7, // 창의성 조절 (0 ~ 1)
-            // topP: 0.9,       // 단어 선택 다양성 (0 ~ 1)
-            // topK: 40,        // 고려할 단어 수
-            maxOutputTokens: tokenLimit, // 최대 출력 토큰 제한
-        };
+        const generationConfig = { maxOutputTokens: tokenLimit };
         const chat = model.startChat({ history, generationConfig });
         const result = await chat.sendMessageStream(currentPromptParts);
 
         let fullResponseText = "";
         for await (const chunk of result.stream) {
             const chunkText = chunk.text();
-            if (chunkText) { // 빈 청크 방지
+            if (chunkText) {
                  fullResponseText += chunkText;
-                 yield { textChunk: chunkText }; // 스트리밍 청크 반환
+                 yield { textChunk: chunkText };
             }
         }
         console.log(`[/chat ${task}] Gemini 스트리밍 정상 종료.`);
-        // 스트리밍 완료 후 최종 결과 반환
         yield { finalResponse: { text: fullResponseText, message: null }, isFallback: false };
 
     } catch (geminiError) {
-        // --- 3. Gemini 실패 시 Flowise 폴백 시도 ---
         console.error(`[/chat ${task}] Gemini 스트리밍 실패:`, geminiError);
         logToDiscord(client, 'ERROR', `Gemini 스트리밍 실패 (${task}), Flowise 폴백 시도`, interaction, geminiError, 'getChatResponseStreamOrFallback_GeminiFail');
 
         try {
-             // Flowise 요청 본문 준비 (Flowise 형식으로 변환)
              const flowiseRequestBody = {
                  question: promptData.question,
                  overrideConfig: {
                      sessionId: `flowise-fallback-${task}-${sessionId}`,
                      vars: {
-                         // 여기에 변수 추가
-                         // options 객체에서 interaction 정보를 가져와 사용
-                         bot_name: client?.user?.username || 'AI 비서', // client가 있으면 봇 이름 사용
-                         user_name: interaction?.user?.username || '사용자' // interaction이 있으면 사용자 이름 사용
-                         // 필요하다면 다른 변수들도 추가 가능:
-                         // channel_name: interaction?.channel?.name,
-                         // guild_name: interaction?.guild?.name,
+                         bot_name: client?.user?.username || 'AI 비서',
+                         user_name: interaction?.user?.username || '사용자'
                      }
                  },
                  history: history.map(turn => ({
@@ -123,9 +100,8 @@ async function* getChatResponseStreamOrFallback(promptData, attachment, sessionI
                  }))
              };
 
-             // callFlowise 호출 (폴백 전용)
              const flowiseResponseText = await callFlowise(flowiseRequestBody, sessionId, task + '-fallback', client, interaction);
-             const flowiseResponse = JSON.parse(flowiseResponseText); // { text, message }
+             const flowiseResponse = JSON.parse(flowiseResponseText);
 
              console.log(`[/chat ${task}] Flowise 폴백 성공.`);
              yield { finalResponse: flowiseResponse, isFallback: true };
@@ -137,7 +113,6 @@ async function* getChatResponseStreamOrFallback(promptData, attachment, sessionI
         }
     }
 }
-
 
 /**
  * Flowise API를 호출하는 함수 (이제 폴백 전용).
@@ -184,13 +159,14 @@ async function callFlowise(prompt, sessionId, task, client = null, interaction =
 
         if (contentType && contentType.includes("application/json")) {
             const aiResponse = await response.json();
+
             if (!aiResponse.hasOwnProperty('message')) aiResponse.message = null;
+
             if (!aiResponse.hasOwnProperty('text')) aiResponse.text = "";
 
             if (client) {
                 logToDiscord(client, 'INFO', `Flowise 폴백 ('${task}') JSON 응답 수신`, interaction, null, `callFlowise/${task}`);
             }
-
             logToDiscord(client, 'INFO', `Flowise 폴백 ('${task}') JSON 응답 수신`, interaction, null, `callFlowise/${task}`);
             return JSON.stringify(aiResponse);
         } else {
@@ -198,10 +174,9 @@ async function callFlowise(prompt, sessionId, task, client = null, interaction =
             logToDiscord(client, 'INFO', `Flowise 폴백 ('${task}') 텍스트 응답 수신`, interaction, null, `callFlowise/${task}`);
             return JSON.stringify({ text: responseText, message: null });
         }
-
     } catch (flowiseError) {
         console.error(`[Flowise Fallback Error] ('${task}') ${flowiseError.message}`);
-        
+
         if (client) {
             logToDiscord(client, 'ERROR', `Flowise 폴백 ('${task}') 호출 실패`, interaction, flowiseError, `callFlowise/${task}`);
         }
@@ -214,286 +189,195 @@ async function callFlowise(prompt, sessionId, task, client = null, interaction =
 }
 
 async function generateMongoFilter(query, userId, client = null, interaction = null) {
-    const prompt = `
-    You are an expert MongoDB query filter generator. Your task is to analyze a user's natural language request and generate a valid JSON filter object for a MongoDB 'find' operation.
-
-    **--- ⚡️ VERY STRICT OUTPUT RULES ---**
-    1.  Your **entire response MUST be a valid JSON object**.
-    2.  Do NOT include any explanations, comments, greetings, or markdown (like \`\`\`json\`).
-    3.  Do NOT include the 'userId' field in the filter. The calling system adds this automatically.
-    4.  For text matching, use the '$regex' operator with '$options: "i"'.
-    5.  For time-related queries (e.g., "yesterday", "last week", "October"), use the 'timestamp' field with '$gte' and/or '$lt'.
-
-    **--- 📖 Schema Information (User-searchable fields) ---**
-    - content: (String) The text content of the message.
-    - type: (String) Can be 'MESSAGE', 'MENTION', 'EARTHQUAKE'.
-    - timestamp: (ISODate) The time the interaction was saved.
-    - channelId: (String) The ID of the channel.
-
-    **--- ✍️ Examples ---**
-
-    [Request]: "yesterday's pizza talk"
-    [Current Time]: "2025-10-30T08:30:00.000Z"
-    [Your Response]:
-    {
-      "$and": [
-        { "content": { "$regex": "pizza", "$options": "i" } },
-        { "timestamp": { "$gte": "2025-10-29T00:00:00.000Z", "$lt": "2025-10-30T00:00:00.000Z" } }
-      ]
-    }
-
-    [Request]: "images from last week, not messages"
-    [Current Time]: "2025-10-30T08:30:00.000Z"
-    [Your Response]:
-    {
-      "$and": [
-        { "content": { "$regex": "image", "$options": "i" } },
-        { "type": { "$ne": "MESSAGE" } },
-        { "timestamp": { "$gte": "2025-10-20T00:00:00.000Z", "$lt": "2025-10-27T00:00:00.000Z" } }
-      ]
-    }
-
-    [Request]: "earthquake"
-    [Current Time]: "2025-10-30T08:30:00.000Z"
-    [Your Response]:
-    {
-      "type": "EARTHQUAKE"
-    }
-
-    **--- 🚀 Current Task ---**
-
-    - User (for context only): "${userId}"
-    - User's natural language query: "${query}"
-    - Current date (ISO): "${new Date().toISOString()}"
-
-    Respond ONLY with the valid JSON object.
-    `;
-
-    let filterJsonString = '{}';
     try {
-        console.log(`[genAI Filter Gen] '${query}'에 대한 필터 생성 시작...`);
-        const result = await flashModel.generateContent(prompt);
-        filterJsonString = result.response.text();
+        if (!PYTHON_AI_SERVICE_URL) throw new Error("PYTHON_AI_SERVICE_URL 설정 안됨");
         
-    } catch (aiError) {
-        console.error("Mongo 필터 생성 (genAI) AI 호출 실패:", aiError);
-        const filterClient = client || (interaction ? interaction.client : null);
-        if (filterClient) {
-            logToDiscord(filterClient, 'ERROR', `Mongo 필터 생성 (genAI) 실패`, interaction, aiError, 'generateMongoFilter');
-        }
-        throw new Error(`AI 호출에 실패하여 필터를 생성할 수 없습니다: ${aiError.message}`);
-    }
-
-    try {        
-        if (!filterJsonString.trim().startsWith('{') || !filterJsonString.trim().endsWith('}')) {
-             const codeBlockMatch = filterJsonString.match(/```json\s*(\{.*\})\s*```/s);
-             if (codeBlockMatch && codeBlockMatch[1]) {
-                 filterJsonString = codeBlockMatch[1];
-             } else {
-                 const jsonMatch = filterJsonString.match(/\{.*\}/s);
-                 if (jsonMatch) {
-                     filterJsonString = jsonMatch[0];
-                 } else {
-                     throw new Error(`AI 응답에서 유효한 JSON 필터 객체를 찾을 수 없습니다. AI 응답: ${filterJsonString.substring(0, 200)}...`);
-                 }
-             }
-        }
-
-        const filter = JSON.parse(filterJsonString);
+        const response = await fetch(`${PYTHON_AI_SERVICE_URL}/generate-filter`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                query: query,
+                user_id: userId,
+                current_time: new Date().toISOString()
+            })
+        });
+        
+        if (!response.ok) throw new Error(`Python API Error: ${response.status}`);
+        
+        const filter = await response.json();
+        if (filter.status === 'error') throw new Error(filter.message);
+        
         filter.userId = userId;
         return filter;
-
-    } catch (parseError) {
-        console.error("AI 생성 필터 파싱/처리 실패:", filterJsonString, parseError);
-        throw new Error(`AI가 생성한 필터를 분석하는 데 실패했습니다 (${parseError.message}). AI 응답: ${filterJsonString.substring(0, 200)}...`);
-    }
-}
-
-async function getTranscript(audioBuffer) {
-    try {
-        const audioPart = { inlineData: { data: audioBuffer.toString('base64'), mimeType: "audio/ogg" } };
-        const result = await proModel.generateContent(["Transcribe this audio in Korean.", audioPart]);
-        return result.response.text();
     } catch (error) {
-        console.error("음성 텍스트 변환(STT) 중 오류:", error);
-        return null;
+        console.error("Mongo 필터 생성 실패 (Python):", error);
+        if (client) logToDiscord(client, 'ERROR', 'Mongo 필터 생성 실패 (Python)', interaction, error, 'generateMongoFilter');
+        throw error;
     }
 }
 
 async function generateAttachmentDescription(attachment) {
     try {
-        const response = await fetch(attachment.url);
-        if (!response.ok) {
-            return `(파일 불러오기 실패: ${response.statusText})`;
-        }
-        const contentType = attachment.contentType || '';
-        let model;
-        let prompt;
-        let contentParts = [];
+        const response = await fetch(`${PYTHON_AI_SERVICE_URL}/describe-media`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                url: attachment.url,
+                mime_type: attachment.contentType || 'application/octet-stream',
+                file_name: attachment.name
+            })
+        });
 
-        if (contentType.startsWith('image/')) {
-            model = proModel;
-            prompt = "이 이미지를 데이터베이스 검색 항목으로 사용할 수 있도록 간결하고 사실적으로 묘사해 줘. 한국어로 답변해 줘.";
-            const imageBuffer = Buffer.from(await response.arrayBuffer());
-            contentParts.push({ inlineData: { data: imageBuffer.toString('base64'), mimeType: contentType } });
-        } else if (contentType.startsWith('text/')) {
-            model = flashModel;
-            prompt = "이 텍스트 파일 내용을 데이터베이스 검색 항목으로 사용할 수 있도록 간결하고 사실적으로 요약해 줘. 한국어로 답변해 줘.";
-            const fileContent = await response.text();
-            const truncatedContent = fileContent.substring(0, 4000);
-            contentParts.push({ text: truncatedContent });
-        } else {
-            return `(분석 미지원 파일: ${attachment.name})`;
-        }
+        if (!response.ok) throw new Error(`Python API Error: ${response.status}`);
 
-        const result = await model.generateContent([prompt, ...contentParts]);
-        const description = result.response.text();
+        const data = await response.json();
+        return data.description || `(AI 분석 실패: 응답 없음)`;
 
-        if (contentType.startsWith('text/')) {
-             return `[텍스트 파일: ${attachment.name}]\n${description}`;
-        }
-        return description;
     } catch (error) {
-        console.error(`AI 파일 분석 중 오류 (${attachment.name}):`, error);
+        console.error(`파일 분석 요청 실패 (${attachment.name}):`, error);
         return `(AI 분석 실패: ${attachment.name})`;
     }
 }
 
 async function generateImage(prompt, count = 1) {
-    const geminiKey = process.env.GEMINI_API_KEY;
-    const imagenEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict";
-
-    if (!geminiKey) throw new Error("GEMINI_API_KEY가 설정되지 않았습니다.");
-    count = Math.max(1, Math.min(count, 4));
-
-    const requestBody = { "instances": [{ "prompt": prompt }], "parameters": { "sampleCount": count } };
+    if (!PYTHON_AI_SERVICE_URL) throw new Error("PYTHON_AI_SERVICE_URL 설정 안됨");
 
     try {
-        const response = await fetch(imagenEndpoint, {
+        const response = await fetch(`${PYTHON_AI_SERVICE_URL}/generate-image`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
-            body: JSON.stringify(requestBody)
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt, count }),
         });
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: { message: "Unknown API error" } }));
-            console.error(`Gemini Imagen API Error: ${response.status}`, errorData);
-            throw new Error(errorData.error?.message || "AI 이미지 생성 오류");
-        }
-        const geminiResponse = await response.json();
-        const predictions = geminiResponse.predictions;
-        if (!predictions || !Array.isArray(predictions) || predictions.length === 0) {
-            console.warn('Gemini Imagen API 응답 형식:', geminiResponse);
-            throw new Error("AI로부터 유효한 이미지를 생성하지 못했습니다.");
-        }
-        return predictions.map(p => {
-             if (!p || !p.bytesBase64Encoded) throw new Error("API 응답에 이미지 데이터가 없습니다.");
-             return Buffer.from(p.bytesBase64Encoded, 'base64')
-        });
+
+        if (!response.ok) throw new Error(`Python API Error: ${response.status}`);
+
+        const pythonResponse = await response.json();
+        if (pythonResponse.status === 'error') throw new Error(pythonResponse.message);
+
+        const base64Strings = pythonResponse.images;
+        if (!base64Strings || base64Strings.length === 0) throw new Error("유효한 이미지를 받지 못함");
+        
+        return base64Strings.map(b64 => Buffer.from(b64, 'base64'));
+
     } catch (error) {
-        console.error('Gemini Imagen API 호출 중 예외 발생:', error);
+        console.error('Python AI 서비스(generateImage) 호출 중 예외 발생:', error);
         throw error;
     }
 }
 
-async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSession, aiPlaybackStream) {
+async function startVideoGeneration(prompt) {
+    const response = await fetch(`${PYTHON_AI_SERVICE_URL}/generate-video`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt })
+    });
     
-    const liveApiModel = "gemini-2.5-flash-native-audio-preview-09-2025";
+    const data = await response.json();
+    if (data.status === 'error') throw new Error(data.message);
+    if (!data.name) throw new Error('Veo 작업 이름을 받지 못했습니다.');
+    
+    return data.name;
+}
+
+async function checkVideoGenerationStatus(operationName) {
+    const safeOpName = encodeURIComponent(operationName); 
+    
+    const response = await fetch(`${PYTHON_AI_SERVICE_URL}/check-operation/${safeOpName}`, { 
+       method: 'GET' 
+    });
+    return await response.json();
+}
+
+async function downloadVideoFromUri(videoUri) {
+    console.log(`[디버그] 영상 다운로드 시작: ${videoUri}`);
+    try {
+        const response = await fetch(videoUri, {
+            method: 'GET',
+            headers: { 'x-goog-api-key': process.env.GEMINI_API_KEY }
+        });
+        if (!response.ok) throw new Error(`영상 다운로드 실패: ${response.status}`);
+        const arrayBuffer = await response.arrayBuffer();
+        return Buffer.from(arrayBuffer);
+    } catch (error) {
+         console.error(`영상 다운로드 오류:`, error);
+         throw error;
+    }
+}
+
+async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSession) {
+    
+    const liveApiModel = "gemini-2.5-flash";
     const responseQueue = [];
+    const smoothingBufferStream = new PassThrough({
+        highWaterMark: 48000
+    }); 
     let connectionClosed = false;
     let closeReason = null;
 
     let fullTranscript = "";
+    let resolveSessionReady;
+    const sessionReadyPromise = new Promise(resolve => resolveSessionReady = resolve);
 
-    // AI의 응답 메시지를 '스트리밍'으로 처리하는 헬퍼 함수
     const processMessages = () => new Promise((resolve, reject) => {
         const check = () => {
             if (connectionClosed) {
-                if (!aiPlaybackStream.destroyed) aiPlaybackStream.push(null); // 재생 파이프 닫기
-                return reject(new Error(`Live API 연결 종료됨: ${closeReason || 'Unknown'}`));
+                if (!smoothingBufferStream.destroyed) smoothingBufferStream.push(null);
+                return reject(new Error(`Live API 연결 종료: ${closeReason || 'Unknown'}`));
             }
-            
             const msg = responseQueue.shift();
             if (msg) {
-                if (msg.data) {
-                    if (!aiPlaybackStream.destroyed) aiPlaybackStream.push(Buffer.from(msg.data, 'base64'));
+                if (msg.data && !smoothingBufferStream.destroyed) {
+                    smoothingBufferStream.write(Buffer.from(msg.data, 'base64'));
                 }
-                if (msg.text) {
-                    fullTranscript += msg.text + " ";
-                }
+                if (msg.text) fullTranscript += msg.text + " ";
                 if (msg.serverContent && msg.serverContent.turnComplete) {
-                    console.log('[디버그] Live API로부터 Turn Complete 수신');
-                    if (!aiPlaybackStream.destroyed) aiPlaybackStream.push(null); // 재생 파이프 닫기
-                    resolve(fullTranscript.trim()); // 수집한 전체 텍스트 반환
-                    return; // 루프 종료
+                    console.log('[디버그] Turn Complete 수신');
+                    if (!smoothingBufferStream.destroyed) smoothingBufferStream.push(null);
+                    resolve(fullTranscript.trim());
+                    return;
                 }
             }
-            
             setTimeout(check, 50);
         };
         check();
     });
 
-    // --- 1. AI 세션 연결 ---
-    console.log('[디버그] Live API 연결을 시도합니다...');
-    let session;
-    try {
-        const configForConnect = {
-            responseModalities: [Modality.AUDIO],
-        };
-
-        console.log('[디버그] 전송할 config 객체:', JSON.stringify(configForConnect));
-
-        session = await ai_live.live.connect({
-            model: liveApiModel,
-            callbacks: {
-                onmessage: (m) => responseQueue.push(m), // 메시지를 큐에 넣기만 함
-                onerror: (e) => { 
-                    console.error('Live API Error (Full Object):', e);
-                    closeReason = e.message || JSON.stringify(e); 
-                    connectionClosed = true; 
-                },
-                onclose: (e) => { console.log('Live API Close:', e.reason); closeReason = e.reason; connectionClosed = true; }
-            },
-            config: configForConnect,
-        });
-        console.log('[디버그] Live API 세션 연결 성공.');
-
-        if (activeSession) {
-            activeSession.liveSession = session;
-            console.log('[디버그] (ai_helper) activeSession에 liveSession을 성공적으로 할당했습니다.');
-        } else {
-            console.warn('[디버그] (ai_helper) activeSession이 null이라 liveSession을 할당할 수 없습니다. (주의!)');
-        }
-
-        if (systemPrompt) {
-            console.log('[디버그] 시스템 프롬프트를 텍스트로 먼저 전송합니다...');
-            session.sendClientContent({
-                turns: [{ role: "user", parts: [{ text: systemPrompt }] }],
-                turnComplete: false // <--- 오디오가 이어지므로 턴 종료 아님
-            });
-        }
-        
-        console.log('[디버그] 오디오 전송 시작.');
-
-    } catch (connectError) {
-         console.error('[디버그] Live API 연결 실패:', connectError);
-         throw connectError;
-    }
-
-    async function sendAudioToSession(stream) {
-        return new Promise((resolve, reject) => {
-            if (!stream || typeof stream.on !== 'function') {
-                console.error('[디버그] ❌ sendAudioToSession: 유효하지 않은 스트림 객체...');
-                reject(new Error('Invalid audio stream object...'));
-                return;
-            }
-            
-            stream.on('data', (chunk) => {
-                try {
-                    if (connectionClosed) {
-                        stream.destroy();
-                        return;
+    (async () => {
+        let session;
+        try {
+            console.log('[디버그] Live API 연결 시도...');
+            session = await ai_live.live.connect({
+                model: liveApiModel,
+                config: { responseModalities: [Modality.AUDIO] },
+                callbacks: {
+                    onmessage: (m) => responseQueue.push(m),
+                    onerror: (e) => { 
+                        console.error('Live API Error:', e);
+                        closeReason = e.message; 
+                        connectionClosed = true; 
+                    },
+                    onclose: (e) => { 
+                        console.log('Live API Close:', e.reason); 
+                        closeReason = e.reason; 
+                        connectionClosed = true; 
                     }
+                }
+            });
+            console.log('[디버그] Live API 연결 성공.');
+            
+            if (activeSession) activeSession.liveSession = session;
+            resolveSessionReady(session);
+
+            if (systemPrompt) {
+                session.sendClientContent({
+                    turns: [{ role: "user", parts: [{ text: systemPrompt }] }],
+                    turnComplete: false
+                });
+            }
+
+            userAudioStream.on('data', (chunk) => {
+                if (connectionClosed) { userAudioStream.destroy(); return; }
+                try {
                     session.sendRealtimeInput({
                         media: {
                             data: chunk.toString('base64'),
@@ -503,162 +387,98 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSessi
                 } catch (e) {
                     if (!connectionClosed) session.close();
                     connectionClosed = true;
-                    reject(e);
                 }
             });
 
-            stream.on('end', () => {
-                console.log('[디버그] (ai_helper) FFmpeg 스트림 종료 감지. 데이터 전송 완료.');
-                resolve(); // 'turnComplete' 안 보냄!
-            });
+            userAudioStream.on('end', () => console.log('[디버그] 유저 오디오 스트림 종료.'));
 
-            stream.on('error', (err) => {
-                console.error('[디버그] 오디오 전송 스트림 오류:', err);
-                if (session && !connectionClosed) session.close();
-                connectionClosed = true;
-                reject(err);
-            });
-        });
-    }
+        } catch (connectError) {
+             console.error('[디버그] Live API 연결 실패:', connectError);
+             if (!smoothingBufferStream.destroyed) smoothingBufferStream.push(null);
+             if (resolveSessionReady) resolveSessionReady(null);
+             connectionClosed = true;
+        }
+    })();
 
+    console.log('[디버그] AI 응답 처리 대기 중...');
+    const aiTranscriptPromise = processMessages();
+    
+    return { aiTranscriptPromise, smoothingBufferStream, sessionReadyPromise };
+}
+
+async function getTranscript(audioBuffer) {
     try {
-        sendAudioToSession(userAudioStream).catch(e => {
-            console.error("sendAudioToSession 내부 오류:", e);
-            if (!aiPlaybackStream.destroyed) aiPlaybackStream.push(null);
-        });
-        
-        console.log('[디버그] AI 응답 스트리밍 및 처리를 시작합니다...');
-        const finalTranscript = await processMessages();
-        
-        console.log('[디버그] AI 응답 스트리밍 완료.');
-        
-        return { aiTranscript: finalTranscript };
-
+        const audioPart = { inlineData: { data: audioBuffer.toString('base64'), mimeType: "audio/ogg" } };
+        const result = await proModel.generateContent(["Transcribe this audio in Korean.", audioPart]);
+        return result.response.text();
     } catch (error) {
-         console.error('[디버그] Live API 응답 처리 중 최종 오류:', error);
-         if (session && !connectionClosed) session.close();
-         if (!aiPlaybackStream.destroyed) aiPlaybackStream.push(null);
-         throw error;
+        console.error("STT 오류:", error);
+        return null;
     }
 }
 
-const VEO_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
-
-async function startVideoGeneration(prompt) {
-    const endpoint = `${VEO_BASE_URL}/models/veo-3.0-generate-001:predictLongRunning`;
-    const requestBody = { instances: [{ prompt: prompt }] };
-    try {
-        const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
-            body: JSON.stringify(requestBody)
-        });
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Veo API 작업 시작 실패: ${response.status} ${errorText}`);
-        }
-        const data = await response.json();
-        if (!data || !data.name) {
-            console.error('Veo API 작업 시작 응답 형식 오류:', data);
-            throw new Error('Veo API 작업 이름을 받지 못했습니다.');
-        }
-        return data.name;
-    } catch (error) {
-        console.error('Veo API 작업 시작 중 예외 발생:', error);
-        throw error;
-    }
-}
-
-async function checkVideoGenerationStatus(operationName) {
-    const endpoint = `${VEO_BASE_URL}/${operationName}`;
-    try {
-        const response = await fetch(endpoint, {
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY }
-        });
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Veo API 상태 확인 실패 (${operationName}): ${response.status} ${errorText}`);
-        }
-        return await response.json();
-    } catch (error) {
-        console.error(`Veo API 상태 확인 중 예외 발생 (${operationName}):`, error);
-        throw error;
-    }
-}
-
-async function downloadVideoFromUri(videoUri) {
-    console.log(`[디버그] 영상 다운로드를 시작합니다: ${videoUri}`);
-    try {
-        const response = await fetch(videoUri, {
-            method: 'GET',
-            headers: { 'x-goog-api-key': process.env.GEMINI_API_KEY }
-        });
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`영상 다운로드 실패 (${videoUri}): ${response.status} ${errorText}`);
-        }
-        const arrayBuffer = await response.arrayBuffer();
-        return Buffer.from(arrayBuffer);
-    } catch (error) {
-         console.error(`영상 다운로드 중 예외 발생 (${videoUri}):`, error);
-         throw error;
-    }
-}
-
-/**
- * AI를 이용해 검색어를 생성하는 함수
- */
 async function generateSearchQuery(userQuestion, sessionId, client, interaction) {
-    const prompt = `
-        You are a search query optimization expert. Your task is to convert a user's natural language question into a highly effective, keyword-focused search query for Google. The query should be in English to maximize search results. Avoid using quotes unless absolutely necessary for the search.
-
-        User Question: "${userQuestion}"
-
-        Optimized Google Search Query:
-    `;
-
+    const prompt = `You are a search query optimization expert... (생략) User Question: "${userQuestion}"`;
     const aiResponseText = await callFlowise(prompt, sessionId, 'query-generation', client, interaction);
-
     try {
         const aiResponse = JSON.parse(aiResponseText);
-        let query = aiResponse.text || '';
-
-        if (aiResponse.message) {
-            console.log(`[AI Helper] 검색어 생성 메시지: ${aiResponse.message}`);
-            logToDiscord(client, 'INFO', `검색어 생성 AI 메시지: ${aiResponse.message}`, interaction, null, 'generateSearchQuery');
-        }
-
-        return query.replace(/"/g, '').trim();
-
+        return (aiResponse.text || '').replace(/"/g, '').trim();
     } catch (parseError) {
-        console.error(`[AI Helper] 검색어 생성 AI 응답 파싱 실패:`, aiResponseText, parseError);
-        logToDiscord(client, 'ERROR', '검색어 생성 AI 응답을 해석(JSON 파싱)하는 데 실패했습니다.', interaction, parseError, 'generateSearchQuery');
-        return userQuestion; // 파싱 실패 시 원본 질문 사용
+        return userQuestion;
     }
 }
 
-/**
- * 구글 웹 검색을 수행하는 함수
- */
 async function searchWeb(query) {
-    if (!googleApiKey || !googleSearchEngineId) {
-        throw new Error("Google Search API 키 또는 엔진 ID가 설정되지 않았습니다. (.env 확인)");
-    }
+    const googleApiKey = process.env.GOOGLE_SEARCH_API;
+    const googleSearchEngineId = process.env.GOOGLE_SEARCH_ENGINE_ID;
+    const customsearch = require('googleapis').google.customsearch('v1');
+
+    if (!googleApiKey || !googleSearchEngineId) throw new Error("구글 검색 키 설정 안됨");
+    
     try {
-        const searchResponse = await customsearch.cse.list({
-            auth: googleApiKey,
-            cx: googleSearchEngineId,
-            q: query,
-            num: 5,
+        const res = await customsearch.cse.list({
+            auth: googleApiKey, cx: googleSearchEngineId, q: query, num: 5
         });
-        return searchResponse.data.items || [];
-    } catch (searchError) {
-        console.error(`[AI Helper] Google Search API 오류:`, searchError.message);
-        if (searchError.message && searchError.message.includes('API key')) {
-            throw new Error("구글 검색 API 키가 만료되었거나 잘못되었습니다. (403 Forbidden 등)");
+        return res.data.items || [];
+    } catch (error) {
+        throw new Error(`웹 검색 실패: ${error.message}`);
+    }
+}
+
+async function deepResearch(query) {
+    if (!PYTHON_AI_SERVICE_URL) throw new Error("PYTHON_AI_SERVICE_URL 설정 안됨");
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 180000);
+
+    try {
+        const response = await fetch(`${PYTHON_AI_SERVICE_URL}/deep-research`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: query }),
+            signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+            const errorText = await response.text().catch(() => "No error details");
+            throw new Error(`Python API Error: ${response.status} - ${errorText}`);
         }
-        throw new Error(`웹 검색 중 예상치 못한 오류 발생: ${searchError.message}`);
+
+        const data = await response.json();
+        if (data.status === 'error') throw new Error(data.message);
+
+        return data.report;
+
+    } catch (error) {
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+            console.error('Deep Research 시간 초과 (Node.js Client Timeout)');
+            throw new Error('리서치 시간이 너무 오래 걸려서 중단되었어. (3분 초과)');
+        }
+        console.error('Deep Research 실패:', error);
+        throw error;
     }
 }
 
@@ -675,4 +495,5 @@ module.exports = {
     downloadVideoFromUri,
     generateSearchQuery,
     searchWeb,
+    deepResearch
 };
