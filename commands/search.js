@@ -5,7 +5,7 @@ const { google } = require('googleapis');
 const { callFlowise } = require('../utils/ai_helper.js');
 const { logToDiscord } = require('../utils/catch_log.js');
 const { createAiResponseEmbed } = require('../utils/embed_builder.js');
-const config = require('../config');
+const config = require('../config/manage_environments.js');
 
 const googleApiKey = config.ai.googleSearch.apiKey;
 const googleSearchEngineId = config.ai.googleSearch.engineId;
