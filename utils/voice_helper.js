@@ -257,7 +257,8 @@ class GeminiVoiceManager {
     }
 
     async #getAiResponse(userId, userAudioStream, activeSession) {
-        let systemPrompt = `You are a friendly and helpful AI assistant. Respond in Korean.`;
+        let systemPrompt = `${config.ai.persona} 
+        (추가 지침: 대답은 너무 길지 않게, 듣기 편한 구어체로 짧게 대답해줘.)`;
         console.log(`[디버그] -> AI 응답: 최종 프롬프트와 오디오 스트림으로 Gemini Live API를 호출합니다.`);
         return getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSession);
     }

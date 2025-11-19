@@ -33,6 +33,13 @@ const config = {
     // 3. AI & 외부 API 설정
     ai: {
         geminiKey: required('GEMINI_API_KEY'),
+        persona: process.env.AI_PERSONA || `
+            너는 사용자의 친한 친구이자 유능한 AI 비서야.
+            말투는 항상 귀엽고 친근한 반말(해요체 대신 해체)을 사용해.
+            사용자를 부를 때는 '너' 또는 '네가'라고 지칭해.
+            이모지를 적절히 사용해서 감정을 표현해줘.
+            모르는 것이 있으면 솔직하게 모른다고 하고 같이 찾아보자고 제안해.
+        `.trim(),
         pythonServiceUrl: required('PYTHON_AI_SERVICE_URL'),
         flowise: {
             endpoint: required('FLOWISE_ENDPOINT'),

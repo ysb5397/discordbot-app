@@ -2,6 +2,7 @@
 const { Client, Interaction } = require('discord.js');
 const { createLogEmbed } = require('./embed_builder.js');
 const config = require('../config/manage_environments.js');
+const { Interaction } = require('./database.js');
 
 const LOG_CHANNEL_ID = config.discord.logChannelId;
 
@@ -47,6 +48,28 @@ async function logToDiscord(client, level, message, interaction = null, error = 
             break;
         default:
             console.log(consoleMessage);
+    }
+
+    if (level === 'ERROR' && error) {
+        try {
+            await Interaction.create({
+                interactionId: `error-${Date.now()}`,
+                channelId: interaction?.channelId || 'unknown',
+                userId: interaction?.user?.id || client.user.id,
+                userName: interaction?.user?.username || 'System',
+                type: 'SYSTEM_ERROR',
+                content: {
+                    message: message,
+                    errorMessage: error.message,
+                    stack: error.stack,
+                    origin: origin
+                },
+                botResponse: 'Unresolved'
+            });
+            console.log('✅ [Logger] 에러 정보를 DB에 백업했습니다.');
+        } catch (dbErr) {
+            console.error('❌ [Logger] 에러 DB 저장 실패:', dbErr);
+        }
     }
 
     if (!LOG_CHANNEL_ID) {

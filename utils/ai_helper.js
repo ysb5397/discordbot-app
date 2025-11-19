@@ -15,11 +15,20 @@ const FLOWISE_API_KEY = config.ai.flowise.apiKey;
 
 const GOOGLE_SEARCH_API = config.ai.googleSearch.apiKey;
 const GOOGLE_SEARCH_ENGINE_ID = config.ai.googleSearch.engineId;
+const SYSTEM_INSTRUCTION = config.ai.persona;
 
 const genAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
 const ai_live = new GoogleGenAI({ apiKey: GOOGLE_API_KEY });
-const flashModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" }); 
-const proModel = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
+
+const flashModel = genAI.getGenerativeModel({ 
+    model: "gemini-2.5-flash",
+    systemInstruction: SYSTEM_INSTRUCTION 
+});
+
+const proModel = genAI.getGenerativeModel({ 
+    model: "gemini-2.5-pro",
+    systemInstruction: SYSTEM_INSTRUCTION
+});
 
 
 // --- 헬퍼: Gemini 프롬프트 구성 ---
@@ -130,6 +139,10 @@ async function callFlowise(prompt, sessionId, task, client = null, interaction =
     body.overrideConfig = {
         ...body.overrideConfig,
         sessionId: `flowise-${task}-${sessionId}`,
+        vars: {
+            persona: config.ai.persona, 
+            bot_name: '챗별이' || 'AI',
+        }
     };
 
     console.log(`[Flowise Fallback Call] ('${task}') 호출 시도...`);
