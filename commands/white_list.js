@@ -1,8 +1,10 @@
 const { SlashCommandBuilder, InteractionContextType, PermissionsBitField } = require('discord.js');
 const { WhiteList } = require('../utils/database.js');
+const { content } = require('googleapis/build/src/apis/content/index.js');
+const config = require('../config/manage_environments.js');
 
-const OWNER_ID = process.env.MY_DISCORD_USER_ID;
-const BASE_MEMBER_ROLE_ID = process.env.BASE_MEMBER_ROLE_ID;
+const OWNER_ID = config.discord.ownerId;
+const BASE_MEMBER_ROLE_ID = config.discord.baseMemberRoleId;
 
 module.exports = {
     data: new SlashCommandBuilder()

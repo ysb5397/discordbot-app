@@ -2,8 +2,10 @@ const { Events, ChannelType, ActivityType } = require('discord.js');
 const { startEarthquakeMonitor } = require('../utils/earthquake');
 const { joinVoiceChannel } = require('@discordjs/voice');
 const { BotStatus } = require('../utils/database');
+const config = require('../config/manage_environments');
 
-const TARGET_CHANNEL_ID = "1353292092016693282";
+const TARGET_CHANNEL_ID = config.channels.autoJoin;
+const IS_DEV_BOT = config.discord.isDevBot;
 
 async function checkDevBotStatus(client) {
     try {
@@ -67,12 +69,20 @@ module.exports = {
             }
         }
 
-        if (process.env.IS_DEV_BOT !== 'true') { 
-            console.log('[Main Bot] Dev 봇 상태 감시를 시작합니다...');
-
-            setInterval(() => {
-                checkDevBotStatus(client);
-            }, 45000);
+        if (IS_DEV_BOT === 'true') {
+            console.log('[DEV BOT] 하트비트 전송을 시작합니다...');
+            
+            setInterval(async () => {
+                try {
+                    await BotStatus.updateOne(
+                        { botName: 'DEV_BOT' },
+                        { $set: { lastHeartbeat: new Date(), status: 'ACTIVE' } },
+                        { upsert: true }
+                    );
+                } catch (err) {
+                    console.error('[DEV BOT] 하트비트 전송 실패:', err);
+                }
+            }, 30000);
         }
     },
 };

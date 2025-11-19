@@ -1,9 +1,10 @@
 const { Events } = require('discord.js');
 const GeminiVoiceManager = require('../../utils/voice_helper.js');
 const YoutubeManager = require('../../utils/youtube_helper.js');
+const config = require('../../config/manage_environments.js');
 
-const GEMINI_CHANNEL_ID = "1436212310623518730";
-const YOUTUBE_CHANNEL_ID = "1438827978065707059";
+const GEMINI_CHANNEL_ID = config.channels.geminiVoice;
+const YOUTUBE_CHANNEL_ID = config.channels.youtubeVoice;
 
 
 module.exports = {

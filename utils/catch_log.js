@@ -1,8 +1,9 @@
 // 파일 위치: /utils/logger.js
 const { Client, Interaction } = require('discord.js');
 const { createLogEmbed } = require('./embed_builder.js');
+const config = require('../config/manage_environments.js');
 
-const LOG_CHANNEL_ID = process.env.DISCORD_LOG_CHANNEL_ID;
+const LOG_CHANNEL_ID = config.discord.logChannelId;
 
 // 로그 레벨별 색상 및 이모지 정의
 const LogLevel = {

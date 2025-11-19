@@ -5,12 +5,16 @@ const { GoogleGenAI, Modality } = require('@google/genai');
 const { logToDiscord } = require('./catch_log.js');
 const { PassThrough } = require('stream');
 const fetch = require('node-fetch');
+const config = require('../config/manage_environments.js');
 
-const PYTHON_AI_SERVICE_URL = process.env.PYTHON_AI_SERVICE_URL;
-const GOOGLE_API_KEY = process.env.GEMINI_API_KEY;
+const PYTHON_AI_SERVICE_URL = config.ai.pythonServiceUrl;
+const GOOGLE_API_KEY = config.ai.geminiKey;
 
-const flowiseEndpoint = process.env.FLOWISE_ENDPOINT;
-const flowiseApiKey = process.env.FLOWISE_API_KEY;
+const FLOWISE_ENDPOINT = config.ai.flowise.endpoint;
+const FLOWISE_API_KEY = config.ai.flowise.apiKey;
+
+const GOOGLE_SEARCH_API = config.ai.googleSearch.apiKey;
+const GOOGLE_SEARCH_ENGINE_ID = config.ai.googleSearch.engineId;
 
 const genAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
 const ai_live = new GoogleGenAI({ apiKey: GOOGLE_API_KEY });
@@ -131,11 +135,11 @@ async function callFlowise(prompt, sessionId, task, client = null, interaction =
     console.log(`[Flowise Fallback Call] ('${task}') 호출 시도...`);
 
     try {
-        const response = await fetch(flowiseEndpoint, {
+        const response = await fetch(FLOWISE_ENDPOINT, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                ...(flowiseApiKey ? { 'Authorization': `Bearer ${flowiseApiKey}` } : {})
+                ...(FLOWISE_API_KEY ? { 'Authorization': `Bearer ${FLOWISE_API_KEY}` } : {})
             },
             body: JSON.stringify(body),
         });
@@ -288,7 +292,7 @@ async function downloadVideoFromUri(videoUri) {
     try {
         const response = await fetch(videoUri, {
             method: 'GET',
-            headers: { 'x-goog-api-key': process.env.GEMINI_API_KEY }
+            headers: { 'x-goog-api-key': GOOGLE_API_KEY }
         });
         if (!response.ok) throw new Error(`영상 다운로드 실패: ${response.status}`);
         const arrayBuffer = await response.arrayBuffer();
@@ -424,8 +428,8 @@ async function generateSearchQuery(userQuestion, sessionId, client, interaction)
 }
 
 async function searchWeb(query) {
-    const googleApiKey = process.env.GOOGLE_SEARCH_API;
-    const googleSearchEngineId = process.env.GOOGLE_SEARCH_ENGINE_ID;
+    const googleApiKey = GOOGLE_SEARCH_API;
+    const googleSearchEngineId = GOOGLE_SEARCH_ENGINE_ID;
     const customsearch = require('googleapis').google.customsearch('v1');
 
     if (!googleApiKey || !googleSearchEngineId) throw new Error("구글 검색 키 설정 안됨");

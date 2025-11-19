@@ -2,10 +2,10 @@
 
 const { Events } = require('discord.js');
 const { logToDiscord } = require('../utils/catch_log.js');
-const { WhiteList } = require('../utils/database.js');
+const config = require('../config/manage_environments.js');
 
-const ALLOWED_GUILD_ID = process.env.DISCORD_GUILD_ID;
-const OWNER_ID = process.env.MY_DISCORD_USER_ID;
+const ALLOWED_GUILD_ID = config.discord.guildId;
+const OWNER_ID = config.discord.ownerId;
 
 module.exports = {
     name: Events.InteractionCreate,

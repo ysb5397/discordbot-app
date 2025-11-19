@@ -2,18 +2,20 @@ const express = require('express');
 const fs = require('node:fs');
 const path = require('node:path');
 const { Client, GatewayIntentBits, Collection, } = require('discord.js');
-const dotenv = require('dotenv');
+const config = require('./config/manage_environments.js');
 const fetch = require('node-fetch');
 
-dotenv.config();
 const jwt = require('jsonwebtoken');
 const { connectDB, ApiKey } = require('./utils/database');
 const { callFlowise } = require('./utils/ai_helper');
 const { logToDiscord } = require('./utils/catch_log');
 const { registerGlobalCommands } = require('./deploy-commands.js');
 
-const jwtSecret = process.env.JWT_SECRET;
-const PING_URL = process.env.APP_URL;
+const jwtSecret = config.server.jwtSecret;
+const PING_URL = config.server.appUrl;
+const PORT = config.server.port || 5500;
+const DISCORD_DEV_BOT_TOKEN = config.discord.token;
+const COMMIT_SHA = config.server.commitSha;
 
 const client = new Client({
     intents: [
@@ -106,7 +108,6 @@ for (const folder of eventFolders) {
 
 const app = express();
 app.use(express.json());
-const port = process.env.PORT || 5000;
 
 const authenticateApiKey = async (req, res, next) => {
     try {
@@ -268,10 +269,10 @@ const startBot = async () => {
         console.log('DB 연결 성공. 봇 로그인을 시도합니다...');
 
         // 2. 봇 로그인
-        await client.login(process.env.DISCORD_BOT_TOKEN);
+        await client.login(DISCORD_BOT_TOKEN);
         console.log(`✅ ${client.user.tag}으로 성공적으로 로그인했습니다!`);
 
-        await registerGlobalCommands(process.env.COMMIT_SHA);
+        await registerGlobalCommands(COMMIT_SHA);
         console.log('✅ 봇이 성공적으로 시작되었습니다!');
 
     } catch (error) {
@@ -280,8 +281,8 @@ const startBot = async () => {
     }
 };
 
-app.listen(port, () => {
-  console.log(`Dummy server (and AI API) listening on port ${port}`);
+app.listen(PORT, () => {
+  console.log(`Dummy server (and AI API) listening on port ${PORT}`);
 
   startBot().catch(err => {
       console.error("!!! startBot() 실행 중 치명적인 오류 발생 (서버는 시작됨) !!!", err);

@@ -1,4 +1,7 @@
 const mongoose = require('mongoose');
+const config = require('../config/manage_environments');
+
+const MONGODB_URI = config.db.uri;
 
 const interactionSchema = new mongoose.Schema({
     interactionId: { type: String, required: true, unique: true },
@@ -61,14 +64,14 @@ const whiteListSchema = new mongoose.Schema({
 const WhiteList = mongoose.model('WhiteList', whiteListSchema);
 
 const connectDB = async () => {
-    const mongoURI = process.env.MONGODB_URI;
+    const mongoURI = MONGODB_URI;
     if (!mongoURI) {
         console.error('오류: MONGODB_URI 환경 변수가 설정되지 않았습니다. .env 파일을 확인해주세요.');
         return; 
     }
 
     try {
-        await mongoose.connect(process.env.MONGODB_URI, { family: 4 });
+        await mongoose.connect(MONGODB_URI, { family: 4 });
         console.log('성공적으로 MongoDB에 연결되었습니다! ✅');
     } catch (err) {
         console.error('MongoDB 연결에 실패했습니다... 😭', err);
