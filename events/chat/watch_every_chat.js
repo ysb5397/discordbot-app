@@ -3,14 +3,12 @@ const { Interaction, Urls } = require('../../utils/database');
 const { generateAttachmentDescription, callFlowise } = require('../../utils/ai_helper');
 const config = require('../../config/manage_environments');
 
+// config에서 설정값 가져오기
 const excludeChannelId = config.channels.ignoreAiChat;
 const urlCheckApiKey = config.ai.urlScanKey;
 
 /**
  * AI를 사용하여 문맥에 맞는 답변을 생성하는 함수
- * (Flowise 실패 시 Gemini로 폴백 기능은 callFlowise가 담당)
- * @param {import('discord.js').Message} message - 사용자가 보낸 메시지 객체
- * @returns {Promise<string>} AI가 생성한 답변 문자열
  */
 async function generateSmartReply(message) {
     const sessionId = message.author.id;
@@ -44,12 +42,16 @@ async function generateSmartReply(message) {
     
     console.log(`[Flowise Mention] '${sessionId}'님의 질문으로 에이전트 호출 시도...`);
     
-    const aiResponseText = await callFlowise(requestBody, sessionId, 'mention-reply');
-    
-    const responseJson = JSON.parse(aiResponseText);
-    return responseJson.text || "음... 뭐라고 답해야 할지 모르겠어.";
+    const aiResponseText = await callFlowise(requestBody, sessionId, 'mention-reply', message.client, message);
+    try {
+        const responseJson = JSON.parse(aiResponseText);
+        return responseJson.text || "음... 뭐라고 답해야 할지 모르겠어.";
+    } catch (e) {
+        return aiResponseText || "오류가 발생했어.";
+    }
 }
 
+// --- URL 스캔 관련 헬퍼 함수들 ---
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 async function submitNewUrlScan(url) {
@@ -64,137 +66,92 @@ async function submitNewUrlScan(url) {
         });
 
         if (!submitResponse.ok) {
-            throw new Error(`[${url}] 스캔 제출 실패: ${submitResponse.statusText}`);
+            if (submitResponse.status === 429) throw new Error('API Rate Limit Exceeded');
+            throw new Error(`스캔 제출 실패: ${submitResponse.statusText}`);
         }
 
         const submitData = await submitResponse.json();
         const resultApiUrl = submitData.api;
-
-        if (!resultApiUrl) {
-            throw new Error(`[${url}] 스캔 제출 후 API URL을 받지 못함.`);
-        }
+        
+        console.log(`https://www.merriam-webster.com/dictionary/scan 새 스캔 제출 완료 (${url}) -> 결과 대기 중...`);
 
         await delay(10000); 
-
-        let resultResponse = null;
-        const maxRetries = 5;
-
-        for (let i = 0; i < maxRetries; i++) {
-            resultResponse = await fetch(resultApiUrl);
-
-            if (resultResponse.status === 404) {
-                await delay(5000);
-                continue; 
+        for (let i = 0; i < 10; i++) {
+            const resultResponse = await fetch(resultApiUrl);
+            if (resultResponse.status === 200) {
+                const resultData = await resultResponse.json();
+                return {
+                    url: url,
+                    isMalicious: resultData.verdicts?.overall?.malicious === true,
+                    reportUrl: resultData.task.reportURL
+                };
             }
-            
-            if (!resultResponse.ok) {
-                throw new Error(`[${url}] 결과 조회 실패: ${resultResponse.statusText}`);
-            }
-
-            const resultData = await resultResponse.json();
-            
-            const isMalicious = resultData.verdicts?.overall?.malicious === true;
-
-            return {
-                url: url,
-                isMalicious: isMalicious,
-                reportUrl: resultData.task.reportURL
-            };
+            await delay(5000);
         }
-
-        throw new Error(`[${url}] 검사 시간 초과.`);
+        throw new Error('검사 시간 초과');
 
     } catch (err) {
-        console.error(err);
-        return {
-            url: url,
-            isMalicious: false,
-            error: err.message
-        };
+        console.error(`https://support.hp.com/au-en/document/ish_2281796-2060609-16 ${url}:`, err.message);
+        return { url, isMalicious: false, error: err.message };
     }
 }
 
-async function searchUrlScan(url) {
-    console.log(`"${url}" 검색 시도...`);
+async function checkSingleUrl(url) {
     try {
         const domain = new URL(url).hostname.replace(/^www\./, '');
-        
-        // 1. "검색" API를 먼저 호출 (새 스캔보다 훨씬 빠름)
         const searchResponse = await fetch(`https://urlscan.io/api/v1/search/?q=domain:${domain}&size=1`, {
-            method: 'GET',
             headers: { 'API-Key': urlCheckApiKey }
         });
 
-        if (!searchResponse.ok) {
-            throw new Error(`[${url}] 검색 API 호출 실패: ${searchResponse.statusText}`);
+        if (searchResponse.ok) {
+            const searchData = await searchResponse.json();
+            if (searchData.results && searchData.results.length > 0) {
+                const latestResult = searchData.results[0];
+                return {
+                    url: url,
+                    isMalicious: latestResult.verdicts?.overall?.malicious === true,
+                    reportUrl: latestResult.task.reportURL
+                };
+            }
         }
-
-        const searchData = await searchResponse.json();
-
-        if (searchData.results && searchData.results.length > 0) {
-            console.log(`"${url}" 검색 히트! (새 스캔 안 함)`);
-            const latestResult = searchData.results[0];
-            const isMalicious = latestResult.verdicts?.overall?.malicious === true;
-            
-            return {
-                url: url,
-                isMalicious: isMalicious,
-                reportUrl: latestResult.task.reportURL
-            };
-        }
-
-        console.log(`"${url}" 검색 결과 없음. 새 스캔 제출...`);
         return await submitNewUrlScan(url);
-
     } catch (err) {
-        console.error(err);
-        return {
-            url: url,
-            isMalicious: false,
-            error: err.message
-        };
+        console.error(`https://www.linguee.com.ar/ingles-espanol/traduccion/check+failed.html ${url}:`, err);
+        return { url, isMalicious: false }; 
     }
 }
 
-async function scanAndReply(urlsToScan, thinkingMessage, cachedReplies = []) {
+/**
+ * 백그라운드에서 URL을 검사하고 위험 시 조치하는 함수 (Fire-and-forget)
+ */
+async function processUrlsInBackground(message, urlsToScan) {
+    console.log(`https://www.merriam-webster.com/dictionary/scan 백그라운드 검사 시작: ${urlsToScan.length}개 URL`);
     
-    const scanPromises = urlsToScan.map(url => searchUrlScan(url));
-    const results = await Promise.allSettled(scanPromises);
+    const promises = urlsToScan.map(url => checkSingleUrl(url));
+    const results = await Promise.allSettled(promises);
 
-    let allowUrl = [];
-    let disallowUrl = [];
-    let errorUrl = [];
-    const urlsToSaveToDB = [];
+    const maliciousLinks = [];
+    const newDbEntries = [];
 
-    results.forEach(result => {
+    for (const result of results) {
         if (result.status === 'fulfilled') {
             const data = result.value;
-            const link = `[${data.url}](${data.reportUrl || 'about:blank'})`;
-
-            if (data.error) {
-                errorUrl.push(`- ${data.url} (검사 중 오류: ${data.error})`);
-            } else if (data.isMalicious) {
-                disallowUrl.push(`- ${link} ☠️`);
-            } else {
-                allowUrl.push(`- ${link} ✅`);
-            }
-
-            urlsToSaveToDB.push({
+            
+            newDbEntries.push({
                 url: data.url,
                 isSafe: !data.isMalicious,
                 lastChecked: new Date()
             });
 
-        } else {
-            errorUrl.push(`- 알 수 없는 URL (치명적 오류: ${result.reason.message})`);
+            if (data.isMalicious) {
+                maliciousLinks.push(data.url);
+            }
         }
-    });
-    
-    console.log(`${urlsToSaveToDB.length}`);
-    if (urlsToSaveToDB.length > 0) {
+    }
+
+    if (newDbEntries.length > 0) {
         try {
-            await Urls.insertMany(urlsToSaveToDB, { ordered: false }); // 중복 에러 무시
-            console.log(`[DB] ${urlsToSaveToDB.length}개의 새 URL 검사 결과를 저장했습니다.`);
+            await Urls.insertMany(newDbEntries, { ordered: false }).catch(() => {});
         } catch (dbError) {
             if (!dbError.message.includes('E11000')) {
                 console.error(`[DB] URL 저장 실패:`, dbError);
@@ -202,85 +159,58 @@ async function scanAndReply(urlsToScan, thinkingMessage, cachedReplies = []) {
             throw Error(dbError);
         }
     }
-    
-    const totalCount = urlsToScan.length + cachedReplies.length;
-    let description = [`**총 ${totalCount}개 URL 검사 완료!**\n`];
 
-    if (cachedReplies.length > 0) {
-        description.push(`**[ 💾 캐시된 결과 ${cachedReplies.length}개 ]**\n${cachedReplies.join('\n')}\n`);
-    }
-
-    if (disallowUrl.length > 0) {
-        description.push(`**[ 🚨 신규 위험 ${disallowUrl.length}개 ]**\n${disallowUrl.join('\n')}\n`);
-    }
-    if (allowUrl.length > 0) {
-        description.push(`**[ ✅ 신규 안전 ${allowUrl.length}개 ]**\n${allowUrl.join('\n')}\n`);
-    }
-    if (errorUrl.length > 0) {
-        description.push(`**[ ⚠️ 오류 ${errorUrl.length}개 ]**\n${errorUrl.join('\n')}`);
-    }
-
-    try {
-        await thinkingMessage.edit({ 
-            content: description.join('\n')
-        });
-    } catch (editError) {
-        console.error("결과 메시지 수정 실패:", editError);
+    if (maliciousLinks.length > 0) {
+        try {
+            if (message.deletable) await message.delete();
+            await message.channel.send(
+                `🚨 **보안 경고** 🚨\n${message.author}님이 올린 메시지에 위험한 링크가 포함되어 있어 삭제했습니다!\n(검출된 링크: ||${maliciousLinks.join(', ')}||)`
+            );
+        } catch (err) {
+            console.error('https://www.merriam-webster.com/dictionary/scan 메시지 삭제 실패:', err);
+        }
+    } else {
+        try { await message.react('✅'); } catch(reactError) {
+            console.error(`[DISCORD] 메시지 반응 실패: `, reactError);
+        }
     }
 }
+
 
 module.exports = {
     name: Events.MessageCreate,
     async execute(message, client) {
         if (message.author.bot) return;
+
         const urlRegex = /(https?:\/\/[^\s]+)/g;
-        let foundUrls = message.content.match(urlRegex);
+        const foundUrls = message.content.match(urlRegex);
 
-        let thinkingMessage = null;
         if (foundUrls) {
-            foundUrls = [...new Set(foundUrls)];
-            const urlsToScan = [];
-            const cachedReplies = [];
+            const uniqueUrls = [...new Set(foundUrls)];
+            const unknownUrls = [];
 
-            for (const url of foundUrls) {
-                console.log(`[로그 1] 검사할 URL: ${url}`);
-                const cached = await Urls.findOne({ url: url });
-                
-                console.log(`[로그 2] 캐시에서 찾음?:`, cached); // null이 나와야 정상!
+            const cachedResults = await Urls.find({ url: { $in: uniqueUrls } });
+            
+            for (const url of uniqueUrls) {
+                const cached = cachedResults.find(doc => doc.url === url);
                 if (cached) {
                     if (!cached.isSafe) {
                         try {
-                            await message.delete();
-                        } catch (err) {
-                            console.error("메시지 삭제 권한이 없거나 이미 삭제된 메시지입니다.", err);
-                        }
-                        await message.channel.send(
-                            `${message.author} 님, 메시지에 캐시된 위험 링크(${url})가 포함되어 있어 삭제했어요! ☠️`
-                        );
-                        return;
-                    } else {
-                        const status = '안전 ✅';
-                        cachedReplies.push(`- ${url} (이미 검사됨: ${status})`);
+                            if (message.deletable) await message.delete();
+                            await message.channel.send(`${message.author} 님, 위험한 링크(${url})가 포함되어 있어 삭제했습니다! 🛡️`);
+                            return;
+                        } catch (e) { console.error('메시지 삭제 실패', e); }
                     }
                 } else {
-                    urlsToScan.push(url);
+                    unknownUrls.push(url);
                 }
             }
-            console.log(`[로그 3] 최종 스캔 목록:`, urlsToScan); // 여기에 새 링크가 담겨야 함!
 
-            if (urlsToScan.length > 0) {
-                const cachedCount = cachedReplies.length;
-                const thinkingMessage = await message.reply(
-                    `${urlsToScan.length}개의 새 링크를 검사할게. (캐시된 안전 링크 ${cachedCount}개) 잠시만 기다려줘!`
+            if (unknownUrls.length > 0) {
+                processUrlsInBackground(message, unknownUrls).catch(err => 
+                    console.error('https://www.freepik.com/free-photos-vectors/error-background', err)
                 );
-                
-                await scanAndReply(urlsToScan, thinkingMessage, cachedReplies); 
-
-            } else if (cachedReplies.length > 0) {
-                await message.reply(`감지된 링크는 모두 이전에 검사 완료된 안전한 링크들이야!\n\n${cachedReplies.join('\n')}`);
             }
-            
-            return;
         }
 
         if (message.channelId == excludeChannelId) return;
@@ -288,21 +218,18 @@ module.exports = {
         const shouldBotReply = message.mentions.has(client.user);
 
         if (shouldBotReply) {
+            let thinkingMessage;
             try {
                 thinkingMessage = await message.reply("잠깐만... 생각 중이야! 🤔");
             } catch (replyError) {
-                try {
-                    thinkingMessage = await message.channel.send("잠깐만... 생각 중이야! 🤔");
-                } catch (sendError) {
-                    console.error("멘션 응답 '생각 중' 메시지 전송 실패:", sendError);
-                    return;
-                }
+                console.error("답장 실패:", replyError);
+                return;
             }
 
             try {
                 const botReplyText = await generateSmartReply(message);
-
-                const newMention = new Interaction({
+                
+                await Interaction.create({
                     interactionId: message.id,
                     channelId: message.channel.id,
                     userId: message.author.id,
@@ -311,28 +238,22 @@ module.exports = {
                     content: message.content,
                     botResponse: botReplyText
                 });
-                await newMention.save();
+
                 await thinkingMessage.edit(botReplyText);
 
             } catch (error) {
-                // (유지) generateSmartReply가 실패했을 때의 최종 방어선
-                console.error('봇 답변 처리/수정 중 오류 발생:', error);
+                console.error('멘션 응답 실패:', error);
+                if (thinkingMessage) await thinkingMessage.edit("미안, 지금은 대답하기가 좀 곤란해... 😵");
                 
-                if (thinkingMessage) {
-                    await thinkingMessage.edit("미안, 지금은 생각 회로에 문제가 생긴 것 같아... 😵");
-                }
-                
-                // (유지) 실패 기록을 DB에 저장
-                const newError = new Interaction({
+                await Interaction.create({
                     interactionId: message.id,
                     channelId: message.channel.id,
                     userId: message.author.id,
                     userName: message.author.username,
                     type: 'ERROR',
-                    content: `멘션 답변 생성/수정 실패: ${message.content}`,
+                    content: `멘션 실패: ${message.content}`,
                     botResponse: error.message
                 });
-                await newError.save();
             }
 
         } else {
@@ -341,14 +262,11 @@ module.exports = {
             if (message.attachments.size > 0 && message.content.trim() === '') {
                  if (message.attachments.size >= 5) {
                     await message.react('❌');
-                    await message.reply('파일 분석은 한 번에 4개까지만 가능해! 😵');
                     return;
                 }
                 
                 await message.react('🤔');
-
                 const attachmentPromises = message.attachments.map(att => generateAttachmentDescription(att));
-
                 const results = await Promise.all(attachmentPromises);
                 contentToSave = results.join('\n\n');
                 
@@ -357,16 +275,16 @@ module.exports = {
             }
 
             if (contentToSave.trim() !== '') {
-                const newMessage = new Interaction({
+                Interaction.create({
                     interactionId: message.id,
                     channelId: message.channel.id,
                     userId: message.author.id,
                     userName: message.author.username,
                     type: 'MESSAGE',
                     content: contentToSave
-                });
-                await newMessage.save();
-                console.log(`'${message.author.username}'의 메시지를 저장했습니다: "${contentToSave.substring(0, 50)}..."`);
+                }).catch(err => console.error('메시지 저장 실패:', err));
+                
+                console.log(`[Chat Saved] ${message.author.username}: ${contentToSave.substring(0, 30)}...`);
             }
         }
     },
