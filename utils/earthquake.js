@@ -151,7 +151,7 @@ async function sendEarthquakeAlert(info, client) {
 }
 
 function startEarthquakeMonitor(client) {
-    if (EQK_AUTH_KEY) {
+    if (!EQK_AUTH_KEY) {
         earthquakeMonitorStatus = '키 없음';
         console.warn('[EQK] EQK_AUTH_KEY가 설정되지 않아 지진 정보 모니터링을 시작할 수 없습니다.');
         return;
