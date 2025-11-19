@@ -1,5 +1,5 @@
 // 파일 위치: /utils/logger.js
-const { Client, Interaction } = require('discord.js');
+const { Client, Interaction: DiscordInteraction } = require('discord.js');
 const { createLogEmbed } = require('./embed_builder.js');
 const config = require('../config/manage_environments.js');
 const { Interaction } = require('./database.js');
@@ -20,7 +20,7 @@ const LogLevel = {
  * @param {Client} client - 봇 클라이언트 인스턴스
  * @param {'INFO' | 'DEBUG' | 'WARN' | 'ERROR'} level - 로그 레벨 (LogLevel 객체의 키 중 하나)
  * @param {string} message - 기록할 주 메시지 내용
- * @param {Interaction | null} [interaction=null] - (선택) 로그와 관련된 상호작용 객체
+ * @param {DiscordInteraction | null} [interaction=null] - (선택) 로그와 관련된 상호작용 객체
  * @param {Error | null} [error=null] - (선택) 기록할 에러 객체 (주로 ERROR 레벨에서 사용)
  * @param {string | null} [origin=null] - (선택) 에러 발생 출처 (interaction 없을 때 유용)
  */
