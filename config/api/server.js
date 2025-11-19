@@ -1,9 +1,9 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const config = require('../manage_environments');
-const { ApiKey } = require('../utils/database');
-const { callFlowise } = require('../utils/ai_helper');
-const { logToDiscord } = require('../utils/catch_log');
+const { ApiKey } = require('../../utils/database');
+const { callFlowise } = require('../../utils/ai_helper');
+const { logToDiscord } = require('../../utils/catch_log');
 
 // Express 앱 생성
 const app = express();
