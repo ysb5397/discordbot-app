@@ -47,7 +47,7 @@ module.exports = {
 
         try {
             const targetError = await Interaction.findOne({ 
-                type: 'SYSTEM_ERROR', 
+                type: 'ERROR', 
                 botResponse: 'Unresolved' 
             }).sort({ timestamp: -1 });
 
