@@ -1,8 +1,9 @@
 const { Events } = require('discord.js');
 const { logToDiscord } = require('../../utils/catch_log.js');
 const { WhiteList } = require('../../utils/database.js');
+const config = require('../../config/manage_environments.js');
 
-const BASE_MEMBER_ROLE_ID = process.env.BASE_MEMBER_ROLE_ID;
+const BASE_MEMBER_ROLE_ID = config.discord.baseMemberRoleId;
 
 module.exports = {
     name: Events.GuildMemberAdd,

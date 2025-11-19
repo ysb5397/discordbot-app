@@ -1,11 +1,14 @@
 const { createEarthquakeEmbed } = require('./embed_builder.js');
 const { JSDOM } = require('jsdom');
 const { Interaction } = require('./database.js');
+const config = require('../config/manage_environments.js');
+
+const EQK_AUTH_KEY = config.etc.earthquakeKey;
 
 // --- 설정 변수 ---
 const EQ_API_CONFIG = {
     url: "https://apihub.kma.go.kr/api/typ09/url/eqk/urlNewNotiEqk.do",
-    authKey: process.env.EQK_AUTH_KEY,
+    authKey: EQK_AUTH_KEY,
     orderTy: "xml",
     orderCm: "L"
 };
@@ -118,7 +121,7 @@ async function scheduleCheck(client) {
 }
 
 async function sendEarthquakeAlert(info, client) {
-    const targetChannelId = '1388443793589538899';
+    const targetChannelId = config.channels.earthquakeNotice;
     const rawIntensity = info.querySelector("jdLoc")?.textContent || "정보 없음";
     const rawTime = info.querySelector("eqDate")?.textContent || "정보 없음"; // tmEqk -> eqDate
 
@@ -148,7 +151,7 @@ async function sendEarthquakeAlert(info, client) {
 }
 
 function startEarthquakeMonitor(client) {
-    if (!process.env.EQK_AUTH_KEY) {
+    if (EQK_AUTH_KEY) {
         earthquakeMonitorStatus = '키 없음';
         console.warn('[EQK] EQK_AUTH_KEY가 설정되지 않아 지진 정보 모니터링을 시작할 수 없습니다.');
         return;

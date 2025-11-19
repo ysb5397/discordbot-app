@@ -1,9 +1,10 @@
 const { Events } = require('discord.js');
 const { Interaction, Urls } = require('../../utils/database');
 const { generateAttachmentDescription, callFlowise } = require('../../utils/ai_helper');
+const config = require('../../config/manage_environments');
 
-const excludeChannelId = "1434714087388086304";
-const urlCheckApiKey = process.env.URL_CHECK_API_KEY;
+const excludeChannelId = config.channels.ignoreAiChat;
+const urlCheckApiKey = config.ai.urlScanKey;
 
 /**
  * AI를 사용하여 문맥에 맞는 답변을 생성하는 함수

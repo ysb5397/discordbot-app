@@ -4,12 +4,13 @@ const { SlashCommandBuilder, InteractionContextType } = require('discord.js');
 const { google } = require('googleapis');
 const { callFlowise } = require('../utils/ai_helper.js');
 const { logToDiscord } = require('../utils/catch_log.js');
-const { createAiResponseEmbed } = require('../utils/embed_builder.js')
+const { createAiResponseEmbed } = require('../utils/embed_builder.js');
+const config = require('../config/manage_environments.js');
 
 const customsearch = google.customsearch('v1');
 
-const googleApiKey = process.env.GOOGLE_SEARCH_API;
-const googleSearchEngineId = process.env.GOOGLE_SEARCH_ENGINE_ID;
+const googleApiKey = config.ai.googleSearch.apiKey;
+const googleSearchEngineId = config.ai.googleSearch.engineId;
 
 /**
  * AI를 이용해 검색어를 생성하는 함수

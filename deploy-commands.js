@@ -1,12 +1,13 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { REST, Routes } = require('discord.js');
-const dotenv = require('dotenv');
 const { DeploymentStatus } = require('./utils/database');
+const config = require('./config/manage_environments');
 
-dotenv.config();
+const DISCORD_DEV_BOT_TOKEN = config.discord.token;
+const DISCORD_DEV_CLIENT_ID = config.discord.clientId;
+const DISCORD_GUILD_ID = config.discord.guildId;
 
-const { DISCORD_DEV_BOT_TOKEN, DISCORD_DEV_CLIENT_ID, DISCORD_GUILD_ID } = process.env;
 const rest = new REST({ version: '10' }).setToken(DISCORD_DEV_BOT_TOKEN);
 
 const commands = [];

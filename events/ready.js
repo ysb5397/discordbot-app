@@ -2,8 +2,10 @@ const { Events, ChannelType, ActivityType } = require('discord.js');
 const { startEarthquakeMonitor } = require('../utils/earthquake');
 const { joinVoiceChannel } = require('@discordjs/voice');
 const { BotStatus } = require('../utils/database');
+const config = require('../config/manage_environments');
 
-const TARGET_CHANNEL_ID = "1353292092016693282";
+const TARGET_CHANNEL_ID = config.channels.autoJoin;
+const IS_DEV_BOT = config.discord.isDevBot;
 
 module.exports = {
     name: Events.ClientReady,
@@ -42,7 +44,7 @@ module.exports = {
             }
         }
 
-        if (process.env.IS_DEV_BOT === 'true') {
+        if (IS_DEV_BOT === 'true') {
             console.log('[DEV BOT] 하트비트 전송을 시작합니다...');
             
             setInterval(async () => {
