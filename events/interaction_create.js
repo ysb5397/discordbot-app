@@ -3,6 +3,7 @@
 const { Events } = require('discord.js');
 const { logToDiscord } = require('../utils/catch_log.js');
 const config = require('../config/manage_environments.js');
+const { WhiteList } = require('../utils/database.js');
 
 const ALLOWED_GUILD_ID = config.discord.guildId;
 const OWNER_ID = config.discord.ownerId;
@@ -14,7 +15,9 @@ module.exports = {
             return;
         }
 
-        const foundUser = await WhiteList.findOne({ memberId: interaction.user.id });
+        if (interaction.user.id !== OWNER_ID) {
+            const foundUser = await WhiteList.findOne({ memberId: interaction.user.id });
+        }
 
         if (interaction.guildId !== ALLOWED_GUILD_ID && interaction.user.id !== OWNER_ID || !foundUser.isWhite) {
             return interaction.reply({ 
