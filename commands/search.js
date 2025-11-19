@@ -1,65 +1,87 @@
-// 파일 위치: /commands/deep_research.js
+// 파일 위치: /commands/search.js
 
-const { SlashCommandBuilder, InteractionContextType } = require('discord.js');
-const { Interaction } = require('../utils/database.js');
-const { searchWeb, generateSearchQuery, generateMongoFilter, callFlowise, deepResearch } = require('../utils/ai_helper.js');
+const { SlashCommandBuilder, InteractionContextType, EmbedBuilder } = require('discord.js');
+const { google } = require('googleapis');
+const { callFlowise } = require('../utils/ai_helper.js');
 const { logToDiscord } = require('../utils/catch_log.js');
 const { createAiResponseEmbed } = require('../utils/embed_builder.js');
+const config = require('../config');
+
+const googleApiKey = config.ai.googleSearch.apiKey;
+const googleSearchEngineId = config.ai.googleSearch.engineId;
+
+const customsearch = google.customsearch('v1');
+
+const MAX_EXECUTION_TIME = 14 * 60 * 1000; 
+const UPDATE_INTERVAL = 5000;
 
 /**
- * MongoDB에서 기억(메모리)을 검색하는 함수
- * @param {string} query - 사용자의 자연어 쿼리
- * @param {string} userId - 사용자 ID
- * @param {object} client - 디스코드 클라이언트
- * @param {object} interaction - 상호작용 객체
- * @returns {Promise<string>} - 포맷팅된 기억 문자열
+ * AI를 이용해 검색어를 생성하는 함수
  */
-async function searchMemories(query, userId, client, interaction) {
-    try {
-        const filter = await generateMongoFilter(query, userId, client, interaction);
-        const results = await Interaction.find(filter)
-            .sort({ timestamp: -1 })
-            .limit(5)
-            .lean();
+async function generateSearchQuery(userQuestion, sessionId, client, interaction) {
+    const prompt = `
+        You are a search query optimization expert. Your task is to convert a user's natural language question into a highly effective, keyword-focused search query for Google. The query should be in English to maximize search results. Avoid using quotes unless absolutely necessary for the search.
 
-        if (results.length === 0) {
-            return "검색된 관련 기억이 없습니다.";
+        User Question: "${userQuestion}"
+
+        Optimized Google Search Query:
+    `;
+
+    const aiResponseText = await callFlowise(prompt, sessionId, 'query-generation', client, interaction);
+
+    try {
+        const aiResponse = JSON.parse(aiResponseText);
+        let query = aiResponse.text || '';
+
+        if (aiResponse.message) {
+            logToDiscord(client, 'INFO', `검색어 생성 AI 메시지: ${aiResponse.message}`, interaction, null, 'generateSearchQuery');
         }
 
-        return results.map((item, index) =>
-            `[기억 ${index + 1}: ${new Date(item.timestamp).toLocaleString('ko-KR')}]\n- ${item.content || 'N/A'}\n- (봇 응답: ${item.botResponse || 'N/A'})`
-        ).join('\n\n');
+        return query.replace(/"/g, '').trim();
 
-    } catch (dbError) {
-        console.error('[/search] 기억 검색(DB) 중 오류:', dbError);
-        logToDiscord(client, 'ERROR', '기억 검색(DB) 실패', interaction, dbError, 'searchMemories');
-        return "기억을 검색하는 중 오류가 발생했습니다.";
+    } catch (parseError) {
+        console.error(`[/deep_research] 검색어 생성 AI 응답 파싱 실패:`, aiResponseText, parseError);
+        logToDiscord(client, 'ERROR', '검색어 생성 AI 응답을 해석(JSON 파싱)하는 데 실패했습니다.', interaction, parseError, 'generateSearchQuery');
+        return userQuestion;
     }
 }
 
 /**
- * 검색 결과를 AI 프롬프트용(상세)으로 포맷하는 함수
+ * 구글 웹 검색을 수행하는 함수
  */
-function formatWebResultsForAI(items) {
+async function searchWeb(query) {
+    if (!googleApiKey || !googleSearchEngineId) {
+        throw new Error("Google Search API 키 또는 엔진 ID가 설정되지 않았습니다.");
+    }
+    try {
+        const searchResponse = await customsearch.cse.list({
+            auth: googleApiKey,
+            cx: googleSearchEngineId,
+            q: query,
+            num: 5,
+        });
+        return searchResponse.data.items || [];
+    } catch (searchError) {
+        console.error(`[/deep_research] Google Search API 오류:`, searchError.message);
+        if (searchError.message && searchError.message.includes('API key expired')) {
+            throw new Error("구글 검색 API 키가 만료되었습니다. 관리자에게 문의하세요.");
+        } else if (searchError.message && (searchError.message.includes('invalid') || searchError.message.includes('forbidden'))) {
+            throw new Error("구글 검색 API 키 또는 엔진 ID가 잘못되었거나 권한이 없습니다. 관리자 설정을 확인하세요.");
+        }
+        throw new Error(`웹 검색 중 예상치 못한 오류 발생: ${searchError.message}`);
+    }
+}
+
+/**
+ * 검색 결과를 포맷하는 함수
+ */
+function formatSearchResults(items) {
     if (!items || items.length === 0) {
         return "웹 검색 결과가 없습니다.";
     }
     return items.map((item, index) =>
-        `[웹 출처 ${index + 1}: ${item.title || '제목 없음'}]\n${item.snippet || '내용 없음'}\n링크: ${item.link || '링크 없음'}`
+        `[출처 ${index + 1}: ${item.title || '제목 없음'}]\n${item.snippet || '내용 없음'}\n링크: ${item.link || '링크 없음'}`
     ).join('\n\n');
-}
-
-/**
- * 검색 결과를 Discord 메시지(요약)용으로 포맷하는 함수
- */
-function formatWebResultsForMessage(items) {
-    if (!items || items.length === 0) {
-        return "*(참고한 웹 출처가 없습니다)*";
-    }
-    // [[출처1]](링크) [[출처2]](링크) ... 형식으로 반환
-    return items.map((item, index) =>
-        `[[출처${index + 1}]](${item.link || 'about:blank'})`
-    ).join(' ');
 }
 
 module.exports = {
@@ -71,84 +93,91 @@ module.exports = {
             InteractionContextType.BotDM,
             InteractionContextType.PrivateChannel,
         ])
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('normal')
-                .setDescription('웹을 검색하여 질문에 대한 요약 답변을 받습니다.')
-                .addStringOption(option =>
-                    option.setName('question')
-                        .setDescription('검색할 주제 또는 질문')
-                        .setRequired(true))
-        )
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('detailed')
-                .setDescription('웹과 기억(DB)을 모두 검색하여 심층 분석 답변을 받습니다.')
-                .addStringOption(option =>
-                    option.setName('question')
-                        .setDescription('리서치할 주제 또는 질문')
-                        .setRequired(true))
-        ),
+        .addStringOption(option =>
+            option.setName('question')
+                .setDescription('리서치할 주제 또는 질문')
+                .setRequired(true)),
 
     async execute(interaction) {
         const startTime = Date.now();
         const client = interaction.client;
-        const subcommand = interaction.options.getSubcommand();
         const userQuestion = interaction.options.getString('question');
         const sessionId = interaction.user.id;
 
         await interaction.deferReply();
 
-        let analysisPrompt = "";
-        let formattedWebResultsForAI = "";
-        let formattedWebResultsForMsg = "";
-        let formattedMemoryResults = "";
-        let finalTitle = `질문: ${userQuestion.substring(0, 240)}`;
-        let fields = [];
-        
+        let updateIntervalId;
+        let isFinished = false;
+
+        // --- 1. 진행 상황 업데이트 타이머 시작 ---
+        const startProgressUpdate = (messagePrefix) => {
+            clearInterval(updateIntervalId);
+            updateIntervalId = setInterval(async () => {
+                if (isFinished) return clearInterval(updateIntervalId);
+                
+                const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                
+                // 14분이 넘어가면 강제 종료 처리
+                if (Date.now() - startTime > MAX_EXECUTION_TIME) {
+                    clearInterval(updateIntervalId);
+                    isFinished = true;
+                    try {
+                        await interaction.editReply({ content: `❌ **시간 초과!**\n작업 시간이 너무 길어져서(14분 초과) 중단되었어요. 질문을 조금 더 구체적으로 나눠서 해주시겠어요?` });
+                    } catch (e) { console.error('타임아웃 메시지 전송 실패:', e); }
+                    return;
+                }
+
+                try {
+                    await interaction.editReply(`${messagePrefix} (${elapsed}초 경과...) ⏳`);
+                } catch (e) {
+                    // 15분 토큰 만료 등으로 수정 실패 시 타이머 정지
+                    console.warn('진행 상황 업데이트 실패 (무시됨):', e.message);
+                    clearInterval(updateIntervalId);
+                }
+            }, UPDATE_INTERVAL);
+        };
+
         try {
-            if (subcommand === 'detailed') {
-                await interaction.editReply(`🕵️‍♂️ '${userQuestion}'에 대한 심층 리서치를 시작합니다... (최대 1~2분 소요)`);
-                
-                const reportText = await deepResearch(userQuestion);
-                
-                const buffer = Buffer.from(reportText, 'utf-8');
-                const attachment = new AttachmentBuilder(buffer, { name: 'deep_research_report.txt' });
+            // 단계 1: 검색어 생성
+            startProgressUpdate('AI가 더 나은 검색을 위해 질문을 분석하고 있어요... 🤔');
+            const searchQuery = await generateSearchQuery(userQuestion, sessionId, client, interaction);
 
-                const endTime = Date.now();
-                const duration = endTime - startTime;
+            console.log(`[/deep_research] Generated Search Query: "${searchQuery}"`);
+            logToDiscord(client, 'DEBUG', `Generated Search Query: "${searchQuery}"`, interaction, null, 'execute');
 
-                const summaryEmbed = createAiResponseEmbed({
-                    title: `📑 심층 리서치 완료: ${userQuestion.substring(0, 50)}...`,
-                    description: reportText.substring(0, 300) + "...\n\n**(전체 내용은 첨부된 텍스트 파일을 확인해 주세요!)**",
-                    duration: duration,
-                    user: interaction.user,
-                    footerPrefix: "Powered by Gemini 2.0 & Google Search"
-                });
+            // 단계 2: 웹 검색
+            startProgressUpdate(`AI가 생성한 검색어(\`${searchQuery}\`)로 웹 정보를 수집하고 있어요... 🕵️‍♂️`);
+            const searchResults = await searchWeb(searchQuery);
 
-                await interaction.editReply({
-                    content: "✅ 리서치가 완료되었습니다!",
-                    embeds: [summaryEmbed],
-                    files: [attachment]
-                });
-
-            }  else {
-                    analysisPrompt = `
-                        Please act as a professional researcher. Provide a concise summary answering the user's question based *only* on the provided web search results.
-                        Cite the sources used (e.g., "[웹 출처 1]", "[웹 출처 2, 3]"). Respond in Korean.
-
-                        [User's Original Question]
-                        ${userQuestion}
-
-                        [Web Search Results]
-                        ${formattedWebResultsForAI}
-
-                        [Your Concise Summary (Korean)]
-                    `;
+            if (searchResults.length === 0) {
+                isFinished = true;
+                clearInterval(updateIntervalId);
+                await interaction.editReply(`'${searchQuery}'에 대한 관련 정보를 찾는 데 실패했어요. 😥 다른 질문으로 시도해볼래?`);
+                return;
             }
 
-            const analysisResponseText = await callFlowise(analysisPrompt, sessionId, 'search-analysis', client, interaction);
+            const formattedResults = formatSearchResults(searchResults);
+
+            // 단계 3: AI 심층 분석 (여기가 가장 오래 걸림)
+            startProgressUpdate('수집된 정보를 바탕으로 AI가 최종 보고서를 작성 중입니다... (조금 더 걸릴 수 있어요) 🧠');
+
+            const analysisPrompt = `
+                Please act as a professional researcher. Your goal is to provide a comprehensive, in-depth answer to the user's original question based *only* on the provided web search results. Synthesize the information clearly and cite the sources used (e.g., "[출처 1]", "[출처 2, 3]") for each part of your analysis. If the search results are insufficient or irrelevant to answer the question, state that clearly. Respond in Korean.
+
+                [User's Original Question]
+                ${userQuestion}
+
+                [Web Search Results for query: "${searchQuery}"]
+                ${formattedResults}
+
+                [Your In-depth Analysis (Korean)]
+            `;
+
+            const analysisResponseText = await callFlowise(analysisPrompt, sessionId, 'analysis', client, interaction);
             
+            isFinished = true; // 작업 완료 플래그
+            clearInterval(updateIntervalId); // 타이머 정지
+
             let analysis = '분석 결과를 가져오는 데 실패했습니다.';
             let analysisMessage = null;
 
@@ -157,12 +186,12 @@ module.exports = {
                 analysis = analysisResponse.text || analysis;
                 analysisMessage = analysisResponse.message;
             } catch (parseError) {
-                console.error(`[/search] 분석 결과 파싱 실패:`, analysisResponseText, parseError);
-                logToDiscord(client, 'ERROR', 'AI 분석 결과 응답(JSON) 파싱 실패', interaction, parseError, 'execute');
+                console.error(`[/deep_research] 분석 결과 파싱 실패:`, analysisResponseText, parseError);
+                logToDiscord(client, 'ERROR', 'AI 분석 결과 응답을 해석(JSON 파싱)하는 데 실패했습니다.', interaction, parseError, 'execute');
                 analysis = analysisResponseText;
             }
 
-            if(analysisMessage){
+            if (analysisMessage) {
                 analysis += `\n\n${analysisMessage}`;
             }
 
@@ -170,24 +199,26 @@ module.exports = {
             const duration = endTime - startTime;
 
             const resultEmbed = createAiResponseEmbed({
-                title: finalTitle,
+                title: userQuestion.substring(0, 250) + (userQuestion.length > 250 ? '...' : ''),
                 description: analysis.substring(0, 4090),
-                fields: fields,
+                fields: [{ name: '참고한 출처 정보 (요약)', value: formattedResults.substring(0, 1024) }],
                 duration: duration,
                 user: interaction.user,
-                footerPrefix: `Powered by Google Search & Gemini`
+                searchQuery: searchQuery
             });
 
-            await interaction.editReply({ 
-                content: `'${userQuestion}'에 대한 ${subcommand === 'detailed' ? '심층' : '일반'} 분석이 완료되었어요! ✨\n\n${formattedWebResultsForMsg}`, 
-                embeds: [resultEmbed] 
-            });
+            await interaction.editReply({ content: `'${userQuestion}'에 대한 심층 분석이 완료되었어요! ✨`, embeds: [resultEmbed] });
 
         } catch (error) {
-            console.error(`[/search] ${subcommand} 실행 중 최종 오류:`, error);
-            await interaction.editReply({
-                content: `❌ 앗! ${subcommand === 'detailed' ? '심층' : '일반'} 검색 중 오류가 발생했어요...!\n\n> ${error.message}`
-            });
+            isFinished = true;
+            clearInterval(updateIntervalId);
+            console.error('[/deep_research] 실행 중 오류:', error);
+            
+            // 이미 defer된 상태이므로 editReply 사용
+            await interaction.editReply({ 
+                content: `❌ 작업 처리 중 오류가 발생했습니다.\n> ${error.message}`,
+                embeds: [] 
+            }).catch(e => console.error('오류 메시지 전송 실패:', e));
         }
     },
 };
