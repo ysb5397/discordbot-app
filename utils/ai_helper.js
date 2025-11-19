@@ -18,7 +18,7 @@ const flashModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 const proModel = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
 
 
-// --- 헬퍼: Gemini 프롬프트 구성 (채팅 스트리밍용 - Node.js 유지) ---
+// --- 헬퍼: Gemini 프롬프트 구성 ---
 async function buildGeminiPrompt(promptData, attachment) {
     const parts = [];
     if (attachment) {
@@ -40,11 +40,6 @@ async function buildGeminiPrompt(promptData, attachment) {
     return parts;
 }
 
-/**
- * Gemini 스트리밍 채팅 (Node.js 유지)
- * - 채팅은 스트리밍이 중요해서 일단 Node.js에 두는 게 반응 속도 면에서 유리할 수 있어.
- * - 원한다면 이것도 나중에 파이썬으로 옮길 수 있어.
- */
 async function* getChatResponseStreamOrFallback(promptData, attachment, sessionId, { client, interaction, task = 'chat' }, selectedModel, tokenLimit) {
     let history = promptData.history || [];
     let currentPromptParts;
