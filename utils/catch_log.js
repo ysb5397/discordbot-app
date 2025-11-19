@@ -57,7 +57,7 @@ async function logToDiscord(client, level, message, interaction = null, error = 
                 channelId: interaction?.channelId || 'unknown',
                 userId: interaction?.user?.id || client.user.id,
                 userName: interaction?.user?.username || 'System',
-                type: 'SYSTEM_ERROR',
+                type: 'ERROR',
                 content: {
                     message: message,
                     errorMessage: error.message,

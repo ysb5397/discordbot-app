@@ -40,7 +40,7 @@ async function generateSearchQuery(userQuestion, sessionId, client, interaction)
         return query.replace(/"/g, '').trim();
 
     } catch (parseError) {
-        console.error(`[/deep_research] 검색어 생성 AI 응답 파싱 실패:`, aiResponseText, parseError);
+        console.error(`[/search] 검색어 생성 AI 응답 파싱 실패:`, aiResponseText, parseError);
         logToDiscord(client, 'ERROR', '검색어 생성 AI 응답을 해석(JSON 파싱)하는 데 실패했습니다.', interaction, parseError, 'generateSearchQuery');
         return userQuestion;
     }
@@ -62,7 +62,7 @@ async function searchWeb(query) {
         });
         return searchResponse.data.items || [];
     } catch (searchError) {
-        console.error(`[/deep_research] Google Search API 오류:`, searchError.message);
+        console.error(`[/search] Google Search API 오류:`, searchError.message);
         if (searchError.message && searchError.message.includes('API key expired')) {
             throw new Error("구글 검색 API 키가 만료되었습니다. 관리자에게 문의하세요.");
         } else if (searchError.message && (searchError.message.includes('invalid') || searchError.message.includes('forbidden'))) {
@@ -142,7 +142,7 @@ module.exports = {
             startProgressUpdate('AI가 더 나은 검색을 위해 질문을 분석하고 있어요... 🤔');
             const searchQuery = await generateSearchQuery(userQuestion, sessionId, client, interaction);
 
-            console.log(`[/deep_research] Generated Search Query: "${searchQuery}"`);
+            console.log(`[/search] Generated Search Query: "${searchQuery}"`);
             logToDiscord(client, 'DEBUG', `Generated Search Query: "${searchQuery}"`, interaction, null, 'execute');
 
             // 단계 2: 웹 검색
@@ -186,7 +186,7 @@ module.exports = {
                 analysis = analysisResponse.text || analysis;
                 analysisMessage = analysisResponse.message;
             } catch (parseError) {
-                console.error(`[/deep_research] 분석 결과 파싱 실패:`, analysisResponseText, parseError);
+                console.error(`[/search] 분석 결과 파싱 실패:`, analysisResponseText, parseError);
                 logToDiscord(client, 'ERROR', 'AI 분석 결과 응답을 해석(JSON 파싱)하는 데 실패했습니다.', interaction, parseError, 'execute');
                 analysis = analysisResponseText;
             }
@@ -212,7 +212,7 @@ module.exports = {
         } catch (error) {
             isFinished = true;
             clearInterval(updateIntervalId);
-            console.error('[/deep_research] 실행 중 오류:', error);
+            console.error('[/search] 실행 중 오류:', error);
             
             // 이미 defer된 상태이므로 editReply 사용
             await interaction.editReply({ 
