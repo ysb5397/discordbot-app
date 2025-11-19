@@ -63,6 +63,18 @@ const whiteListSchema = new mongoose.Schema({
 
 const WhiteList = mongoose.model('WhiteList', whiteListSchema);
 
+const schedulerSchema = new mongoose.Schema({
+    type: { type: String, required: true, enum: ['EARTHQUAKE', 'BRIEFING'] },
+    guildId: { type: String, required: true },
+    channelId: { type: String },
+    scheduleValue: { type: String, required: true },
+    extraData: { type: mongoose.Schema.Types.Mixed },
+    isActive: { type: Boolean, default: true }
+});
+schedulerSchema.index({ guildId: 1, type: 1 }, { unique: true });
+
+const SchedulerConfig = mongoose.model('SchedulerConfig', schedulerSchema);
+
 const connectDB = async () => {
     const mongoURI = MONGODB_URI;
     if (!mongoURI) {
@@ -104,5 +116,6 @@ module.exports = {
     reconnectDB,
     Urls,
     BotStatus,
-    WhiteList
+    WhiteList,
+    SchedulerConfig
 };

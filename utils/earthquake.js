@@ -1,6 +1,6 @@
 const { createEarthquakeEmbed } = require('./embed_builder.js');
 const { JSDOM } = require('jsdom');
-const { Interaction } = require('./database.js');
+const { Interaction, SchedulerConfig } = require('./database.js');
 const config = require('../config/manage_environments.js');
 
 const EQK_AUTH_KEY = config.etc.earthquakeKey;
@@ -100,20 +100,23 @@ async function scheduleCheck(client) {
     try {
         if (client.amIActive === false) { 
             console.log('[EQK] [Main Bot] 스탠바이 모드이므로 지진 확인을 건너뜁니다.');
-            currentDelay = INITIAL_DELAY;
+            setTimeout(() => scheduleCheck(client), currentDelay); 
             return;
+        }
+
+        const configData = await SchedulerConfig.findOne({ type: 'EARTHQUAKE' });
+        if (configData && configData.scheduleValue) {
+            const dbInterval = parseInt(configData.scheduleValue) * 1000;
+            currentDelay = Math.max(30000, dbInterval);
         }
 
         await checkEarthquakeAndNotify(client);
         earthquakeMonitorStatus = '정상';
-        if (currentDelay !== INITIAL_DELAY) {
-            console.log(`[EQK] 지진 정보 확인 성공. 확인 주기를 ${INITIAL_DELAY / 1000}초로 초기화합니다.`);
-            currentDelay = INITIAL_DELAY;
-        }
+
     } catch (error) {
         earthquakeMonitorStatus = error.message.includes('상태 코드:') ? `오류 ${error.message.split(' ').pop()}` : '오프라인';
-        currentDelay = Math.min(currentDelay * BACKOFF_FACTOR, MAX_DELAY);
-        console.warn(`[EQK] 지진 정보 확인 실패. 다음 확인까지 ${currentDelay / 1000}초 대기합니다.`);
+        console.warn(`[EQK] 지진 정보 확인 실패. (${error.message})`);
+        currentDelay = Math.min(currentDelay * 2, MAX_DELAY);
     } finally {
         if (timeoutId) clearTimeout(timeoutId);
         timeoutId = setTimeout(() => scheduleCheck(client), currentDelay);

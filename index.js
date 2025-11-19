@@ -7,6 +7,7 @@ const { connectDB } = require('./utils/database');
 const { logToDiscord } = require('./utils/catch_log');
 const { registerGlobalCommands } = require('./deploy-commands.js');
 const { startApiServer } = require('./config/api/server');
+const { reloadBriefingSchedule } = require('./utils/briefing_scheduler.js');
 
 // --- 1. 클라이언트 초기화 ---
 const client = new Client({
@@ -86,6 +87,8 @@ const startBot = async () => {
 
         await client.login(config.discord.token);
         console.log(`✅ ${client.user.tag} 로그인 완료!`);
+
+        reloadBriefingSchedule(client);
 
         await registerGlobalCommands(config.server.commitSha);
 
