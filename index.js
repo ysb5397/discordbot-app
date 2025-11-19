@@ -28,14 +28,21 @@ const client = new Client({
 
 client.voiceManagers = new Map();
 
-process.on('uncaughtException', (error, origin) => {
+process.on('uncaughtException', async (error, origin) => {
     console.error('!!! 치명적인 예외 발생 (Uncaught Exception) !!!', error);
-    if (client.isReady()) {
-        logToDiscord(client, 'ERROR', '처리되지 않은 치명적인 예외가 발생했습니다!', null, error, origin);
-    } else {
-        console.error('봇이 준비되지 않아 디스코드 로그를 남길 수 없습니다.');
+    
+    try {
+        if (client.isReady()) {
+            await logToDiscord(client, 'ERROR', '처리되지 않은 치명적인 예외가 발생했습니다!', null, error, origin);
+        } else {
+            console.error('봇이 준비되지 않아 디스코드 로그를 남길 수 없습니다.');
+        }
+    } catch (loggingError) {
+        console.error('에러 로깅 중 추가 오류 발생:', loggingError);
+    } finally {
+        console.log('프로세스를 종료합니다. (Docker/PM2가 자동으로 재시작해야 합니다)');
+        process.exit(1); 
     }
-    // process.exit(1);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
