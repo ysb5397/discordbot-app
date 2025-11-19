@@ -12,8 +12,8 @@ function required(key, defaultValue = undefined) {
 const config = {
     // 1. 디스코드 기본 설정
     discord: {
-        token: required('DISCORD_DEV_BOT_TOKEN'), // 또는 DISCORD_BOT_TOKEN(main용)
-        clientId: required('DISCORD_DEV_CLIENT_ID'), // 또는 DISCORD_CLIENT_ID(main용)
+        token: required('DISCORD_BOT_TOKEN'), // 또는 DISCORD_BOT_TOKEN(main용)
+        clientId: required('DISCORD_CLIENT_ID'), // 또는 DISCORD_CLIENT_ID(main용)
         guildId: required('DISCORD_GUILD_ID'),
         logChannelId: required('DISCORD_LOG_CHANNEL_ID'),
         ownerId: required('MY_DISCORD_USER_ID'),
