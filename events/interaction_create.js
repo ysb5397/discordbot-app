@@ -15,13 +15,19 @@ module.exports = {
             return;
         }
 
-        const foundUser = await WhiteList.findOne({ memberId: interaction.user.id });
+        let foundUser = null;
+        try {
+            foundUser = await WhiteList.findOne({ memberId: interaction.user.id });
+        } catch (dbErr) {
+            console.error('화이트리스트 조회 실패:', dbErr);
+            return interaction.reply({ content: '데이터베이스 오류로 권한을 확인할 수 없습니다.', ephemeral: true }).catch(() => {});
+        }
 
         if (interaction.guildId !== ALLOWED_GUILD_ID && (interaction.user.id !== OWNER_ID || !foundUser.isWhite)) {
             return interaction.reply({ 
                 content: '이 봇은 승인된 서버 내부 또는 화이트 리스트 유저만 사용할 수 있습니다. 🔒', 
                 ephemeral: true
-            });
+            }).catch(() => {});
         }
 
         if (!interaction.isChatInputCommand()) return;
@@ -37,12 +43,22 @@ module.exports = {
             await command.execute(interaction);
         } catch (error) {
             console.error(`Error executing ${interaction.commandName}`);
+            
             await logToDiscord(client, 'ERROR', `/${interaction.commandName} 명령어 실행 중 오류 발생`, interaction, error);
 
-            if (interaction.replied || interaction.deferred) {
-                await interaction.followUp({ content: '명령어 실행 중 오류가 발생했습니다!', ephemeral: true });
-            } else {
-                await interaction.reply({ content: '명령어 실행 중 오류가 발생했습니다!', ephemeral: true });
+            try {
+                if (error.code === 10062 || error.code === 40060) {
+                    console.warn('상호작용이 이미 만료되었거나 알 수 없어 유저에게 응답하지 않습니다.');
+                    return;
+                }
+
+                if (interaction.replied || interaction.deferred) {
+                    await interaction.followUp({ content: '명령어 실행 중 오류가 발생했습니다! 😢', ephemeral: true });
+                } else {
+                    await interaction.reply({ content: '명령어 실행 중 오류가 발생했습니다! 😢', ephemeral: true });
+                }
+            } catch (replyError) {
+                console.warn(`[Safety Catch] 유저에게 에러 알림 전송 실패 (무시됨): ${replyError.message}`);
             }
         }
     },
