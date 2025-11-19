@@ -1,13 +1,12 @@
 const { joinVoiceChannel, getVoiceConnection, EndBehaviorType, createAudioPlayer, createAudioResource, AudioPlayerStatus, StreamType } = require('@discordjs/voice');
 const prism = require('prism-media');
-const { Readable } = require('stream'); // PassThrough는 ai_helper로 이동
+const { Readable } = require('stream');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegStatic = require('ffmpeg-static');
 const { Interaction } = require('./database');
 const { getTranscript, getLiveAiAudioResponse, generateMongoFilter } = require('./ai_helper');
-const { spawn } = require('child_process'); // spawn 추가
+const { spawn } = require('child_process');
 
-// (AUDIO_CONFIG는 이전과 동일)
 const AUDIO_CONFIG = {
     DISCORD_SAMPLE_RATE: 48000,
     AI_SAMPLE_RATE: 16000,
@@ -116,11 +115,11 @@ class GeminiVoiceManager {
                 }
 
                 try {
-                    // ★ 2. AI 세션이 준비될 때까지 여기서 기다림 ★
+                    // AI 세션이 준비될 때까지 여기서 기다림
                     console.log('[디버그] (end event) AI 세션이 준비되기를 기다립니다...');
                     await this.activeSession.sessionReadyPromise;
                     
-                    // ★ 3. 세션이 준비되면 전송 ★
+                    // 세션이 준비되면 전송
                     if (this.activeSession && this.activeSession.liveSession) {
                         console.log(`[디버그] ➡️ AI에게 'turnComplete: true' 신호를 전송합니다!`);
                         this.activeSession.liveSession.sendClientContent({ turnComplete: true });
@@ -146,19 +145,13 @@ class GeminiVoiceManager {
 
             console.log(`[디버그] 3. 버퍼링 완료. FFmpeg 변환기(-> Opus)에 "가득 찬 버퍼"를 연결합니다.`);
 
-            // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
-            //  여기가 "Opus"로 출력하도록 수정된 부분!
-            // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
             ffmpegProcess = spawn(ffmpegStatic, [
                 '-hide_banner', '-loglevel', 'verbose',
-                // 입력 옵션
                 '-f', 's16le', '-ac', '1', '-ar', '24000', 
                 '-i', 'pipe:0',
-                
-                // 출력 옵션 (Opus로 바로 인코딩)
                 '-af', 'aresample=48000',      // 1. 48kHz로 리샘플링
                 '-ac', '2',                     // 2. 2채널(스테레오)로
-                '-f', 's16le',                   // 5. 포맷을 Opus로 지정 ★
+                '-f', 's16le',                   // 3. 포맷을 Opus로 지정
                 'pipe:1'
             ], { 
                 stdio: ['pipe', 'pipe', 'pipe'] 
@@ -166,48 +159,49 @@ class GeminiVoiceManager {
             
             this.activeSession.ffmpegProcess = ffmpegProcess;
 
-            // (FFmpeg 에러 로깅은 그대로)
+            // 프로세스 종료 확실히 감지
+            ffmpegProcess.on('exit', (code, signal) => {
+                console.log(`[디버그] FFmpeg 프로세스가 종료되었습니다 (Code: ${code}, Signal: ${signal})`);
+            });
+
+            // FFmpeg 에러 로깅
             ffmpegProcess.stdin.on('error', (err) => {
-        console.error('[디버그 LOG] ❌ FFmpeg stdin 오류:', err.message);
-      });
-      ffmpegProcess.stdin.on('close', () => {
-        console.log('[디버그 LOG] 🏁 FFmpeg stdin 닫힘');
-      });
+                console.error('[디버그 LOG] ❌ FFmpeg stdin 오류:', err.message);
+            });
+            ffmpegProcess.stdin.on('close', () => {
+                console.log('[디버그 LOG] 🏁 FFmpeg stdin 닫힘');
+            });
 
-      // 2. FFmpeg 출력 파이프(stdout) 감시
-      ffmpegProcess.stdout.on('data', () => {
-        // 데이터가 잘 나오고 있는지 확인 (너무 많이 찍히면 이 줄은 지워도 됨)
-        // console.log('[디버그 LOG] ➡️ FFmpeg stdout 데이터 수신'); 
-      });
-      ffmpegProcess.stdout.on('error', (err) => {
-        console.error('[디버그 LOG] ❌ FFmpeg stdout 오류:', err.message);
-      });
-      ffmpegProcess.stdout.on('close', () => {
-        console.log('[디버그 LOG] 🏁 FFmpeg stdout 닫힘');
-      });
+            ffmpegProcess.stdout.on('data', () => {
+            });
+            ffmpegProcess.stdout.on('error', (err) => {
+                console.error('[디버그 LOG] ❌ FFmpeg stdout 오류:', err.message);
+            });
+            ffmpegProcess.stdout.on('close', () => {
+                console.log('[디버그 LOG] 🏁 FFmpeg stdout 닫힘');
+            });
 
-      // 3. AI 오디오 원본 스트림(smoothingBufferStream) 감시
-      smoothingBufferStream.on('error', (err) => {
-        console.error('[디버그 LOG] ❌ smoothingBufferStream 오류:', err.message);
-      });
-      smoothingBufferStream.on('close', () => {
-        // 'end' 이벤트 이후에 'close'가 호출됨
-        console.log('[디버그 LOG] 🏁 smoothingBufferStream 닫힘 (AI 데이터 전송 완료)');
-      });
+            // AI 오디오 원본 스트림(smoothingBufferStream) 감시
+            smoothingBufferStream.on('error', (err) => {
+                console.error('[디버그 LOG] ❌ smoothingBufferStream 오류:', err.message);
+            });
+            smoothingBufferStream.on('close', () => {
+                // 'end' 이벤트 이후에 'close'가 호출됨
+                console.log('[디버그 LOG] 🏁 smoothingBufferStream 닫힘 (AI 데이터 전송 완료)');
+            });
 
             smoothingBufferStream.pipe(ffmpegProcess.stdin);
             
-            // ★★★ AudioResource 타입을 .Raw가 아닌 .Opus로 변경! ★★★
             const resource = createAudioResource(ffmpegProcess.stdout, { 
-                inputType: StreamType.Raw // 👈 여기가 바뀜!
+                inputType: StreamType.Raw
             });
 
             resource.playStream.on('error', (err) => {
-        console.error(`[디버그 LOG] ❌ AudioResource 오류: ${err.message}`);
-      });
-      resource.playStream.on('finish', () => {
-        console.log('[디버그 LOG] 🏁 AudioResource 재생 스트림 완료 (finish)');
-      });
+                console.error(`[디버그 LOG] ❌ AudioResource 오류: ${err.message}`);
+            });
+            resource.playStream.on('finish', () => {
+                console.log('[디버그 LOG] 🏁 AudioResource 재생 스트림 완료 (finish)');
+            });
             
             console.log('[디버그] -> 재생: Opus 리소스를 생성하여 플레이어에서 재생을 *시작*합니다.');
             this.player.play(resource);
@@ -253,7 +247,7 @@ class GeminiVoiceManager {
             .inputOptions([`-ar ${AUDIO_CONFIG.DISCORD_SAMPLE_RATE}`, `-ac ${AUDIO_CONFIG.CHANNELS}`])
             .addOption('-fflags', '+nobuffer')
             .outputFormat(AUDIO_CONFIG.FORMAT)
-            .outputOptions([`-ar ${AUDIO_CONFIG.AI_SAMPLE_RATE}`]) // AI가 요구하는 16kHz
+            .outputOptions([`-ar ${AUDIO_CONFIG.AI_SAMPLE_RATE}`])
             .on('start', cmd => console.log(`[디버그] -> 녹음: (fluent-ffmpeg) 리샘플링 프로세스 시작.`))
             .on('error', err => {
                 console.error('[디버그] ❌ -> 녹음: (fluent-ffmpeg) 오류 발생:', err);
@@ -267,27 +261,14 @@ class GeminiVoiceManager {
 
         return { 
             opusStream, 
-            pcmStream, // pcmStream도 리소스 정리해야 하니 반환
-            outputStream: ffmpegProcess.stream() // 16kHz PCM 스트림
+            pcmStream,
+            outputStream: ffmpegProcess.stream()
         };
     }
 
     async #getAiResponse(userId, userAudioStream, activeSession, aiAudioStream) {
-        // ▼▼▼ 기억 검색 로직을 일단 제거 (STT가 없으므로) ▼▼▼
-        // console.log(`[디버그] -> AI 응답: 기억 검색을 시작합니다 (임시 쿼리: "${transcript}").`);
-        // const searchResults = await this.#searchMemories(transcript, userId);
-        
         let systemPrompt = `You are a friendly and helpful AI assistant. Respond in Korean.`;
-        // if (searchResults.length > 0) {
-        //     const memories = searchResults.map(r => ` - ${r.content}`).join('\n');
-        //     systemPrompt += `\nHere are some related past memories to provide context:\n${memories}`;
-        //     console.log(`[디버그] -> AI 응답: ${searchResults.length}개의 기억을 찾아 프롬프트에 추가했습니다.`);
-        // }
-        // ▲▲▲ 기억 검색 로직 제거 ▲▲▲
-        
         console.log(`[디버그] -> AI 응답: 최종 프롬프트와 오디오 스트림으로 Gemini Live API를 호출합니다.`);
-        
-        // aiAudioStream 인자를 넘기지 않고, 반환값을 그대로 리턴
         return getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSession);
     }
     
@@ -326,39 +307,36 @@ class GeminiVoiceManager {
     #endSession(force = false) {
         if (!this.activeSession) return;
         console.log(`[디버그] 🌀 [${this.activeSession.userId}]님과의 활성 음성 세션을 종료합니다.`);
-        const session = this.activeSession; // 복사
-        this.activeSession = null; // 즉시 세션 비활성화 (중복 호출 방지)
+        const session = this.activeSession;
+        this.activeSession = null;
 
-        // 1. 녹음 스트림 정리 (기존 코드)
         if (session.streams) {
             if (session.streams.opusStream) {
                 console.log('[디버그] -> 세션 종료: Opus 스트림(녹음)을 파괴합니다.');
                 session.streams.opusStream.destroy();
             }
-            if (session.streams.pcmStream) { // 👈 ★★★ 이거 추가 ★★★
+            if (session.streams.pcmStream) {
                  console.log('[디버그] -> 세션 종료: PCM 스트림(녹음)을 파괴합니다.');
                 session.streams.pcmStream.destroy();
             }
         }
 
-        // 2. Gemini Live API 연결 종료 (기존 코드)
         if (session.liveSession) {
             console.log('[디버그] -> 세션 종료: Gemini Live API 연결을 닫습니다.');
             session.liveSession.close();
         }
 
-        if (force) {
-            if (session.smoothingBufferStream && !session.smoothingBufferStream.destroyed) {
-                console.log('[디버그] -> 세션 종료 (강제): 완충 버퍼(PassThrough) 스트림을 파괴합니다.');
-                session.smoothingBufferStream.destroy();
-            }
+        if (session.smoothingBufferStream && !session.smoothingBufferStream.destroyed) {
+            session.smoothingBufferStream.destroy();
+        }
 
-            if (session.ffmpegProcess && !session.ffmpegProcess.killed) {
-                console.log('[디버그] -> 세션 종료 (강제): FFmpeg 프로세스(PID: ' + session.ffmpegProcess.pid + ')를 강제 종료합니다.');
-                session.ffmpegProcess.kill('SIGTERM');
+        if (force && session.ffmpegProcess) {
+            if (!session.ffmpegProcess.killed) {
+                console.log(`[디버그] -> 세션 종료 (강제): FFmpeg 프로세스(PID: ${session.ffmpegProcess.pid})를 확인 사살(SIGKILL)합니다.`);
+                session.ffmpegProcess.kill('SIGKILL');
             }
-        } else {
-             console.log('[디버그] -> 세션 종료 (정상): FFmpeg와 버퍼 스트림은 스스로 종료하도록 둡니다.');
+        } else if (!force) {
+             console.log('[디버그] -> 세션 종료 (정상): FFmpeg는 스트림이 끝나면 스스로 종료되길 기다립니다.');
         }
     }
 }
