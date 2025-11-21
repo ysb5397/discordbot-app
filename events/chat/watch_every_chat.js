@@ -206,8 +206,6 @@ module.exports = {
             }
         }
 
-        if (message.channelId == excludeChannelId) return;
-
         const shouldBotReply = message.mentions.has(client.user);
 
         if (shouldBotReply) {
@@ -222,15 +220,19 @@ module.exports = {
             try {
                 const botReplyText = await generateSmartReply(message);
 
-                await Interaction.create({
-                    interactionId: message.id,
-                    channelId: message.channel.id,
-                    userId: message.author.id,
-                    userName: message.author.username,
-                    type: 'MENTION',
-                    content: message.content,
-                    botResponse: botReplyText
-                });
+                // 채널이 제외된 곳이면 저장하지 않음
+                if (message.channelId !== excludeChannelId) {
+
+                    await Interaction.create({
+                        interactionId: message.id,
+                        channelId: message.channel.id,
+                        userId: message.author.id,
+                        userName: message.author.username,
+                        type: 'MENTION',
+                        content: message.content,
+                        botResponse: botReplyText
+                    });
+                }
 
                 await thinkingMessage.edit(botReplyText);
 
