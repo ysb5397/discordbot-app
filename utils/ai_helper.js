@@ -20,12 +20,12 @@ const SYSTEM_INSTRUCTION = config.ai.persona;
 const genAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
 const ai_live = new GoogleGenAI({ apiKey: GOOGLE_API_KEY });
 
-const flashModel = genAI.getGenerativeModel({ 
+const flashModel = genAI.getGenerativeModel({
     model: "gemini-2.5-flash",
-    systemInstruction: SYSTEM_INSTRUCTION 
+    systemInstruction: SYSTEM_INSTRUCTION
 });
 
-const proModel = genAI.getGenerativeModel({ 
+const proModel = genAI.getGenerativeModel({
     model: "gemini-2.5-pro",
     systemInstruction: SYSTEM_INSTRUCTION
 });
@@ -44,8 +44,8 @@ async function buildGeminiPrompt(promptData, attachment) {
             parts.push({ inlineData: { data: imageBuffer.toString("base64"), mimeType } });
             parts.push({ text: promptData.question + `\n(첨부 파일: ${attachment.name})` });
         } catch (attachError) {
-             console.error('[AI Helper] 첨부파일 처리 중 오류:', attachError);
-             throw attachError; 
+            console.error('[AI Helper] 첨부파일 처리 중 오류:', attachError);
+            throw attachError;
         }
     } else {
         parts.push({ text: promptData.question });
@@ -60,15 +60,15 @@ async function* getChatResponseStreamOrFallback(promptData, attachment, sessionI
 
     try {
         if (attachment || selectedModel === proModel) {
-            model = proModel; 
+            model = proModel;
             currentPromptParts = await buildGeminiPrompt(promptData, attachment);
         } else {
             model = flashModel;
             currentPromptParts = [{ text: promptData.question }];
         }
     } catch (setupError) {
-         yield { error: setupError };
-         return;
+        yield { error: setupError };
+        return;
     }
 
     try {
@@ -81,8 +81,8 @@ async function* getChatResponseStreamOrFallback(promptData, attachment, sessionI
         for await (const chunk of result.stream) {
             const chunkText = chunk.text();
             if (chunkText) {
-                 fullResponseText += chunkText;
-                 yield { textChunk: chunkText };
+                fullResponseText += chunkText;
+                yield { textChunk: chunkText };
             }
         }
         console.log(`[/chat ${task}] Gemini 스트리밍 정상 종료.`);
@@ -93,31 +93,31 @@ async function* getChatResponseStreamOrFallback(promptData, attachment, sessionI
         logToDiscord(client, 'ERROR', `Gemini 스트리밍 실패 (${task}), Flowise 폴백 시도`, interaction, geminiError, 'getChatResponseStreamOrFallback_GeminiFail');
 
         try {
-             const flowiseRequestBody = {
-                 question: promptData.question,
-                 overrideConfig: {
-                     sessionId: `flowise-fallback-${task}-${sessionId}`,
-                     vars: {
-                         bot_name: client?.user?.username || 'AI 비서',
-                         user_name: interaction?.user?.username || '사용자'
-                     }
-                 },
-                 history: history.map(turn => ({
-                      role: turn.role === 'model' ? 'ai' : 'user',
-                      content: turn.parts[0].text
-                 }))
-             };
+            const flowiseRequestBody = {
+                question: promptData.question,
+                overrideConfig: {
+                    sessionId: `flowise-fallback-${task}-${sessionId}`,
+                    vars: {
+                        bot_name: client?.user?.username || 'AI 비서',
+                        user_name: interaction?.user?.username || '사용자'
+                    }
+                },
+                history: history.map(turn => ({
+                    role: turn.role === 'model' ? 'ai' : 'user',
+                    content: turn.parts[0].text
+                }))
+            };
 
-             const flowiseResponseText = await callFlowise(flowiseRequestBody, sessionId, task + '-fallback', client, interaction);
-             const flowiseResponse = JSON.parse(flowiseResponseText);
+            const flowiseResponseText = await callFlowise(flowiseRequestBody, sessionId, task + '-fallback', client, interaction);
+            const flowiseResponse = JSON.parse(flowiseResponseText);
 
-             console.log(`[/chat ${task}] Flowise 폴백 성공.`);
-             yield { finalResponse: flowiseResponse, isFallback: true };
+            console.log(`[/chat ${task}] Flowise 폴백 성공.`);
+            yield { finalResponse: flowiseResponse, isFallback: true };
 
         } catch (fallbackError) {
-             console.error(`[/chat ${task}] Flowise 폴백 실패:`, fallbackError);
-             logToDiscord(client, 'ERROR', `Gemini 및 Flowise 폴백 모두 실패 (${task})`, interaction, fallbackError, 'getChatResponseStreamOrFallback_FallbackFail');
-             yield { error: new Error(`AI 응답 생성 및 폴백 처리에 모두 실패했습니다. (${fallbackError.message})`) };
+            console.error(`[/chat ${task}] Flowise 폴백 실패:`, fallbackError);
+            logToDiscord(client, 'ERROR', `Gemini 및 Flowise 폴백 모두 실패 (${task})`, interaction, fallbackError, 'getChatResponseStreamOrFallback_FallbackFail');
+            yield { error: new Error(`AI 응답 생성 및 폴백 처리에 모두 실패했습니다. (${fallbackError.message})`) };
         }
     }
 }
@@ -140,7 +140,7 @@ async function callFlowise(prompt, sessionId, task, client = null, interaction =
         ...body.overrideConfig,
         sessionId: `flowise-${task}-${sessionId}`,
         vars: {
-            persona: config.ai.persona, 
+            persona: config.ai.persona,
             bot_name: '챗별이' || 'AI',
         }
     };
@@ -203,7 +203,7 @@ async function callFlowise(prompt, sessionId, task, client = null, interaction =
 async function generateMongoFilter(query, userId, client = null, interaction = null) {
     try {
         if (!PYTHON_AI_SERVICE_URL) throw new Error("PYTHON_AI_SERVICE_URL 설정 안됨");
-        
+
         const response = await fetch(`${PYTHON_AI_SERVICE_URL}/generate-filter`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -213,12 +213,12 @@ async function generateMongoFilter(query, userId, client = null, interaction = n
                 current_time: new Date().toISOString()
             })
         });
-        
+
         if (!response.ok) throw new Error(`Python API Error: ${response.status}`);
-        
+
         const filter = await response.json();
         if (filter.status === 'error') throw new Error(filter.message);
-        
+
         filter.userId = userId;
         return filter;
     } catch (error) {
@@ -251,24 +251,27 @@ async function generateAttachmentDescription(attachment) {
     }
 }
 
-async function generateImage(prompt, count = 1) {
+async function generateImage(params) {
     if (!PYTHON_AI_SERVICE_URL) throw new Error("PYTHON_AI_SERVICE_URL 설정 안됨");
 
     try {
         const response = await fetch(`${PYTHON_AI_SERVICE_URL}/generate-image`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt, count }),
+            body: JSON.stringify(params),
         });
 
-        if (!response.ok) throw new Error(`Python API Error: ${response.status}`);
+        if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(`Python API Error: ${response.status} - ${errText}`);
+        }
 
         const pythonResponse = await response.json();
         if (pythonResponse.status === 'error') throw new Error(pythonResponse.message);
 
         const base64Strings = pythonResponse.images;
         if (!base64Strings || base64Strings.length === 0) throw new Error("유효한 이미지를 받지 못함");
-        
+
         return base64Strings.map(b64 => Buffer.from(b64, 'base64'));
 
     } catch (error) {
@@ -283,19 +286,19 @@ async function startVideoGeneration(prompt) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt })
     });
-    
+
     const data = await response.json();
     if (data.status === 'error') throw new Error(data.message);
     if (!data.name) throw new Error('Veo 작업 이름을 받지 못했습니다.');
-    
+
     return data.name;
 }
 
 async function checkVideoGenerationStatus(operationName) {
-    const safeOpName = encodeURIComponent(operationName); 
-    
-    const response = await fetch(`${PYTHON_AI_SERVICE_URL}/check-operation/${safeOpName}`, { 
-       method: 'GET' 
+    const safeOpName = encodeURIComponent(operationName);
+
+    const response = await fetch(`${PYTHON_AI_SERVICE_URL}/check-operation/${safeOpName}`, {
+        method: 'GET'
     });
     return await response.json();
 }
@@ -311,18 +314,18 @@ async function downloadVideoFromUri(videoUri) {
         const arrayBuffer = await response.arrayBuffer();
         return Buffer.from(arrayBuffer);
     } catch (error) {
-         console.error(`영상 다운로드 오류:`, error);
-         throw error;
+        console.error(`영상 다운로드 오류:`, error);
+        throw error;
     }
 }
 
 async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSession) {
-    
+
     const liveApiModel = "gemini-2.5-flash";
     const responseQueue = [];
     const smoothingBufferStream = new PassThrough({
         highWaterMark: 48000
-    }); 
+    });
     let connectionClosed = false;
     let closeReason = null;
 
@@ -363,20 +366,20 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSessi
                 config: { responseModalities: [Modality.AUDIO] },
                 callbacks: {
                     onmessage: (m) => responseQueue.push(m),
-                    onerror: (e) => { 
+                    onerror: (e) => {
                         console.error('Live API Error:', e);
-                        closeReason = e.message; 
-                        connectionClosed = true; 
+                        closeReason = e.message;
+                        connectionClosed = true;
                     },
-                    onclose: (e) => { 
-                        console.log('Live API Close:', e.reason); 
-                        closeReason = e.reason; 
-                        connectionClosed = true; 
+                    onclose: (e) => {
+                        console.log('Live API Close:', e.reason);
+                        closeReason = e.reason;
+                        connectionClosed = true;
                     }
                 }
             });
             console.log('[디버그] Live API 연결 성공.');
-            
+
             if (activeSession) activeSession.liveSession = session;
             resolveSessionReady(session);
 
@@ -405,16 +408,16 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSessi
             userAudioStream.on('end', () => console.log('[디버그] 유저 오디오 스트림 종료.'));
 
         } catch (connectError) {
-             console.error('[디버그] Live API 연결 실패:', connectError);
-             if (!smoothingBufferStream.destroyed) smoothingBufferStream.push(null);
-             if (resolveSessionReady) resolveSessionReady(null);
-             connectionClosed = true;
+            console.error('[디버그] Live API 연결 실패:', connectError);
+            if (!smoothingBufferStream.destroyed) smoothingBufferStream.push(null);
+            if (resolveSessionReady) resolveSessionReady(null);
+            connectionClosed = true;
         }
     })();
 
     console.log('[디버그] AI 응답 처리 대기 중...');
     const aiTranscriptPromise = processMessages();
-    
+
     return { aiTranscriptPromise, smoothingBufferStream, sessionReadyPromise };
 }
 
@@ -446,7 +449,7 @@ async function searchWeb(query) {
     const customsearch = require('googleapis').google.customsearch('v1');
 
     if (!googleApiKey || !googleSearchEngineId) throw new Error("구글 검색 키 설정 안됨");
-    
+
     try {
         const res = await customsearch.cse.list({
             auth: googleApiKey, cx: googleSearchEngineId, q: query, num: 5
