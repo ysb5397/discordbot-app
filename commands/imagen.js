@@ -77,7 +77,7 @@ module.exports = {
 
             const replyEmbed = createImageGenEmbed({
                 prompt: prompt.substring(0, 250) + (prompt.length > 250 ? '...' : ''),
-                imageCount: imageCount,
+                imageCount: attachments.length,
                 attachmentUrl: `attachment://${attachments[0].name}`,
                 duration: duration,
                 user: interaction.user
