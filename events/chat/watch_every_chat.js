@@ -1,6 +1,6 @@
 const { Events } = require('discord.js');
 const { Interaction, Urls } = require('../../utils/database');
-const { generateAttachmentDescription, callFlowise } = require('../../utils/ai_helper');
+const { generateAttachmentDescription, generateMentionReply } = require('../../utils/ai_helper');
 const config = require('../../config/manage_environments');
 
 // config에서 설정값 가져오기
@@ -8,46 +8,35 @@ const excludeChannelId = config.channels.ignoreAiChat;
 const urlCheckApiKey = config.ai.urlScanKey;
 
 /**
- * AI를 사용하여 문맥에 맞는 답변을 생성하는 함수
+ * AI를 사용하여 문맥에 맞는 답변을 생성하는 함수 (Gemini 사용)
  */
 async function generateSmartReply(message) {
     const sessionId = message.author.id;
-    const botName = message.client.user.username;
-    
-    const recentInteractions = await Interaction.find({ 
-        userId: sessionId, 
-        type: { $in: ['MESSAGE', 'MENTION'] } 
+
+    const recentInteractions = await Interaction.find({
+        userId: sessionId,
+        type: { $in: ['MESSAGE', 'MENTION'] }
     }).sort({ timestamp: -1 }).limit(10);
-    
+
     const history = recentInteractions.reverse().flatMap(doc => {
         const userMessage = typeof doc.content === 'string' ? doc.content : JSON.stringify(doc.content);
-        const userTurn = { role: 'user', content: userMessage };
+
+        const turns = [{ role: 'user', parts: [{ text: userMessage }] }];
+
         if (doc.type === 'MENTION' && doc.botResponse) {
-            return [userTurn, { role: 'assistant', content: doc.botResponse }];
+            turns.push({ role: 'model', parts: [{ text: doc.botResponse }] });
         }
-        return userTurn;
+        return turns;
     });
 
-    const requestBody = {
-        question: message.content,
-        overrideConfig: { 
-            sessionId: `flowise-mention-${sessionId}`,
-            vars: { bot_name: botName } 
-        },
-    };
+    console.log(`[Gemini Mention] '${sessionId}'님의 질문으로 Gemini Flash 호출 시도...`);
 
-    if (history.length > 0) {
-        requestBody.history = history;
-    }
-    
-    console.log(`[Flowise Mention] '${sessionId}'님의 질문으로 에이전트 호출 시도...`);
-    
-    const aiResponseText = await callFlowise(requestBody, sessionId, 'mention-reply', message.client, message);
     try {
-        const responseJson = JSON.parse(aiResponseText);
-        return responseJson.text || "음... 뭐라고 답해야 할지 모르겠어.";
+        const aiResponseText = await generateMentionReply(history, message.content);
+        return aiResponseText;
     } catch (e) {
-        return aiResponseText || "오류가 발생했어.";
+        console.error("멘션 답변 생성 중 오류:", e);
+        return "미안, 지금은 머리가 좀 아파서 대답하기 힘들어... 😵 (오류 발생)";
     }
 }
 
@@ -72,10 +61,10 @@ async function submitNewUrlScan(url) {
 
         const submitData = await submitResponse.json();
         const resultApiUrl = submitData.api;
-        
+
         console.log(`https://www.merriam-webster.com/dictionary/scan 새 스캔 제출 완료 (${url}) -> 결과 대기 중...`);
 
-        await delay(10000); 
+        await delay(10000);
         for (let i = 0; i < 10; i++) {
             const resultResponse = await fetch(resultApiUrl);
             if (resultResponse.status === 200) {
@@ -117,7 +106,7 @@ async function checkSingleUrl(url) {
         return await submitNewUrlScan(url);
     } catch (err) {
         console.error(`https://www.linguee.com.ar/ingles-espanol/traduccion/check+failed.html ${url}:`, err);
-        return { url, isMalicious: false }; 
+        return { url, isMalicious: false };
     }
 }
 
@@ -126,7 +115,7 @@ async function checkSingleUrl(url) {
  */
 async function processUrlsInBackground(message, urlsToScan) {
     console.log(`https://www.merriam-webster.com/dictionary/scan 백그라운드 검사 시작: ${urlsToScan.length}개 URL`);
-    
+
     const promises = urlsToScan.map(url => checkSingleUrl(url));
     const results = await Promise.allSettled(promises);
 
@@ -136,7 +125,7 @@ async function processUrlsInBackground(message, urlsToScan) {
     for (const result of results) {
         if (result.status === 'fulfilled') {
             const data = result.value;
-            
+
             newDbEntries.push({
                 url: data.url,
                 isSafe: !data.isMalicious,
@@ -151,7 +140,7 @@ async function processUrlsInBackground(message, urlsToScan) {
 
     if (newDbEntries.length > 0) {
         try {
-            await Urls.insertMany(newDbEntries, { ordered: false }).catch(() => {});
+            await Urls.insertMany(newDbEntries, { ordered: false }).catch(() => { });
         } catch (dbError) {
             if (!dbError.message.includes('E11000')) {
                 console.error(`[DB] URL 저장 실패:`, dbError);
@@ -170,7 +159,7 @@ async function processUrlsInBackground(message, urlsToScan) {
             console.error('https://www.merriam-webster.com/dictionary/scan 메시지 삭제 실패:', err);
         }
     } else {
-        try { await message.react('✅'); } catch(reactError) {
+        try { await message.react('✅'); } catch (reactError) {
             console.error(`[DISCORD] 메시지 반응 실패: `, reactError);
         }
     }
@@ -194,7 +183,7 @@ module.exports = {
             const unknownUrls = [];
 
             const cachedResults = await Urls.find({ url: { $in: uniqueUrls } });
-            
+
             for (const url of uniqueUrls) {
                 const cached = cachedResults.find(doc => doc.url === url);
                 if (cached) {
@@ -211,7 +200,7 @@ module.exports = {
             }
 
             if (unknownUrls.length > 0) {
-                processUrlsInBackground(message, unknownUrls).catch(err => 
+                processUrlsInBackground(message, unknownUrls).catch(err =>
                     console.error('https://www.freepik.com/free-photos-vectors/error-background', err)
                 );
             }
@@ -232,7 +221,7 @@ module.exports = {
 
             try {
                 const botReplyText = await generateSmartReply(message);
-                
+
                 await Interaction.create({
                     interactionId: message.id,
                     channelId: message.channel.id,
@@ -248,7 +237,7 @@ module.exports = {
             } catch (error) {
                 console.error('멘션 응답 실패:', error);
                 if (thinkingMessage) await thinkingMessage.edit("미안, 지금은 대답하기가 좀 곤란해... 😵");
-                
+
                 await Interaction.create({
                     interactionId: message.id,
                     channelId: message.channel.id,
@@ -264,16 +253,16 @@ module.exports = {
             let contentToSave = message.content;
 
             if (message.attachments.size > 0 && message.content.trim() === '') {
-                 if (message.attachments.size >= 5) {
+                if (message.attachments.size >= 5) {
                     await message.react('❌');
                     return;
                 }
-                
+
                 await message.react('🤔');
                 const attachmentPromises = message.attachments.map(att => generateAttachmentDescription(att));
                 const results = await Promise.all(attachmentPromises);
                 contentToSave = results.join('\n\n');
-                
+
                 await message.reactions.cache.get('🤔')?.remove();
                 await message.react('✅');
             }
@@ -287,7 +276,7 @@ module.exports = {
                     type: 'MESSAGE',
                     content: contentToSave
                 }).catch(err => console.error('메시지 저장 실패:', err));
-                
+
                 console.log(`[Chat Saved] ${message.author.username}: ${contentToSave.substring(0, 30)}...`);
             }
         }

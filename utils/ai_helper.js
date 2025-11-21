@@ -122,6 +122,30 @@ async function* getChatResponseStreamOrFallback(promptData, attachment, sessionI
     }
 }
 
+// 멘션 답변 전용 함수
+async function generateMentionReply(history, userMessage) {
+    try {
+        const chat = flashModel.startChat({
+            history: history,
+            generationConfig: {
+                maxOutputTokens: 1000,
+                temperature: 0.9
+            }
+        });
+
+        const finalMessage = `${userMessage} (너는 사용자의 친한 친구이자 유능한 AI 비서야. 
+                            설명은 친절하고 귀엽게 반말(해체)로 해줘. 
+                            전문적인 내용이라도 쉽고 재미있게 풀어서 설명해줘. 
+                            상황에 맞춰서 유연하게 1천 글자 이내로 대답해줘)`;
+
+        const result = await chat.sendMessage(finalMessage);
+        return result.response.text();
+    } catch (error) {
+        console.error('[Gemini Mention] 생성 실패:', error);
+        throw error;
+    }
+}
+
 /**
  * Flowise API를 호출하는 함수 (이제 폴백 전용).
  * 항상 { text: string, message: string | null } 형태의 JSON 문자열 반환.
@@ -510,5 +534,6 @@ module.exports = {
     downloadVideoFromUri,
     generateSearchQuery,
     searchWeb,
-    deepResearch
+    deepResearch,
+    generateMentionReply
 };
