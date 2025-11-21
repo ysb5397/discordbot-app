@@ -19,10 +19,10 @@ jobs:
       - name: 📥 Checkout Code
         uses: actions/checkout@v4
 
-      # 2. 이미지 태그 소문자로 변환 (Docker 태그 오류 방지)
+      # 2. 이미지 태그 소문자로 변환 (수정됨)
       - name: 🔤 Lowercase Repo Name
         run: |
-          echo "IMAGE_ID=ghcr.io/${{ github.repository_owner }}/discordbot-app" | tr '[:upper:]' '[:lower:]' >> $GITHUB_ENV
+          echo "IMAGE_ID=$(echo ghcr.io/${{ github.repository_owner }}/discordbot-app | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
       # 3. Buildx 설정 (명시적 드라이버 설정)
       - name: 🔨 Set up Docker Buildx
@@ -63,18 +63,18 @@ jobs:
         run: |
           koyeb service update discordbot-app \
             --docker-image ${{ env.IMAGE_ID }}:latest \
-            --env COMMIT_SHA=${{ github.sha }}
-            --env DISCORD_BOT_TOKEN=${{ secrets.DISCORD_BOT_TOKEN }}
-            --env GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
-            --env MONGODB_URI=${{ secrets.MONGODB_URI }}
-            --env FLOWISE_ENDPOINT=${{ secrets.FLOWISE_ENDPOINT }}
-            --env FLOWISE_API_KEY=${{ secrets.FLOWISE_API_KEY }}
-            --env DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }}
-            --env DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }}
-            --env EQK_AUTH_KEY=${{ secrets.EQK_AUTH_KEY }}
-            --env GOOGLE_SEARCH_API=${{ secrets.GOOGLE_SEARCH_API }}
-            --env GOOGLE_SEARCH_ENGINE_ID=${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}
-            --env DISCORD_LOG_CHANNEL_ID=${{ secrets.DISCORD_LOG_CHANNEL_ID }}
-            --env JWT_SECRET=${{ secrets.JWT_SECRET }}
-            --env MY_DISCORD_USER_ID=${{ secrets.MY_DISCORD_USER_ID }}
+            --env COMMIT_SHA=${{ github.sha }} \
+            --env DISCORD_BOT_TOKEN=${{ secrets.DISCORD_BOT_TOKEN }} \
+            --env GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
+            --env MONGODB_URI=${{ secrets.MONGODB_URI }} \
+            --env FLOWISE_ENDPOINT=${{ secrets.FLOWISE_ENDPOINT }} \
+            --env FLOWISE_API_KEY=${{ secrets.FLOWISE_API_KEY }} \
+            --env DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }} \
+            --env DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }} \
+            --env EQK_AUTH_KEY=${{ secrets.EQK_AUTH_KEY }} \
+            --env GOOGLE_SEARCH_API=${{ secrets.GOOGLE_SEARCH_API }} \
+            --env GOOGLE_SEARCH_ENGINE_ID=${{ secrets.GOOGLE_SEARCH_ENGINE_ID }} \
+            --env DISCORD_LOG_CHANNEL_ID=${{ secrets.DISCORD_LOG_CHANNEL_ID }} \
+            --env JWT_SECRET=${{ secrets.JWT_SECRET }} \
+            --env MY_DISCORD_USER_ID=${{ secrets.MY_DISCORD_USER_ID }} \
             --env URL_CHECK_API_KEY=${{ secrets.URL_CHECK_API_KEY }}
