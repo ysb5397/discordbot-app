@@ -488,7 +488,7 @@ async function deepResearch(query) {
     if (!PYTHON_AI_SERVICE_URL) throw new Error("PYTHON_AI_SERVICE_URL 설정 안됨");
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 180000);
+    const timeoutId = setTimeout(() => controller.abort(), 300000);
 
     try {
         const response = await fetch(`${PYTHON_AI_SERVICE_URL}/deep-research`, {
@@ -508,13 +508,40 @@ async function deepResearch(query) {
         const data = await response.json();
         if (data.status === 'error') throw new Error(data.message);
 
-        return data.report;
+        const rawText = data.report;
+
+        // --- [핵심 로직] 태그 파싱 ---
+        // 1. 파일 내용 추출 (<REPORT_FILE> ... </REPORT_FILE>)
+        const fileMatch = rawText.match(/<REPORT_FILE>([\s\S]*?)<\/REPORT_FILE>/);
+        let fileContent = "";
+        if (fileMatch && fileMatch[1]) {
+            fileContent = fileMatch[1].trim();
+        } else {
+            // 태그가 없으면 전체를 파일로 간주 (혹은 에러 처리)
+            fileContent = rawText;
+        }
+
+        // 2. 임베드 내용 추출 (<DISCORD_EMBED> ... </DISCORD_EMBED>)
+        const embedMatch = rawText.match(/<DISCORD_EMBED>([\s\S]*?)<\/DISCORD_EMBED>/);
+        let embedContent = "";
+        if (embedMatch && embedMatch[1]) {
+            embedContent = embedMatch[1].trim();
+        } else {
+            // 태그가 없으면 앞부분만 잘라서 요약으로 사용 (Fallback)
+            embedContent = "요약본을 분리하지 못했어! 파일을 확인해줘.\n\n" + rawText.substring(0, 200) + "...";
+        }
+
+        // 파싱된 객체 반환
+        return {
+            fileContent: fileContent,
+            embedContent: embedContent
+        };
 
     } catch (error) {
         clearTimeout(timeoutId);
         if (error.name === 'AbortError') {
             console.error('Deep Research 시간 초과 (Node.js Client Timeout)');
-            throw new Error('리서치 시간이 너무 오래 걸려서 중단되었어. (3분 초과)');
+            throw new Error('너무 꼼꼼하게 조사하다 보니 시간이 초과됐어... (5분 경과)');
         }
         console.error('Deep Research 실패:', error);
         throw error;
