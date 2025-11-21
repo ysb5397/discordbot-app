@@ -1,7 +1,4 @@
-# 파일 이름: .github/workflows/deploy.yml
-# (최종 - DB 플래그 방식)
-
-name: Deploy to Google Cloud Run
+name: Deploy to Koyeb
 
 on:
   push:
@@ -11,40 +8,66 @@ on:
 
 jobs:
   deploy:
+    name: Build & Deploy
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # GitHub Container Registry에 업로드하기 위한 권한
 
     steps:
-      # 1. GitHub 저장소의 코드를 가져옴
-      - name: Checkout
+      # 1. 코드 가져오기
+      - name: 📥 Checkout Code
         uses: actions/checkout@v4
 
-      # 2. GCP 서비스 계정 키(JSON)를 사용해 로그인
-      - name: Authenticate to Google Cloud
-        uses: 'google-github-actions/auth@v2'
+      # 2. 이미지 태그 소문자로 변환 (Docker 태그 오류 방지)
+      - name: 🔤 Lowercase Repo Name
+        run: |
+          echo "IMAGE_ID=ghcr.io/${{ github.repository_owner }}/discordbot-app" | tr '[:upper:]' '[:lower:]' >> $GITHUB_ENV
+
+      # 3. GitHub Container Registry 로그인
+      - name: 🔓 Log in to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 3. gcloud 명령어 사용 준비
-      - name: Set up Cloud SDK
-        uses: 'google-github-actions/setup-gcloud@v2'
+      # 4. 도커 이미지 빌드 및 푸시
+      - name: 📦 Build and Push Docker Image
+        uses: docker/build-push-action@v5
         with:
-          project_id: 'gen-lang-client-0683011321' # 네 프로젝트 ID
+          context: .
+          push: true
+          tags: ${{ env.IMAGE_ID }}:latest
+          # 성능 향상을 위한 캐시 설정
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      # 4. 이미지 빌드 및 푸시 (Dockerfile이 빌드 및 설치를 모두 처리)
-      - name: Build and Push Docker image
-        run: |-
-          gcloud builds submit --tag us-central1-docker.pkg.dev/gen-lang-client-0683011321/my-spring-repo/gemini-discord-bot
+      # 5. Koyeb CLI 설치
+      - name: 🔧 Install Koyeb CLI
+        run: |
+          curl -L https://github.com/koyeb/koyeb-cli/releases/download/v4.2.0/koyeb-linux-amd64.tar.gz | tar -xz
+          sudo mv koyeb /usr/local/bin/
 
-      # 5. Cloud Run에 배포
-      - name: Deploy to Cloud Run
-        run: |-
-          gcloud run deploy gemini-discord-bot \
-            --image="us-central1-docker.pkg.dev/gen-lang-client-0683011321/my-spring-repo/gemini-discord-bot" \
-            --project="gen-lang-client-0683011321" \
-            --region="us-central1" \
-            --cpu=1 \
-            --memory=1Gi \
-            --min-instances=1 \
-            --no-cpu-throttling \
-            --set-env-vars="COMMIT_SHA=${{ github.sha }},DISCORD_BOT_TOKEN=${{ secrets.DISCORD_BOT_TOKEN }},GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }},MONGODB_URI=${{ secrets.MONGODB_URI }},FLOWISE_ENDPOINT=${{ secrets.FLOWISE_ENDPOINT }},FLOWISE_API_KEY=${{ secrets.FLOWISE_API_KEY }},DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }},DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }},EQK_AUTH_KEY=${{ secrets.EQK_AUTH_KEY }},GOOGLE_SEARCH_API=${{ secrets.GOOGLE_SEARCH_API }},GOOGLE_SEARCH_ENGINE_ID=${{ secrets.GOOGLE_SEARCH_ENGINE_ID }},DISCORD_LOG_CHANNEL_ID=${{ secrets.DISCORD_LOG_CHANNEL_ID }},JWT_SECRET=${{ secrets.JWT_SECRET }},MY_DISCORD_USER_ID=${{ secrets.MY_DISCORD_USER_ID }}" \
-            --allow-unauthenticated
+      # 6. Koyeb으로 배포 (이미지 업데이트 & COMMIT_SHA 갱신)
+      - name: 🚀 Deploy to Koyeb
+        env:
+          KOYEB_TOKEN: ${{ secrets.KOYEB_API_TOKEN }}
+        run: |
+          koyeb service update discordbot-app \
+            --docker-image ${{ env.IMAGE_ID }}:latest \
+            --env COMMIT_SHA=${{ github.sha }}
+            --env DISCORD_BOT_TOKEN=${{ secrets.DISCORD_BOT_TOKEN }}
+            --env GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+            --env MONGODB_URI=${{ secrets.MONGODB_URI }}
+            --env FLOWISE_ENDPOINT=${{ secrets.FLOWISE_ENDPOINT }}
+            --env FLOWISE_API_KEY=${{ secrets.FLOWISE_API_KEY }}
+            --env DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }}
+            --env DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }}
+            --env EQK_AUTH_KEY=${{ secrets.EQK_AUTH_KEY }}
+            --env GOOGLE_SEARCH_API=${{ secrets.GOOGLE_SEARCH_API }}
+            --env GOOGLE_SEARCH_ENGINE_ID=${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}
+            --env DISCORD_LOG_CHANNEL_ID=${{ secrets.DISCORD_LOG_CHANNEL_ID }}
+            --env JWT_SECRET=${{ secrets.JWT_SECRET }}
+            --env MY_DISCORD_USER_ID=${{ secrets.MY_DISCORD_USER_ID }}
+            --env URL_CHECK_API_KEY=${{ secrets.URL_CHECK_API_KEY }}
