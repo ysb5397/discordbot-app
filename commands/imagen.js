@@ -46,7 +46,8 @@ module.exports = {
                 .setRequired(false)
                 .addChoices(
                     { name: '1K', value: '1K' },
-                    { name: '2K', value: '2K' }
+                    { name: '2K', value: '2K' },
+                    { name: '4K', value: '4K' }
                 )),
 
     async execute(interaction) {
