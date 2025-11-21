@@ -220,6 +220,10 @@ module.exports = {
             try {
                 const botReplyText = await generateSmartReply(message);
 
+                if (!botReplyText || botReplyText.trim().length === 0) {
+                    botReplyText = "음... 뭐라고 대답해야 할지 모르겠어. 뭔가 문제가 있었나봐! 😅";
+                }
+
                 // 채널이 제외된 곳이면 저장하지 않음
                 if (message.channelId !== excludeChannelId) {
 

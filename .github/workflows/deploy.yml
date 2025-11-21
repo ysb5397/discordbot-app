@@ -32,7 +32,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 4. 도커 이미지 빌드 및 푸시
+      # 4. Buildx 설정 (캐시 사용을 위해 필수)
+      - name: 🔨 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 5. 도커 이미지 빌드 및 푸시
       - name: 📦 Build and Push Docker Image
         uses: docker/build-push-action@v5
         with:
@@ -43,13 +47,13 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # 5. Koyeb CLI 설치
+      # 6. Koyeb CLI 설치
       - name: 🔧 Install Koyeb CLI
         run: |
           curl -L https://github.com/koyeb/koyeb-cli/releases/download/v4.2.0/koyeb-linux-amd64.tar.gz | tar -xz
           sudo mv koyeb /usr/local/bin/
 
-      # 6. Koyeb으로 배포 (이미지 업데이트 & COMMIT_SHA 갱신)
+      # 7. Koyeb으로 배포 (이미지 업데이트 & COMMIT_SHA 갱신)
       - name: 🚀 Deploy to Koyeb
         env:
           KOYEB_TOKEN: ${{ secrets.KOYEB_API_TOKEN }}
