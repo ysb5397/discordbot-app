@@ -17,7 +17,7 @@ async function reloadBriefingSchedule(client) {
 
     try {
         const configData = await SchedulerConfig.findOne({ type: 'BRIEFING', isActive: true });
-        
+
         if (!configData || !configData.scheduleValue) {
             console.log('[Briefing] 활성화된 브리핑 일정이 없습니다.');
             return;
@@ -39,21 +39,22 @@ async function reloadBriefingSchedule(client) {
 
                 await channel.send(`📢 **일일 브리핑 시간이야!**\n 주제: '${topic}'에 대해 조사하고 있어. 잠시만 기다려줘! ☕`);
 
-                const report = await deepResearch(topic);
+                // [수정됨] deepResearch 결과는 객체이므로 구조 분해 할당으로 받아야 해!
+                const { fileContent, embedContent } = await deepResearch(topic);
 
                 const files = [];
-                let description = report;
 
-                if (report.length > 2000) {
-                    const buffer = Buffer.from(report, 'utf-8');
+                // 파일 내용(상세 리포트)이 있으면 첨부 파일로 만듦
+                if (fileContent) {
+                    const buffer = Buffer.from(fileContent, 'utf-8');
                     const attachment = new AttachmentBuilder(buffer, { name: 'Daily_Briefing.md' });
                     files.push(attachment);
-                    description = `📑 **내용이 많아서 파일로 준비했어!**\n\n(요약)\n${report.substring(0, 500)}...`;
                 }
 
+                // 임베드에는 요약 내용(embedContent)을 넣음
                 const embed = createAiResponseEmbed({
                     title: `📅 일일 브리핑: ${topic}`,
-                    description: description,
+                    description: embedContent || "요약된 내용이 없어... 파일을 확인해줘!",
                     footerPrefix: "Daily AI Briefing"
                 });
 
