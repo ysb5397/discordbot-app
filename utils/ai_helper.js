@@ -548,6 +548,40 @@ async function deepResearch(query) {
     }
 }
 
+async function analyzeCode(diffData) {
+    if (!PYTHON_AI_SERVICE_URL) throw new Error("PYTHON_AI_SERVICE_URL 설정 안됨");
+
+    try {
+        const response = await fetch(`${PYTHON_AI_SERVICE_URL}/code-review`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ diff: diffData })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Python API Error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (data.status === 'error') throw new Error(data.message);
+
+        const rawText = data.report;
+
+        // --- 태그 파싱 (Deep Research와 동일한 로직 재사용) ---
+        const fileMatch = rawText.match(/<REPORT_FILE>([\s\S]*?)<\/REPORT_FILE>/);
+        const embedMatch = rawText.match(/<DISCORD_EMBED>([\s\S]*?)<\/DISCORD_EMBED>/);
+
+        return {
+            fileContent: fileMatch ? fileMatch[1].trim() : rawText,
+            embedContent: embedMatch ? embedMatch[1].trim() : "요약본 분리 실패! 파일을 확인해줘."
+        };
+
+    } catch (error) {
+        console.error('Code Review 요청 실패:', error);
+        throw error;
+    }
+}
+
 module.exports = {
     getChatResponseStreamOrFallback,
     callFlowise,
@@ -562,5 +596,6 @@ module.exports = {
     generateSearchQuery,
     searchWeb,
     deepResearch,
-    generateMentionReply
+    generateMentionReply,
+    analyzeCode
 };

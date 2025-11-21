@@ -8,6 +8,7 @@ const { logToDiscord } = require('./utils/catch_log');
 const { registerGlobalCommands } = require('./deploy-commands.js');
 const { startApiServer } = require('./config/api/server');
 const { reloadBriefingSchedule } = require('./utils/briefing_scheduler.js');
+const { startCodeReviewSchedule } = require('./utils/code_review_scheduler.js');
 
 // --- 1. 클라이언트 초기화 ---
 const client = new Client({
@@ -33,7 +34,7 @@ process.on('uncaughtException', async (error, origin) => {
         console.error('에러 로깅 중 추가 오류 발생:', loggingError);
     } finally {
         console.log('프로세스를 종료합니다.');
-        process.exit(1); 
+        process.exit(1);
     }
 });
 
@@ -89,6 +90,7 @@ const startBot = async () => {
         console.log(`✅ ${client.user.tag} 로그인 완료!`);
 
         reloadBriefingSchedule(client);
+        startCodeReviewSchedule(client);
 
         await registerGlobalCommands(config.server.commitSha);
 
