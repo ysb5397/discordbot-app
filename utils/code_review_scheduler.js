@@ -35,8 +35,8 @@ function getWeeklyGitDiff() {
 }
 
 function startCodeReviewSchedule(client) {
-    // 매주 금요일 저녁 6시 (1 8 * * 5)
-    cron.schedule('1 8 * * 5', async () => {
+    // 매주 금요일 밤 9시 (0 21 * * 5)
+    cron.schedule('0 21 * * 5', async () => {
         console.log('[Scheduler] 주간 코드 리뷰 시작...');
 
         const channel = await client.channels.fetch(REVIEW_CHANNEL_ID).catch(() => null);
@@ -67,7 +67,7 @@ function startCodeReviewSchedule(client) {
                 diffData = diffData.substring(0, 30000) + "\n...(내용이 너무 길어서 잘림)...";
             }
 
-            await channel.send("☕ **금요일 저녁이야!** 지난주 코드 변경 사항을 점검하고 있어. 잠시만 기다려줘! 🧐");
+            await channel.send("☕ **금요일 밤이야!** 지난주 코드 변경 사항을 점검하고 있어. 잠시만 기다려줘! 🧐");
 
             // 2. AI 분석 요청
             const { fileContent, embedContent } = await analyzeCode(diffData);
@@ -99,7 +99,7 @@ function startCodeReviewSchedule(client) {
         timezone: "Asia/Seoul"
     });
 
-    console.log('✅ [Scheduler] 주간 코드 리뷰 스케줄러가 등록되었습니다. (매주 금 18:00)');
+    console.log('✅ [Scheduler] 주간 코드 리뷰 스케줄러가 등록되었습니다. (매주 금 21:00)');
 }
 
 module.exports = { startCodeReviewSchedule };
