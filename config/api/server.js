@@ -1,5 +1,6 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const cors = require('cors');
 const config = require('../manage_environments');
 const { ApiKey } = require('../../utils/database');
 const { callFlowise } = require('../../utils/ai_helper');
@@ -7,6 +8,9 @@ const { logToDiscord } = require('../../utils/catch_log');
 
 // Express 앱 생성
 const app = express();
+
+// CORS (모든 도메인 허용 - 나중에는 특정 도메인만 허용하게 수정)
+app.use(cors());
 app.use(express.json());
 
 const jwtSecret = config.server.jwtSecret;
@@ -21,7 +25,7 @@ const authenticateApiKey = async (req, res, next) => {
         }
         const token = authHeader.split(' ')[1];
         if (!token) {
-             return res.status(401).send({ error: '헤더에 AI API 키 값이 없습니다.' });
+            return res.status(401).send({ error: '헤더에 AI API 키 값이 없습니다.' });
         }
 
         const validKey = await ApiKey.findOne({
@@ -68,7 +72,7 @@ const verifyJwt = (req, res, next) => {
  * @param {import('discord.js').Client} client - 디스코드 봇 클라이언트 (로그 전송용)
  */
 function startApiServer(client) {
-    
+
     // 1. 헬스 체크 경로
     app.get('/', (req, res) => {
         res.send('Discord bot & AI API Server is running! 🚀');
@@ -86,7 +90,7 @@ function startApiServer(client) {
             const loginConfig = await ApiKey.findOne({ keyName: "Flutter Login" });
 
             if (!loginConfig || !loginConfig.apiKey) {
-                 return res.status(500).send({ error: '서버 로그인 설정 오류 (DB)' });
+                return res.status(500).send({ error: '서버 로그인 설정 오류 (DB)' });
             }
 
             if (secret === loginConfig.apiKey) {
@@ -108,8 +112,8 @@ function startApiServer(client) {
     app.get('/api/config', verifyJwt, async (req, res) => {
         try {
             const currentAiKey = await ApiKey.findOne({
-                 keyName: "Flutter AI",
-                 isCurrent: true
+                keyName: "Flutter AI",
+                isCurrent: true
             });
 
             if (!currentAiKey) {
@@ -133,22 +137,72 @@ function startApiServer(client) {
             }
 
             const aiResponseText = await callFlowise(
-                question, 
-                sessionId || 'http-default-session', 
+                question,
+                sessionId || 'http-default-session',
                 'http-api-chat',
                 client
             );
 
             try {
                 const aiJson = JSON.parse(aiResponseText);
-                 res.status(200).send(aiJson);
+                res.status(200).send(aiJson);
             } catch (e) {
-                 res.status(200).send({ text: aiResponseText });
+                res.status(200).send({ text: aiResponseText });
             }
 
         } catch (error) {
             console.error("[HTTP API Error]", error);
             res.status(500).send({ error: `AI 서버 처리 중 오류 발생: ${error.message}` });
+        }
+    });
+
+    // --- 5. 대시보드용 통계 API ---
+    app.get('/api/dashboard/stats', verifyJwt, async (req, res) => {
+        try {
+
+            const [totalInteractions, errorCount, recentLogs] = await Promise.all([
+                Interaction.countDocuments({}),
+                Interaction.countDocuments({ type: 'ERROR', botResponse: 'Unresolved' }),
+                Interaction.find().sort({ timestamp: -1 }).limit(1).select('timestamp')
+            ]);
+
+            const uptime = process.uptime();
+
+            res.status(200).send({
+                totalInteractions,
+                errorCount,
+                uptime,
+                lastActive: recentLogs[0]?.timestamp || new Date()
+            });
+        } catch (err) {
+            console.error('[API Stats Error]', err);
+            res.status(500).send({ error: '통계 조회 실패' });
+        }
+    });
+
+    // --- 6. 로그 조회 API ---
+    app.get('/api/dashboard/logs', verifyJwt, async (req, res) => {
+        try {
+            const logs = await Interaction.find()
+                .sort({ timestamp: -1 })
+                .limit(20) // 최근 20개만
+                .select('type timestamp userId content botResponse'); // 필요한 필드만 선택
+
+            res.status(200).send(logs);
+        } catch (err) {
+            console.error('[API Logs Error]', err);
+            res.status(500).send({ error: '로그 조회 실패' });
+        }
+    });
+
+    // --- 7. 화이트리스트 조회 API ---
+    app.get('/api/dashboard/whitelist', verifyJwt, async (req, res) => {
+        try {
+            const whitelist = await WhiteList.find().sort({ timestamp: -1 });
+            res.status(200).send(whitelist);
+        } catch (err) {
+            console.error('[API Whitelist Error]', err);
+            res.status(500).send({ error: '화이트리스트 조회 실패' });
         }
     });
 
