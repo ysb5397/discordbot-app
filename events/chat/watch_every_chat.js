@@ -263,7 +263,7 @@ module.exports = {
 
             let contentToSave = message.content;
 
-            if (message.attachments.size > 0 && message.content.trim() === '') {
+            if (message.attachments.size > 0 || message.content.trim() === '') {
                 if (message.attachments.size >= 5) {
                     await message.react('❌');
                     return;

@@ -73,9 +73,9 @@ module.exports = {
                     return interaction.editReply('❌ 메시지를 찾을 수 없어. 같은 채널에 있는 메시지 ID가 맞아?');
                 }
 
-                const content = message.content;
+                const content = message.content || '';
 
-                if (message.attachments.size > 0 && message.content.trim() === '') {
+                if (message.attachments.size > 0 || message.content.trim() === '') {
                     if (message.attachments.size >= 5) {
                         await interaction.editReply("잠깐, 이미지가 너무 많아...! ");
                         return;
