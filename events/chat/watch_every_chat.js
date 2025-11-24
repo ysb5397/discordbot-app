@@ -256,6 +256,11 @@ module.exports = {
             }
 
         } else {
+            // 봇 멘션이 아닌 모든 대화에서도 당연히 제외된 곳이면 제외
+            if (message.channelId !== excludeChannelId) {
+                return;
+            }
+
             let contentToSave = message.content;
 
             if (message.attachments.size > 0 && message.content.trim() === '') {
