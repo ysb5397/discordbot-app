@@ -13,9 +13,14 @@ const interactionSchema = new mongoose.Schema({
         enum: ['MESSAGE', 'MENTION', 'VOICE', 'ERROR', 'EARTHQUAKE'],
         required: true
     },
-    content: { type: mongoose.Schema.Types.Mixed, required: true },
+    content: { type: String, required: true },
     botResponse: { type: String },
-    timestamp: { type: Date, default: Date.now }
+    timestamp: { type: Date, default: Date.now },
+    embedding: {
+        type: [Number],
+        required: false,
+        index: true
+    },
 });
 
 interactionSchema.index({ userId: 1, type: 1, timestamp: -1 });
@@ -79,7 +84,7 @@ const connectDB = async () => {
     const mongoURI = MONGODB_URI;
     if (!mongoURI) {
         console.error('오류: MONGODB_URI 환경 변수가 설정되지 않았습니다. .env 파일을 확인해주세요.');
-        return; 
+        return;
     }
 
     try {
@@ -87,7 +92,7 @@ const connectDB = async () => {
         console.log('성공적으로 MongoDB에 연결되었습니다! ✅');
     } catch (err) {
         console.error('MongoDB 연결에 실패했습니다... 😭', err);
-        throw err; 
+        throw err;
     }
 };
 

@@ -30,6 +30,17 @@ const proModel = genAI.getGenerativeModel({
     systemInstruction: SYSTEM_INSTRUCTION
 });
 
+const embeddingModel = genAI.getGenerativeModel({ model: "text-embedding-004" });
+
+async function getEmbedding(text) {
+    try {
+        const result = await embeddingModel.embedContent(text);
+        return result.embedding.values;
+    } catch (error) {
+        console.error("임베딩 생성 실패:", error);
+        return null;
+    }
+}
 
 // --- 헬퍼: Gemini 프롬프트 구성 ---
 async function buildGeminiPrompt(promptData, attachment) {
@@ -583,6 +594,7 @@ async function analyzeCode(diffData) {
 }
 
 module.exports = {
+    getEmbedding,
     getChatResponseStreamOrFallback,
     callFlowise,
     generateMongoFilter,
