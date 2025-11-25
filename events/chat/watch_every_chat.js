@@ -177,8 +177,8 @@ module.exports = {
 
         if (!client.intrusionConfig) {
             client.intrusionConfig = {
-                chance: 0.05,
-                cooldown: 60000,
+                chance: 0.5,
+                cooldown: 10 * 60 * 1000,
                 lastTime: 0
             };
         }
