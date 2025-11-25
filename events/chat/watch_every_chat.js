@@ -7,6 +7,11 @@ const config = require('../../config/manage_environments');
 const excludeChannelId = config.channels.ignoreAiChat;
 const urlCheckApiKey = config.ai.urlScanKey;
 
+// --- [난입 시스템 설정] ---
+const INTRUSION_CHANCE = 0.01; // 1% 확률 (0.01)
+const INTRUSION_COOLDOWN = 30 * 60 * 1000; // 30분 (밀리초)
+let lastIntrusionTime = 0; // 마지막 난입 시간 (메모리 관리)
+
 /**
  * AI를 사용하여 문맥에 맞는 답변을 생성하는 함수 (Gemini 사용)
  */
@@ -80,7 +85,7 @@ async function submitNewUrlScan(url) {
         throw new Error('검사 시간 초과');
 
     } catch (err) {
-        console.error(`https://support.hp.com/au-en/document/ish_2281796-2060609-16 ${url}:`, err.message);
+        console.error(`https://support.hp.com/lv-en/document/ish_2281796-2060609-16 ${url}:`, err.message);
         return { url, isMalicious: false, error: err.message };
     }
 }
@@ -105,7 +110,7 @@ async function checkSingleUrl(url) {
         }
         return await submitNewUrlScan(url);
     } catch (err) {
-        console.error(`https://www.linguee.com.ar/ingles-espanol/traduccion/check+failed.html ${url}:`, err);
+        console.error(`https://quillbot.com/grammar-check ${url}:`, err);
         return { url, isMalicious: false };
     }
 }
@@ -156,7 +161,7 @@ async function processUrlsInBackground(message, urlsToScan) {
                 `🚨 **보안 경고** 🚨\n${message.author}님이 올린 메시지에 위험한 링크가 포함되어 있어 삭제했습니다!\n(검출된 링크: ||${maliciousLinks.join(', ')}||)`
             );
         } catch (err) {
-            console.error('https://www.merriam-webster.com/dictionary/scan 메시지 삭제 실패:', err);
+            console.error('[Discord] 메시지 삭제 실패:', err);
         }
     } else {
         try { await message.react('✅'); } catch (reactError) {
@@ -175,6 +180,7 @@ module.exports = {
 
         if (message.author.bot) return;
 
+        // --- 1. URL 검사 로직 ---
         const urlRegex = /(https?:\/\/[^\s]+)/g;
         const foundUrls = message.content.match(urlRegex);
 
@@ -201,13 +207,14 @@ module.exports = {
 
             if (unknownUrls.length > 0) {
                 processUrlsInBackground(message, unknownUrls).catch(err =>
-                    console.error('https://www.freepik.com/free-photos-vectors/error-background', err)
+                    console.error('[Background Error] URL Scan', err)
                 );
             }
         }
 
         const shouldBotReply = message.mentions.has(client.user);
 
+        // --- 2. 멘션 처리 ---
         if (shouldBotReply) {
             let thinkingMessage;
             try {
@@ -224,9 +231,7 @@ module.exports = {
                     botReplyText = "음... 뭐라고 대답해야 할지 모르겠어. 뭔가 문제가 있었나봐! 😅";
                 }
 
-                // 채널이 제외된 곳이면 저장하지 않음
                 if (message.channelId !== excludeChannelId) {
-
                     await Interaction.create({
                         interactionId: message.id,
                         channelId: message.channel.id,
@@ -255,15 +260,53 @@ module.exports = {
                 });
             }
 
-        } else {
-            // 봇 멘션이 아닌 모든 대화에서도 당연히 제외된 곳이면 제외
-            if (message.channelId !== excludeChannelId) {
-                return;
+        }
+        // --- 3. 멘션이 아닐 때 (일반 메시지) -> 난입 시도 ---
+        else {
+            // (1) 난입 로직
+            const now = Date.now();
+            const randomValue = Math.random();
+            const timePassed = now - lastIntrusionTime;
+
+            // 1% 확률 + 쿨타임 지남 + 제외 채널 아님 + 메시지 길이 5자 이상(너무 짧은 건 무시)
+            if (randomValue < INTRUSION_CHANCE &&
+                timePassed > INTRUSION_COOLDOWN &&
+                message.channelId !== excludeChannelId &&
+                message.content.length > 5) {
+
+                console.log(`[Intrusion] 🎲 난입 당첨! (${message.author.username}님의 메시지에 반응)`);
+                lastIntrusionTime = now;
+
+                try {
+                    // 최근 대화 3개 가져오기
+                    const recentMessages = await message.channel.messages.fetch({ limit: 3 });
+                    const context = recentMessages.reverse().map(m => `${m.author.username}: ${m.content}`).join('\n');
+
+                    const prompt = `
+                        다음은 디스코드 채팅방의 최근 대화야.
+                        너는 이 대화를 지켜보고 있던 '눈치 빠른 AI 에이전트'야.
+                        대화 흐름을 보고 자연스럽게 끼어들어서 한마디 해줘.
+                        (너무 길게 말하지 말고, 1~2문장으로 짧게. 이모지 적당히 섞어서. 반말로 살짝 귀엽게.)
+                        
+                        [대화 내용]
+                        ${context}
+                    `;
+
+                    // 히스토리 없이 프롬프트만으로 생성
+                    const replyText = await generateMentionReply([], prompt);
+
+                    await message.channel.send(replyText);
+                    return;
+
+                } catch (e) {
+                    console.error("[Intrusion] 난입 실패:", e);
+                }
             }
 
+            // 일반 메시지 저장 로직
             let contentToSave = message.content;
 
-            if (message.attachments.size > 0 || message.content.trim() === '') {
+            if (message.attachments.size > 0 && message.content.trim() === '') {
                 if (message.attachments.size >= 5) {
                     await message.react('❌');
                     return;
