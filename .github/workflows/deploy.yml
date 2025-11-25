@@ -59,23 +59,5 @@ jobs:
 
       # 7. Koyeb으로 배포 (이미지 업데이트 & COMMIT_SHA 갱신)
       - name: 🚀 Deploy to Koyeb
-        env:
-          KOYEB_TOKEN: ${{ secrets.KOYEB_API_TOKEN }}
         run: |
-          koyeb service update discordbot-app \
-            --docker ${{ env.IMAGE_ID }}:latest \
-            --env COMMIT_SHA=${{ github.sha }} \
-            --env DISCORD_BOT_TOKEN=${{ secrets.DISCORD_BOT_TOKEN }} \
-            --env GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
-            --env MONGODB_URI=${{ secrets.MONGODB_URI }} \
-            --env FLOWISE_ENDPOINT=${{ secrets.FLOWISE_ENDPOINT }} \
-            --env FLOWISE_API_KEY=${{ secrets.FLOWISE_API_KEY }} \
-            --env DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }} \
-            --env DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }} \
-            --env EQK_AUTH_KEY=${{ secrets.EQK_AUTH_KEY }} \
-            --env GOOGLE_SEARCH_API=${{ secrets.GOOGLE_SEARCH_API }} \
-            --env GOOGLE_SEARCH_ENGINE_ID=${{ secrets.GOOGLE_SEARCH_ENGINE_ID }} \
-            --env DISCORD_LOG_CHANNEL_ID=${{ secrets.DISCORD_LOG_CHANNEL_ID }} \
-            --env JWT_SECRET=${{ secrets.JWT_SECRET }} \
-            --env MY_DISCORD_USER_ID=${{ secrets.MY_DISCORD_USER_ID }} \
-            --env URL_CHECK_API_KEY=${{ secrets.URL_CHECK_API_KEY }}
+          koyeb service update discordbot-app --token ${{ secrets.KOYEB_API_TOKEN }} --docker ${{ env.IMAGE_ID }}:latest --env COMMIT_SHA=${{ github.sha }} --env DISCORD_BOT_TOKEN=${{ secrets.DISCORD_BOT_TOKEN }} --env GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} --env MONGODB_URI=${{ secrets.MONGODB_URI }} --env FLOWISE_ENDPOINT=${{ secrets.FLOWISE_ENDPOINT }} --env FLOWISE_API_KEY=${{ secrets.FLOWISE_API_KEY }} --env DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }} --env DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }} --env EQK_AUTH_KEY=${{ secrets.EQK_AUTH_KEY }} --env GOOGLE_SEARCH_API=${{ secrets.GOOGLE_SEARCH_API }} --env GOOGLE_SEARCH_ENGINE_ID=${{ secrets.GOOGLE_SEARCH_ENGINE_ID }} --env DISCORD_LOG_CHANNEL_ID=${{ secrets.DISCORD_LOG_CHANNEL_ID }} --env JWT_SECRET=${{ secrets.JWT_SECRET }} --env MY_DISCORD_USER_ID=${{ secrets.MY_DISCORD_USER_ID }} --env URL_CHECK_API_KEY=${{ secrets.URL_CHECK_API_KEY }}
