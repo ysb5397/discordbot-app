@@ -54,6 +54,7 @@ jobs:
       - name: 🔧 Install Koyeb CLI
         run: |
           curl -fsSL https://raw.githubusercontent.com/koyeb/koyeb-cli/master/install.sh | sudo sh
+          sudo mv /root/.koyeb/bin/koyeb /usr/local/bin/koyeb
           koyeb version
 
       # 7. Koyeb으로 배포 (이미지 업데이트 & COMMIT_SHA 갱신)
