@@ -1,8 +1,6 @@
-// 파일 위치: /commands/chat.js
-
 const { SlashCommandBuilder, InteractionContextType } = require('discord.js');
 const { Interaction } = require('../utils/database.js');
-const { getChatResponseStreamOrFallback, getEmbedding } = require('../utils/ai_helper.js');
+const { getChatResponseStreamOrFallback, getEmbedding, searchWeb } = require('../utils/ai_helper.js');
 const { logToDiscord } = require('../utils/catch_log.js');
 const { createAiResponseEmbed } = require('../utils/embed_builder.js');
 
@@ -59,9 +57,20 @@ async function retrieveMemories(query, userId) {
 }
 
 /**
+ * 웹 검색 결과를 포맷팅하는 함수
+ */
+function formatSearchResults(items) {
+    if (!items || items.length === 0) return "";
+    const searchContext = items.map((item, index) =>
+        `[검색 결과 ${index + 1}]\n제목: ${item.title}\n링크: ${item.link}\n내용: ${item.snippet}`
+    ).join('\n\n');
+    return `\n\n[실시간 웹 검색 결과]\n${searchContext}\n----------------\n위 검색 결과를 바탕으로 최신 정보를 반영해서 대답해줘.\n`;
+}
+
+/**
  * getChatResponseStreamOrFallback 제너레이터를 사용하여 응답 처리
  */
-async function handleRegularConversation(interaction, startTime, selectedModel, tokenLimit) {
+async function handleRegularConversation(interaction, startTime, selectedModel, tokenLimit, useSearch) {
     const client = interaction.client;
     const userQuestion = interaction.options.getString('question');
     const sessionId = interaction.user.id;
@@ -69,13 +78,38 @@ async function handleRegularConversation(interaction, startTime, selectedModel, 
 
     let history = [];
     let promptData = { question: userQuestion };
+    let contextPrefix = "";
+    let footerInfo = [];
 
-    const memoryContext = await retrieveMemories(userQuestion, sessionId);
-
-    if (memoryContext) {
-        promptData.question = `${memoryContext}\n사용자 질문: ${userQuestion}`;
+    // --- 1. Google Search (선택 사항) ---
+    if (useSearch) {
+        try {
+            await interaction.editReply(`🔍 **'${userQuestion}'** 검색 중...`);
+            const searchResults = await searchWeb(userQuestion);
+            const searchContext = formatSearchResults(searchResults);
+            if (searchContext) {
+                contextPrefix += searchContext;
+                footerInfo.push("Google Search");
+            }
+        } catch (searchError) {
+            console.error('[/chat] 검색 실패:', searchError);
+            // 검색 실패해도 대화는 계속 진행
+        }
     }
 
+    // --- 2. RAG: 벡터 검색으로 관련 기억 가져오기 ---
+    const memoryContext = await retrieveMemories(userQuestion, sessionId);
+    if (memoryContext) {
+        contextPrefix += memoryContext;
+        footerInfo.push("Memory RAG");
+    }
+
+    // 질문 보강 (검색 결과 + 기억 + 원본 질문)
+    if (contextPrefix) {
+        promptData.question = `${contextPrefix}\n사용자 질문: ${userQuestion}`;
+    }
+
+    // --- 3. 최근 대화 기록 (Short-term Memory) 불러오기 ---
     try {
         const recentInteractions = await Interaction.find({
             userId: sessionId, type: { $in: ['MESSAGE', 'MENTION'] }
@@ -98,6 +132,7 @@ async function handleRegularConversation(interaction, startTime, selectedModel, 
         logToDiscord(client, 'ERROR', '대화 기록 불러오기 실패', interaction, dbError, 'handleRegularConversation_HistoryLoad');
     }
 
+    // --- 4. 스트리밍 응답 처리 ---
     let fullResponseText = "";
     let finalMessage = null;
     let isFallback = false;
@@ -118,7 +153,7 @@ async function handleRegularConversation(interaction, startTime, selectedModel, 
         let description = fullResponseText.substring(0, 4090) + (isStreaming ? "..." : "");
         if (finalMessage) description += `\n\n${finalMessage}`;
 
-        const ragInfo = memoryContext ? "🧠 기억 검색됨" : "";
+        const footerPrefix = `Powered by AI ${footerInfo.length > 0 ? `(${footerInfo.join(', ')})` : ''}`;
 
         currentEmbed = createAiResponseEmbed({
             title: userQuestion.substring(0, 250) + (userQuestion.length > 250 ? '...' : ''),
@@ -127,7 +162,7 @@ async function handleRegularConversation(interaction, startTime, selectedModel, 
             user: interaction.user,
             isFallback: isFallback,
             imageUrl: attachment ? attachment.url : undefined,
-            footerPrefix: `Powered by AI ${ragInfo}`
+            footerPrefix: footerPrefix
         });
 
         try {
@@ -167,9 +202,9 @@ async function handleRegularConversation(interaction, startTime, selectedModel, 
         } else {
             await debouncedUpdate(true);
 
+            // --- 성공 시 DB 저장 ---
             try {
                 const contentToSave = userQuestion + (attachment ? ` (첨부: ${attachment.name})` : '');
-
                 const embedding = await getEmbedding(contentToSave);
 
                 const finalDescription = fullResponseText + (finalMessage ? `\n\n${finalMessage}` : '');
@@ -224,6 +259,10 @@ module.exports = {
                 .setDescription('AI 응답의 최대 토큰 수를 설정합니다. (기본: 2048)')
                 .setRequired(false)
                 .setMinValue(0))
+        .addBooleanOption(option =>
+            option.setName('use_search')
+                .setDescription('Google 검색 결과를 함께 참고할까요? (최신 정보 필요시 체크)')
+                .setRequired(false))
         .addAttachmentOption(option =>
             option.setName('file')
                 .setDescription('AI에게 보여줄 파일을 첨부하세요 (이미지, 코드 등).')
@@ -235,6 +274,8 @@ module.exports = {
 
         const selectedModel = interaction.options.getString('model');
         const tokenLimit = interaction.options.getInteger('token_limit') || 2048;
-        await handleRegularConversation(interaction, startTime, selectedModel, tokenLimit);
+        const useSearch = interaction.options.getBoolean('use_search') || false;
+
+        await handleRegularConversation(interaction, startTime, selectedModel, tokenLimit, useSearch);
     },
 };
