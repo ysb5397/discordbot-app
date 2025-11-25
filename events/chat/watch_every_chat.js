@@ -8,8 +8,8 @@ const excludeChannelId = config.channels.ignoreAiChat;
 const urlCheckApiKey = config.ai.urlScanKey;
 
 // --- [난입 시스템 설정] ---
-const INTRUSION_CHANCE = 0.01; // 1% 확률 (0.01)
-const INTRUSION_COOLDOWN = 30 * 60 * 1000; // 30분 (밀리초)
+const INTRUSION_CHANCE = 0.05; // 5% 확률 (0.05)
+const INTRUSION_COOLDOWN = 60 * 1000; // 1분 (밀리초)
 let lastIntrusionTime = 0; // 마지막 난입 시간 (메모리 관리)
 
 /**
@@ -268,7 +268,7 @@ module.exports = {
             const randomValue = Math.random();
             const timePassed = now - lastIntrusionTime;
 
-            // 1% 확률 + 쿨타임 지남 + 제외 채널 아님 + 메시지 길이 5자 이상(너무 짧은 건 무시)
+            // 5% 확률 + 쿨타임 지남 + 제외 채널 아님 + 메시지 길이 5자 이상(너무 짧은 건 무시)
             if (randomValue < INTRUSION_CHANCE &&
                 timePassed > INTRUSION_COOLDOWN &&
                 message.channelId !== excludeChannelId &&
