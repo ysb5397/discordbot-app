@@ -298,7 +298,7 @@ module.exports = {
                     // 히스토리 없이 프롬프트만으로 생성
                     const replyText = await generateMentionReply([], prompt);
 
-                    await message.channel.send(replyText);
+                    await message.channel.send(replyText || "문제가 생겨서 빈 문자열을 응답한 것 같아.. 다시 시도해줄래?");
                     return;
 
                 } catch (e) {
