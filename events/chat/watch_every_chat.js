@@ -7,11 +7,6 @@ const config = require('../../config/manage_environments');
 const excludeChannelId = config.channels.ignoreAiChat;
 const urlCheckApiKey = config.ai.urlScanKey;
 
-// --- [난입 시스템 설정] ---
-const INTRUSION_CHANCE = 0.05; // 5% 확률 (0.05)
-const INTRUSION_COOLDOWN = 60 * 1000; // 1분 (밀리초)
-let lastIntrusionTime = 0; // 마지막 난입 시간 (메모리 관리)
-
 /**
  * AI를 사용하여 문맥에 맞는 답변을 생성하는 함수 (Gemini 사용)
  */
@@ -180,6 +175,14 @@ module.exports = {
 
         if (message.author.bot) return;
 
+        if (!client.intrusionConfig) {
+            client.intrusionConfig = {
+                chance: 0.05,
+                cooldown: 60000,
+                lastTime: 0
+            };
+        }
+
         // --- 1. URL 검사 로직 ---
         const urlRegex = /(https?:\/\/[^\s]+)/g;
         const foundUrls = message.content.match(urlRegex);
@@ -265,17 +268,17 @@ module.exports = {
         else {
             // (1) 난입 로직
             const now = Date.now();
+            const config = client.intrusionConfig;
             const randomValue = Math.random();
-            const timePassed = now - lastIntrusionTime;
+            const timePassed = now - config.lastTime;
 
             // 5% 확률 + 쿨타임 지남 + 제외 채널 아님 + 메시지 길이 5자 이상(너무 짧은 건 무시)
-            if (randomValue < INTRUSION_CHANCE &&
-                timePassed > INTRUSION_COOLDOWN &&
-                message.channelId !== excludeChannelId &&
+            if (randomValue < config.chance &&
+                timePassed > config.cooldown &&
                 message.content.length > 5) {
 
                 console.log(`[Intrusion] 🎲 난입 당첨! (${message.author.username}님의 메시지에 반응)`);
-                lastIntrusionTime = now;
+                client.intrusionConfig.lastTime = now;
 
                 try {
                     // 최근 대화 3개 가져오기
@@ -304,34 +307,36 @@ module.exports = {
             }
 
             // 일반 메시지 저장 로직
-            let contentToSave = message.content;
+            if (message.channelId !== excludeChannelId) {
+                let contentToSave = message.content;
 
-            if (message.attachments.size > 0 && message.content.trim() === '') {
-                if (message.attachments.size >= 5) {
-                    await message.react('❌');
-                    return;
+                if (message.attachments.size > 0 && message.content.trim() === '') {
+                    if (message.attachments.size >= 5) {
+                        await message.react('❌');
+                        return;
+                    }
+
+                    await message.react('🤔');
+                    const attachmentPromises = message.attachments.map(att => generateAttachmentDescription(att));
+                    const results = await Promise.all(attachmentPromises);
+                    contentToSave = results.join('\n\n');
+
+                    await message.reactions.cache.get('🤔')?.remove();
+                    await message.react('✅');
                 }
 
-                await message.react('🤔');
-                const attachmentPromises = message.attachments.map(att => generateAttachmentDescription(att));
-                const results = await Promise.all(attachmentPromises);
-                contentToSave = results.join('\n\n');
+                if (contentToSave.trim() !== '') {
+                    Interaction.create({
+                        interactionId: message.id,
+                        channelId: message.channel.id,
+                        userId: message.author.id,
+                        userName: message.author.username,
+                        type: 'MESSAGE',
+                        content: contentToSave
+                    }).catch(err => console.error('메시지 저장 실패:', err));
 
-                await message.reactions.cache.get('🤔')?.remove();
-                await message.react('✅');
-            }
-
-            if (contentToSave.trim() !== '') {
-                Interaction.create({
-                    interactionId: message.id,
-                    channelId: message.channel.id,
-                    userId: message.author.id,
-                    userName: message.author.username,
-                    type: 'MESSAGE',
-                    content: contentToSave
-                }).catch(err => console.error('메시지 저장 실패:', err));
-
-                console.log(`[Chat Saved] ${message.author.username}: ${contentToSave.substring(0, 30)}...`);
+                    console.log(`[Chat Saved] ${message.author.username}: ${contentToSave.substring(0, 30)}...`);
+                }
             }
         }
     },
