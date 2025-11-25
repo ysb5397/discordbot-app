@@ -1,4 +1,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const config = require('../config/manage_environments');
+
+OWNER_ID = config.discord.ownerId;
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -19,6 +22,10 @@ module.exports = {
 
     async execute(interaction) {
         const client = interaction.client;
+
+        if (interaction.user.id !== OWNER_ID) {
+            return interaction.reply({ content: '이 명령어는 관리자 전용입니다.', ephemeral: true });
+        }
 
         // 초기화 안전 장치
         if (!client.intrusionConfig) {
