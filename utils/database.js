@@ -13,7 +13,7 @@ const interactionSchema = new mongoose.Schema({
         enum: ['MESSAGE', 'MENTION', 'VOICE', 'ERROR', 'EARTHQUAKE'],
         required: true
     },
-    content: { type: String, required: true },
+    content: { type: mongoose.Schema.Types.Mixed, required: true },
     botResponse: { type: String },
     timestamp: { type: Date, default: Date.now },
     embedding: {
