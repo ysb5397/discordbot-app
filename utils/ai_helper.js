@@ -593,6 +593,46 @@ async function analyzeCode(diffData) {
     }
 }
 
+/**
+ * 기억 통합(Consolidation) 함수
+ * @param {string} prevSummary - 기존 요약본 (없으면 빈 문자열)
+ * @param {Array<string>} newMemories - 새로 추가된 대화 내용들
+ */
+async function consolidateMemories(prevSummary, newMemories) {
+    if (!newMemories || newMemories.length === 0) return prevSummary;
+
+    // 대화 내용 합치기 (너무 길면 여기서 자르는 로직 추가 가능)
+    const conversationText = newMemories.join('\n');
+
+    const prompt = `
+    너는 사용자의 "장기 기억 관리자"야.
+    
+    [기존 사용자 프로필 및 기억 요약]
+    ${prevSummary || "(없음)"}
+
+    [새로 추가된 대화 내용]
+    ${conversationText}
+
+    [임무]
+    위의 [기존 기억]과 [새 대화]를 통합하여, 최신의 "사용자 프로필 및 장기 기억 보고서"를 작성해줘.
+    
+    [규칙]
+    1. 사용자의 이름, 취향, 성격, 주요 사건, 관계 정보 등 "변하지 않거나 중요한 정보"는 반드시 유지해.
+    2. 새로운 대화에서 알게 된 사실을 추가하거나, 기존 정보가 변경되었다면 갱신해.
+    3. 불필요한 인사말이나 잡담은 제거하고 "정보" 위주로 요약해.
+    4. 말투는 건조한 서술형(예: "~함", "~임")으로 작성해.
+    5. 전체 길이는 너무 길지 않게 핵심만 요약해.
+    `;
+
+    try {
+        const result = await proModel.generateContent(prompt);
+        return result.response.text();
+    } catch (error) {
+        console.error('[Memory Consolidation] AI 요약 실패:', error);
+        throw error;
+    }
+}
+
 module.exports = {
     getEmbedding,
     getChatResponseStreamOrFallback,
@@ -609,5 +649,6 @@ module.exports = {
     searchWeb,
     deepResearch,
     generateMentionReply,
-    analyzeCode
+    analyzeCode,
+    consolidateMemories
 };

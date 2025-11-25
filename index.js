@@ -91,6 +91,7 @@ const startBot = async () => {
 
         reloadBriefingSchedule(client);
         startCodeReviewSchedule(client);
+        startMemoryConsolidationSchedule(client);
 
         await registerGlobalCommands(config.server.commitSha);
 

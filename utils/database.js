@@ -21,6 +21,7 @@ const interactionSchema = new mongoose.Schema({
         required: false,
         index: true
     },
+    isConsolidated: { type: Boolean, default: false },
 });
 
 interactionSchema.index({ userId: 1, type: 1, timestamp: -1 });
@@ -80,6 +81,14 @@ schedulerSchema.index({ guildId: 1, type: 1 }, { unique: true });
 
 const SchedulerConfig = mongoose.model('SchedulerConfig', schedulerSchema);
 
+const reportSchema = new mongoose.Schema({
+    userId: { type: String, required: true }, // 누구의 기억인지
+    summary: { type: String, required: true }, // 요약된 내용 (보고서)
+    lastUpdatedAt: { type: Date, default: Date.now }
+});
+
+const MemoryReport = mongoose.model('MemoryReport', reportSchema);
+
 const connectDB = async () => {
     const mongoURI = MONGODB_URI;
     if (!mongoURI) {
@@ -122,5 +131,6 @@ module.exports = {
     Urls,
     BotStatus,
     WhiteList,
-    SchedulerConfig
+    SchedulerConfig,
+    MemoryReport
 };
