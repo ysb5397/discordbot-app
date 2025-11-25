@@ -53,8 +53,8 @@ jobs:
       # 6. Koyeb CLI 설치
       - name: 🔧 Install Koyeb CLI
         run: |
-          curl -L https://github.com/koyeb/koyeb-cli/releases/download/v4.2.0/koyeb-linux-amd64.tar.gz | tar -xz
-          sudo mv koyeb /usr/local/bin/
+          curl -fsSL https://raw.githubusercontent.com/koyeb/koyeb-cli/master/install.sh | sudo sh
+          koyeb version
 
       # 7. Koyeb으로 배포 (이미지 업데이트 & COMMIT_SHA 갱신)
       - name: 🚀 Deploy to Koyeb
