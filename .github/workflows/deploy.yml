@@ -63,7 +63,7 @@ jobs:
           KOYEB_TOKEN: ${{ secrets.KOYEB_API_TOKEN }}
         run: |
           koyeb service update discordbot-app \
-            --image ${{ env.IMAGE_ID }}:latest \
+            --docker ${{ env.IMAGE_ID }}:latest \
             --env COMMIT_SHA=${{ github.sha }} \
             --env DISCORD_BOT_TOKEN=${{ secrets.DISCORD_BOT_TOKEN }} \
             --env GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
