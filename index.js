@@ -48,13 +48,31 @@ process.on('unhandledRejection', (reason, promise) => {
     }
 });
 
+// --- 파일 재귀 탐색 함수 ---
+function getAllFiles(dirPath, arrayOfFiles) {
+    const files = fs.readdirSync(dirPath);
+
+    arrayOfFiles = arrayOfFiles || [];
+
+    files.forEach(function (file) {
+        if (fs.statSync(dirPath + "/" + file).isDirectory()) {
+            arrayOfFiles = getAllFiles(dirPath + "/" + file, arrayOfFiles);
+        } else {
+            if (file.endsWith('.js')) {
+                arrayOfFiles.push(path.join(dirPath, "/", file));
+            }
+        }
+    });
+
+    return arrayOfFiles;
+}
+
 // --- 3. 명령어 및 이벤트 로더 ---
 client.commands = new Collection();
 const commandsPath = path.join(__dirname, 'commands');
-const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+const commandFiles = getAllFiles(commandsPath);
 
-for (const file of commandFiles) {
-    const filePath = path.join(commandsPath, file);
+for (const filePath of commandFiles) {
     const command = require(filePath);
     if ('data' in command && 'execute' in command) {
         client.commands.set(command.data.name, command);
@@ -78,9 +96,13 @@ const loadEvents = (dir) => {
 
 // 이벤트 폴더 재귀 로드 (단순화)
 loadEvents(eventsPath);
-fs.readdirSync(eventsPath, { withFileTypes: true })
-    .filter(dirent => dirent.isDirectory())
-    .forEach(dirent => loadEvents(path.join(eventsPath, dirent.name)));
+try {
+    fs.readdirSync(eventsPath, { withFileTypes: true })
+        .filter(dirent => dirent.isDirectory())
+        .forEach(dirent => loadEvents(path.join(eventsPath, dirent.name)));
+} catch (e) {
+    console.error("이벤트 폴더 로드 중 오류 (폴더가 없을 수도 있음):", e);
+}
 
 
 // --- 4. 메인 실행 함수 ---
