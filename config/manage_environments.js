@@ -28,6 +28,7 @@ const config = {
         youtubeVoice: required('YOUTUBE_VOICE_CHANNEL_ID'),
         earthquakeNotice: required('EARTHQUAKE_NOTICE_CHANNEL_ID'),
         ignoreAiChat: required('IGNORE_AI_CHAT_CHANNEL_ID'),
+        stockNotice: required('STOCK_NOTICE_CHANNEL_ID'),
     },
 
     // 3. AI & 외부 API 설정
@@ -62,7 +63,7 @@ const config = {
         appUrl: process.env.APP_URL,
         commitSha: process.env.COMMIT_SHA,
     },
-    
+
     // 5. 기타 서비스 변수
     etc: {
         earthquakeKey: required('EQK_AUTH_KEY'),

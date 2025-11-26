@@ -633,6 +633,34 @@ async function consolidateMemories(prevSummary, newMemories) {
     }
 }
 
+async function analyzeStock(query) {
+    if (!PYTHON_AI_SERVICE_URL) throw new Error("PYTHON_AI_SERVICE_URL 설정 안됨");
+
+    console.log(`[Stock Analysis] '${query}' 분석 요청 시작...`);
+
+    try {
+        const response = await fetch(`${PYTHON_AI_SERVICE_URL}/analyze-stock`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: query })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text().catch(() => "No error details");
+            throw new Error(`Python API Error: ${response.status} - ${errorText}`);
+        }
+
+        const data = await response.json();
+        if (data.status === 'error') throw new Error(data.message);
+
+        return data;
+
+    } catch (error) {
+        console.error('[Stock Analysis] 분석 요청 실패:', error);
+        throw error;
+    }
+}
+
 module.exports = {
     getEmbedding,
     getChatResponseStreamOrFallback,
@@ -650,5 +678,6 @@ module.exports = {
     deepResearch,
     generateMentionReply,
     analyzeCode,
-    consolidateMemories
+    consolidateMemories,
+    analyzeStock
 };

@@ -10,6 +10,7 @@ const { startApiServer } = require('./config/api/server');
 const { reloadBriefingSchedule } = require('./utils/briefing_scheduler.js');
 const { startCodeReviewSchedule } = require('./utils/code_review_scheduler.js');
 const { startMemoryConsolidationSchedule } = require('./utils/memory_scheduler.js');
+const { startStockAnalysisSchedule } = require('./utils/stock_scheduler.js');
 
 // --- 1. 클라이언트 초기화 ---
 const client = new Client({
@@ -93,6 +94,7 @@ const startBot = async () => {
         reloadBriefingSchedule(client);
         startCodeReviewSchedule(client);
         startMemoryConsolidationSchedule(client);
+        startStockAnalysisSchedule(client);
 
         await registerGlobalCommands(config.server.commitSha);
 
