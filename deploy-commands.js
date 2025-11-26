@@ -10,9 +10,29 @@ const DISCORD_GUILD_ID = config.discord.guildId;
 
 const rest = new REST({ version: '10' }).setToken(DISCORD_BOT_TOKEN);
 
-const commands = [];
-const commandsPath = path.join(__dirname, 'commands');
-const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+/**
+ * 지정된 디렉토리 내의 모든 파일을 재귀적으로 탐색하여 반환하는 헬퍼 함수
+ * @param {string} dirPath - 탐색할 디렉토리 경로
+ * @param {string[]} [arrayOfFiles] - 재귀 호출용 누적 배열
+ * @returns {string[]} - 모든 파일의 전체 경로 배열
+ */
+function getAllFiles(dirPath, arrayOfFiles) {
+    const files = fs.readdirSync(dirPath);
+
+    arrayOfFiles = arrayOfFiles || [];
+
+    files.forEach(function (file) {
+        if (fs.statSync(dirPath + "/" + file).isDirectory()) {
+            arrayOfFiles = getAllFiles(dirPath + "/" + file, arrayOfFiles);
+        } else {
+            if (file.endsWith('.js')) {
+                arrayOfFiles.push(path.join(dirPath, "/", file));
+            }
+        }
+    });
+
+    return arrayOfFiles;
+}
 
 /**
  * (index.js가 호출할 함수)
@@ -40,7 +60,7 @@ async function registerGlobalCommands(commitSha) {
         // 2. 등록되지 않았다면 명령어 로드 및 등록 시도
         console.log(`(/) 현재 커밋(${commitSha.substring(0, 7)})에 대한 [글로벌] 명령어 등록을 시작합니다...`);
 
-        await addAllCommands(commands, commandFiles);
+        await loadAndRegisterCommands();
 
         // 3. 성공 시 DB에 상태 업데이트 (upsert 사용)
         await DeploymentStatus.findOneAndUpdate(
@@ -88,9 +108,17 @@ async function cleanAllCommands() {
     }
 }
 
-async function addAllCommands(commands, commandFiles) {
-    for (const file of commandFiles) {
-        const filePath = path.join(commandsPath, file);
+/**
+ * 명령어를 파일에서 로드하고 API에 등록하는 함수
+ */
+async function loadAndRegisterCommands() {
+    const commands = [];
+    const commandsPath = path.join(__dirname, 'commands');
+
+    // 재귀적으로 모든 js 파일 가져오기
+    const commandFiles = getAllFiles(commandsPath);
+
+    for (const filePath of commandFiles) {
         const command = require(filePath);
         if ('data' in command && 'execute' in command) {
             commands.push(command.data.toJSON());
@@ -102,7 +130,7 @@ async function addAllCommands(commands, commandFiles) {
     console.log(`(/) ${commands.length}개의 명령어를 [글로벌]로 등록 시도 중...`);
 
     await rest.put(
-        Routes.applicationCommands(DISCORD_CLIENT_ID), // 글로벌로 등록
+        Routes.applicationCommands(DISCORD_CLIENT_ID),
         { body: commands },
     );
 
@@ -120,11 +148,17 @@ if (require.main === module) {
     console.log('현재 꼬여있는 [글로벌] 및 [길드] 명령어를 모두 청소합니다...');
 
     // DB 연결이 필요할 수 있으므로, connectDB를 임포트해서 실행
-    const { connectDB } = require('./utils/database');
+    const { connectDB } = require('./utils/system/database');
     (async () => {
-        await cleanAllCommands();
-        await addAllCommands(commands, commandFiles);
-        await connectDB();
-        console.log('DB 연결 완료. 모든 명령어 청소 및 재등록이 완료되었습니다.');
+        try {
+            await connectDB();
+            await cleanAllCommands();
+            await loadAndRegisterCommands();
+            console.log('모든 작업이 완료되었습니다.');
+            process.exit(0);
+        } catch (e) {
+            console.error(e);
+            process.exit(1);
+        }
     })();
 }
