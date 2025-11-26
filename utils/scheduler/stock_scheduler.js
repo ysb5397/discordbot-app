@@ -1,8 +1,8 @@
 const cron = require('node-cron');
-const { analyzeStock } = require('./ai_helper.js');
-const { createBaseEmbed } = require('./embed_builder.js');
+const { analyzeStock } = require('../ai/ai_helper.js');
+const { createBaseEmbed } = require('../ui/embed_builder.js');
 const { AttachmentBuilder } = require('discord.js');
-const config = require('../config/manage_environments.js');
+const config = require('../../config/manage_environments.js');
 
 const TARGET_CHANNEL_ID = config.channels.stockNotice;
 

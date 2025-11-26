@@ -1,20 +1,20 @@
 const { Events } = require('discord.js');
-const { logToDiscord } = require('../../utils/catch_log.js');
-const { WhiteList } = require('../../utils/database.js');
+const { logToDiscord } = require('../../utils/system/catch_log.js');
+const { WhiteList } = require('../../utils/system/database.js');
 const config = require('../../config/manage_environments.js');
 
 const BASE_MEMBER_ROLE_ID = config.discord.baseMemberRoleId;
 
 module.exports = {
     name: Events.GuildMemberAdd,
-    
+
     /**
      * @param {import('discord.js').GuildMember} member - 새로 입장한 멤버 객체
      * @param {import('discord.js').Client} client - 봇 클라이언트
      */
     async execute(member, client) {
-        
-        if (client.amIActive === false) { 
+
+        if (client.amIActive === false) {
             return;
         }
 
@@ -38,7 +38,7 @@ module.exports = {
 
             const foundUser = WhiteList.findOne({ memberId: member.user.id });
             const isWhite = foundUser.isWhite || null;
-    
+
             // 새로 오거나(null), 다시 들어온 사람이 안전한 경우(true) 모두 아래 if문 무시 가능
             if (!isWhite) {
                 console.error(`[Warn] 멤버가 현재 블랙 상태입니다.`);
@@ -60,7 +60,7 @@ module.exports = {
 
         } catch (error) {
             console.error(`[GuildMemberAdd] ${member.user.tag}에게 역할 부여 중 오류 발생:`, error);
-            
+
             if (error.code === 50013) {
                 logToDiscord(client, 'ERROR', `새 멤버 역할 부여 실패: 봇이 부여하려는 역할보다 상위 역할이 아니거나 '역할 관리' 권한이 없습니다.`, null, error, 'GuildMemberAdd');
             } else {

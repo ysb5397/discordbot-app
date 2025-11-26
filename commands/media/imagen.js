@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, AttachmentBuilder, InteractionContextType, Client, GatewayIntentBits } = require('discord.js');
-const { generateImage } = require('../utils/ai_helper.js');
-const { createImageGenEmbed } = require('../utils/embed_builder.js');
-const { logToDiscord } = require('../utils/catch_log.js');
+const { generateImage } = require('../../utils/ai/ai_helper.js');
+const { createImageGenEmbed } = require('../../utils/ui/embed_builder.js');
+const { logToDiscord } = require('../../utils/system/catch_log.js');
 
 const client = new Client({
     intents: [

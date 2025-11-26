@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { REST, Routes } = require('discord.js');
-const { DeploymentStatus } = require('./utils/database');
+const { DeploymentStatus } = require('./utils/system/database');
 const config = require('./config/manage_environments');
 
 const DISCORD_BOT_TOKEN = config.discord.token;
@@ -89,7 +89,7 @@ async function cleanAllCommands() {
 }
 
 async function addAllCommands(commands, commandFiles) {
-for (const file of commandFiles) {
+    for (const file of commandFiles) {
         const filePath = path.join(commandsPath, file);
         const command = require(filePath);
         if ('data' in command && 'execute' in command) {
@@ -100,12 +100,12 @@ for (const file of commandFiles) {
     }
 
     console.log(`(/) ${commands.length}개의 명령어를 [글로벌]로 등록 시도 중...`);
-    
+
     await rest.put(
         Routes.applicationCommands(DISCORD_CLIENT_ID), // 글로벌로 등록
         { body: commands },
     );
-    
+
     console.log(`(/) ${commands.length}개의 [글로벌] 명령어 등록 성공.`);
 }
 
@@ -118,7 +118,7 @@ module.exports = {
 if (require.main === module) {
     console.log('[수동 스크립트 실행 모드]');
     console.log('현재 꼬여있는 [글로벌] 및 [길드] 명령어를 모두 청소합니다...');
-    
+
     // DB 연결이 필요할 수 있으므로, connectDB를 임포트해서 실행
     const { connectDB } = require('./utils/database');
     (async () => {

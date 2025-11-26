@@ -1,6 +1,6 @@
 const { Events } = require('discord.js');
-const GeminiVoiceManager = require('../../utils/voice_helper.js');
-const YoutubeManager = require('../../utils/youtube_helper.js');
+const GeminiVoiceManager = require('../../utils/media/voice_helper.js');
+const YoutubeManager = require('../../utils/media/youtube_helper.js');
 const config = require('../../config/manage_environments.js');
 
 const GEMINI_CHANNEL_ID = config.channels.geminiVoice;
@@ -11,7 +11,7 @@ module.exports = {
     name: Events.VoiceStateUpdate,
     async execute(oldState, newState) {
         const client = newState.client || oldState.client;
-        
+
         if (!client.voiceManagers) {
             client.voiceManagers = new Map();
         }
@@ -109,8 +109,8 @@ module.exports = {
                 if (error.code === 10003) {
                     console.warn(`[Voice Event] 채널(${channelIdLeft})을 찾을 수 없어 매니저를 강제 제거합니다.`);
                     if (activeManagers.has(channelIdLeft)) {
-                         activeManagers.get(channelIdLeft).destroy();
-                         activeManagers.delete(channelIdLeft);
+                        activeManagers.get(channelIdLeft).destroy();
+                        activeManagers.delete(channelIdLeft);
                     }
                 } else {
                     console.error("[Voice Event] ❌ 채널 상태 확인 및 퇴장 처리 중 오류:", error);

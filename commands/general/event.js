@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, PermissionsBitField, ChannelType, GuildScheduledEventPrivacyLevel, GuildScheduledEventEntityType } = require('discord.js');
-const { parseKSTDateTime } = require('../utils/time.js');
+const { parseKSTDateTime } = require('../../utils/system/time.js');
 
 /**
  * 길드의 예약된 이벤트를 이름으로 찾는 헬퍼 함수
@@ -75,7 +75,7 @@ module.exports = {
                     channel: channel.id,
                 });
                 await interaction.editReply(`✅ 이벤트 "${name}"이(가) 성공적으로 생성되었습니다!`);
-            
+
             } else if (subcommand === 'edit') {
                 const name = interaction.options.getString('name');
                 const targetEvent = await findEventByName(interaction, name);
@@ -83,7 +83,7 @@ module.exports = {
                 if (!targetEvent) {
                     return interaction.editReply(`❌ 이름이 "${name}"인 이벤트를 찾을 수 없습니다.`);
                 }
-                
+
                 const editOptions = {
                     name: interaction.options.getString('new_name') || undefined,
                     description: interaction.options.getString('new_description') || undefined,
@@ -93,7 +93,7 @@ module.exports = {
                 };
 
                 const filteredOptions = Object.fromEntries(Object.entries(editOptions).filter(([_, v]) => v !== undefined));
-                
+
                 if (Object.keys(filteredOptions).length === 0) {
                     return interaction.editReply('⚠️ 수정할 내용을 하나 이상 입력해주세요.');
                 }
@@ -108,7 +108,7 @@ module.exports = {
                 if (!targetEvent) {
                     return interaction.editReply(`❌ 이름이 "${name}"인 이벤트를 찾을 수 없습니다.`);
                 }
-                
+
                 await targetEvent.delete();
                 await interaction.editReply(`✅ 이벤트 "${name}"이(가) 성공적으로 삭제되었습니다!`);
             }

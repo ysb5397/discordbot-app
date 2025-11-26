@@ -1,7 +1,7 @@
 const cron = require('node-cron');
-const { SchedulerConfig } = require('./database.js');
-const { deepResearch } = require('./ai_helper.js');
-const { createAiResponseEmbed } = require('./embed_builder.js');
+const { SchedulerConfig } = require('../system/database.js');
+const { deepResearch } = require('../ai/ai_helper.js');
+const { createAiResponseEmbed } = require('../ui/embed_builder.js');
 const { AttachmentBuilder } = require('discord.js');
 
 let briefingTask = null;

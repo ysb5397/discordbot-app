@@ -1,9 +1,9 @@
 // events/interactionCreate.js
 
 const { Events } = require('discord.js');
-const { logToDiscord } = require('../utils/catch_log.js');
+const { logToDiscord } = require('../utils/system/catch_log.js');
 const config = require('../config/manage_environments.js');
-const { WhiteList } = require('../utils/database.js');
+const { WhiteList } = require('../utils/system/database.js');
 
 const ALLOWED_GUILD_ID = config.discord.guildId;
 const OWNER_ID = config.discord.ownerId;
@@ -20,14 +20,14 @@ module.exports = {
             foundUser = await WhiteList.findOne({ memberId: interaction.user.id });
         } catch (dbErr) {
             console.error('화이트리스트 조회 실패:', dbErr);
-            return interaction.reply({ content: '데이터베이스 오류로 권한을 확인할 수 없습니다.', ephemeral: true }).catch(() => {});
+            return interaction.reply({ content: '데이터베이스 오류로 권한을 확인할 수 없습니다.', ephemeral: true }).catch(() => { });
         }
 
         if (interaction.guildId !== ALLOWED_GUILD_ID && (interaction.user.id !== OWNER_ID || !foundUser.isWhite)) {
-            return interaction.reply({ 
-                content: '이 봇은 승인된 서버 내부 또는 화이트 리스트 유저만 사용할 수 있습니다. 🔒', 
+            return interaction.reply({
+                content: '이 봇은 승인된 서버 내부 또는 화이트 리스트 유저만 사용할 수 있습니다. 🔒',
                 ephemeral: true
-            }).catch(() => {});
+            }).catch(() => { });
         }
 
         if (!interaction.isChatInputCommand()) return;
@@ -43,7 +43,7 @@ module.exports = {
             await command.execute(interaction);
         } catch (error) {
             console.error(`Error executing ${interaction.commandName}`);
-            
+
             await logToDiscord(client, 'ERROR', `/${interaction.commandName} 명령어 실행 중 오류 발생`, interaction, error);
 
             try {

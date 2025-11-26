@@ -1,7 +1,7 @@
 const { Events, ChannelType, ActivityType } = require('discord.js');
-const { startEarthquakeMonitor } = require('../utils/earthquake');
+const { startEarthquakeMonitor } = require('../utils/system/earthquake');
 const { joinVoiceChannel } = require('@discordjs/voice');
-const { BotStatus } = require('../utils/database');
+const { BotStatus } = require('../utils/system/database');
 const config = require('../config/manage_environments');
 
 const TARGET_CHANNEL_ID = config.channels.autoJoin;

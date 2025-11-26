@@ -3,14 +3,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const config = require('./config/manage_environments.js');
-const { connectDB } = require('./utils/database');
-const { logToDiscord } = require('./utils/catch_log');
+const { connectDB } = require('./utils/system/database');
+const { logToDiscord } = require('./utils/system/catch_log');
 const { registerGlobalCommands } = require('./deploy-commands.js');
 const { startApiServer } = require('./config/api/server');
-const { reloadBriefingSchedule } = require('./utils/briefing_scheduler.js');
-const { startCodeReviewSchedule } = require('./utils/code_review_scheduler.js');
-const { startMemoryConsolidationSchedule } = require('./utils/memory_scheduler.js');
-const { startStockAnalysisSchedule } = require('./utils/stock_scheduler.js');
+const { reloadBriefingSchedule } = require('./utils/scheduler/briefing_scheduler.js');
+const { startCodeReviewSchedule } = require('./utils/scheduler/code_review_scheduler.js');
+const { startMemoryConsolidationSchedule } = require('./utils/scheduler/memory_scheduler.js');
+const { startStockAnalysisSchedule } = require('./utils/scheduler/stock_scheduler.js');
 
 // --- 1. 클라이언트 초기화 ---
 const client = new Client({

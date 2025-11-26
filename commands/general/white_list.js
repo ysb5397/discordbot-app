@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, InteractionContextType, PermissionsBitField } = require('discord.js');
-const { WhiteList } = require('../utils/database.js');
+const { WhiteList } = require('../../utils/system/database.js');
 const { content } = require('googleapis/build/src/apis/content/index.js');
-const config = require('../config/manage_environments.js');
+const config = require('../../config/manage_environments.js');
 
 const OWNER_ID = config.discord.ownerId;
 const BASE_MEMBER_ROLE_ID = config.discord.baseMemberRoleId;
@@ -34,12 +34,12 @@ module.exports = {
             console.error('[white_list] 관리자가 아닙니다.');
             return interaction.reply({ content: '❌ 관리자만 이 명령어를 사용할 수 있어요.', ephemeral: true });
         }
-        
+
         const member = interaction.options.getMember('member');
         const setSafety = interaction.options.getBoolean('set_safety') || false;
 
         if (!member) {
-             return interaction.reply({ content: '❌ 서버에서 해당 멤버를 찾을 수 없어요. 유저 ID를 다시 확인해 주세요.', ephemeral: true });
+            return interaction.reply({ content: '❌ 서버에서 해당 멤버를 찾을 수 없어요. 유저 ID를 다시 확인해 주세요.', ephemeral: true });
         }
 
         let role;
@@ -54,7 +54,7 @@ module.exports = {
         }
 
         await interaction.deferReply({ ephemeral: true });
-        
+
         try {
             const foundMember = await WhiteList.findOne({ memberId: member.id });
             if (foundMember == null) {
@@ -66,7 +66,7 @@ module.exports = {
                 });
 
                 await newWhiteList.save();
-                
+
                 await interaction.followUp({ content: `화리 추가가 완료됐어요! / 추가된 멤버 ID : ${member.id}`, ephemeral: true });
                 return;
             }
@@ -85,17 +85,17 @@ module.exports = {
                 }
                 throw roleError;
             }
-            
+
             await foundMember.updateOne({
                 isWhite: setSafety
             });
-            
+
             await interaction.editReply({ content: `화리 수정이 완료됐어요! / 수정된 멤버 ID : ${member.id}` });
 
         } catch (e) {
             console.error('whiteList 수정에 실패했어요....', e);
             if (!interaction.replied) {
-                 await interaction.editReply({ content: '❌ 명령 실행 중 알 수 없는 오류가 발생했어요.', ephemeral: true });
+                await interaction.editReply({ content: '❌ 명령 실행 중 알 수 없는 오류가 발생했어요.', ephemeral: true });
             }
         }
     },

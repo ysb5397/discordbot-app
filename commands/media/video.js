@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, AttachmentBuilder } = require('discord.js');
-const { startVideoGeneration, checkVideoGenerationStatus, downloadVideoFromUri } = require('../utils/ai_helper.js');
-const { createVideoGenEmbed } = require('../utils/embed_builder.js');
+const { startVideoGeneration, checkVideoGenerationStatus, downloadVideoFromUri } = require('../../utils/ai/ai_helper.js');
+const { createVideoGenEmbed } = require('../../utils/ui/embed_builder.js');
 
 const POLLING_INTERVAL = 10000;
 const MAX_ATTEMPTS = 18;
@@ -35,20 +35,20 @@ module.exports = {
 
                 if (statusResponse.done) {
                     await interaction.editReply('✅ 영상 생성이 완료되었습니다! 최종 파일을 다운로드합니다...');
-                    
+
                     const videoUri = statusResponse.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri;
 
                     if (!videoUri) {
                         console.error("영상 URI를 찾을 수 없습니다. 전체 응답 객체:", JSON.stringify(statusResponse, null, 2));
                         throw new Error('생성된 영상의 URI를 응답에서 찾을 수 없습니다.');
                     }
-                    
+
                     const videoBuffer = await downloadVideoFromUri(videoUri);
                     const attachment = new AttachmentBuilder(videoBuffer, { name: 'generated-video.mp4' });
 
                     const endTime = Date.now();
                     const duration = endTime - startTime;
-                    
+
                     const embedTitle = prompt.length > 250 ? prompt.substring(0, 250) + '...' : prompt;
 
                     const resultEmbed = createVideoGenEmbed({
@@ -56,7 +56,7 @@ module.exports = {
                         duration: duration,
                         user: interaction.user
                     });
-                        
+
                     await interaction.editReply({
                         content: `🎉 영상이 준비됐어!`,
                         embeds: [resultEmbed],
@@ -72,11 +72,11 @@ module.exports = {
 
         } catch (error) {
             console.error('[/video] Error:', error);
-            
+
             if (error.message.includes('Request entity too large')) {
                 await interaction.editReply({ content: `❌ 영상 생성에는 성공했지만, 파일 크기가 너무 커서(25MB 이상) 디스코드에 업로드할 수 없어... 😥` });
             } else if (error.message.includes('타임아웃되었습니다')) {
-                 await interaction.editReply({ content: `❌ ${error.message}` });
+                await interaction.editReply({ content: `❌ ${error.message}` });
             } else {
                 throw error;
             }

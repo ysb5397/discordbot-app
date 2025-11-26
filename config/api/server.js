@@ -1,10 +1,10 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
-const config = require('../manage_environments');
-const { ApiKey } = require('../../utils/database');
-const { callFlowise } = require('../../utils/ai_helper');
-const { logToDiscord } = require('../../utils/catch_log');
+const config = require('../manage_environments.js');
+const { ApiKey } = require('../../utils/system/database.js');
+const { callFlowise } = require('../../utils/ai/ai_helper.js');
+const { logToDiscord } = require('../../utils/system/catch_log.js');
 
 // Express 앱 생성
 const app = express();

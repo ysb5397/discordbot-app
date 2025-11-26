@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
-const { SchedulerConfig } = require('../utils/database.js');
-const { reloadBriefingSchedule } = require('../utils/briefing_scheduler.js');
-const config = require('../config/manage_environments.js');
+const { SchedulerConfig } = require('../../utils/system/database.js');
+const { reloadBriefingSchedule } = require('../../utils/scheduler/briefing_scheduler.js');
+const config = require('../../config/manage_environments.js');
 
 const OWNER_ID = config.discord.ownerId;
 
@@ -59,7 +59,7 @@ module.exports = {
 
                 await SchedulerConfig.findOneAndUpdate(
                     { type: 'EARTHQUAKE', guildId: 'GLOBAL' },
-                    { 
+                    {
                         scheduleValue: interval.toString(),
                         isActive: true
                     },
@@ -67,8 +67,8 @@ module.exports = {
                 );
 
                 await interaction.editReply(`✅ **지진 감지 주기 설정 완료!**\n이제 **${interval}초**마다 기상청 정보를 확인해.`);
-            } 
-            
+            }
+
             else if (subcommand === 'briefing') {
                 const timeStr = interaction.options.getString('time');
                 const topic = interaction.options.getString('topic') || "오늘의 주요 뉴스 및 트렌드";

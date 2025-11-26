@@ -2,10 +2,10 @@
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { GoogleGenAI, Modality } = require('@google/genai');
-const { logToDiscord } = require('./catch_log.js');
+const { logToDiscord } = require('../system/catch_log.js');
 const { PassThrough } = require('stream');
 const fetch = require('node-fetch');
-const config = require('../config/manage_environments.js');
+const config = require('../../config/manage_environments.js');
 
 const PYTHON_AI_SERVICE_URL = config.ai.pythonServiceUrl;
 const GOOGLE_API_KEY = config.ai.geminiKey;

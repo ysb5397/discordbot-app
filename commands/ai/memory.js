@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
-const { Interaction } = require('../utils/database.js');
-const { getEmbedding, generateAttachmentDescription } = require('../utils/ai_helper.js');
-const { createBaseEmbed } = require('../utils/embed_builder.js');
+const { Interaction } = require('../../utils/system/database.js');
+const { getEmbedding, generateAttachmentDescription } = require('../../utils/ai/ai_helper.js');
+const { createBaseEmbed } = require('../../utils/ui/embed_builder.js');
 
 /** 헬퍼: 내용 축약 */
 function formatContent(content) {

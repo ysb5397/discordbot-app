@@ -1,5 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
-const { createBaseEmbed } = require('../utils/embed_builder.js');
+const { createBaseEmbed } = require('../../utils/ui/embed_builder.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -8,15 +8,15 @@ module.exports = {
     async execute(interaction) {
         const { commands } = interaction.client;
 
-        const filteredCommands = commands.filter(cmd => 
-            cmd.data.default_member_permissions === undefined || 
+        const filteredCommands = commands.filter(cmd =>
+            cmd.data.default_member_permissions === undefined ||
             !interaction.member.permissions.has(cmd.data.default_member_permissions)
         );
 
         const commandFields = filteredCommands.map(command => {
             const commandName = `/${command.data.name}`;
             const description = command.data.description;
-            
+
             if (command.data.options && command.data.options.some(opt => opt.type === 1)) {
                 const subcommands = command.data.options
                     .filter(opt => opt.type === 1)
@@ -24,7 +24,7 @@ module.exports = {
                     .join('\n');
                 return { name: `🔹 ${commandName}`, value: `${description}\n${subcommands}` };
             }
-            
+
             return { name: `🔹 /${command.data.name}`, value: command.data.description };
         });
 

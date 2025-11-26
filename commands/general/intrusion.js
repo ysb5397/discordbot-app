@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
-const config = require('../config/manage_environments');
+const config = require('../../config/manage_environments');
 
 OWNER_ID = config.discord.ownerId;
 

@@ -1,8 +1,8 @@
 // 파일 위치: /utils/logger.js
 const { Client, Interaction: DiscordInteraction } = require('discord.js');
-const { createLogEmbed } = require('./embed_builder.js');
-const config = require('../config/manage_environments.js');
-const { Interaction } = require('./database.js');
+const { createLogEmbed } = require('../ui/embed_builder.js');
+const config = require('../../config/manage_environments.js');
+const { Interaction } = require('../system/database.js');
 
 const LOG_CHANNEL_ID = config.discord.logChannelId;
 
@@ -35,7 +35,7 @@ async function logToDiscord(client, level, message, interaction = null, error = 
     } else if (origin) {
         consoleMessage += ` (Origin: ${origin})`;
     }
-    
+
     switch (level) {
         case 'ERROR':
             console.error(consoleMessage, error || '');
@@ -87,9 +87,9 @@ async function logToDiscord(client, level, message, interaction = null, error = 
         const embed = createLogEmbed({ message, commandName: interaction?.commandName, user: interaction?.user, type: level });
 
         if (error) {
-            embed.addFields([{ 
-                name: 'Error Details', 
-                value: '```' + (error.stack || error.message).substring(0, 1000) + '```' 
+            embed.addFields([{
+                name: 'Error Details',
+                value: '```' + (error.stack || error.message).substring(0, 1000) + '```'
             }]);
         }
 
@@ -100,14 +100,14 @@ async function logToDiscord(client, level, message, interaction = null, error = 
                 { name: '📍 Guild', value: `${interaction.guild?.name || 'DM'}`, inline: true },
                 { name: '💬 Command', value: commandName, inline: true }
             ]);
-            
-             if (level === 'ERROR' && interaction.isCommand()) {
-                 embed.setTitle(`${levelInfo.emoji} ${levelInfo.titlePrefix}: ${commandName}`);
-             }
-        } 
-        
+
+            if (level === 'ERROR' && interaction.isCommand()) {
+                embed.setTitle(`${levelInfo.emoji} ${levelInfo.titlePrefix}: ${commandName}`);
+            }
+        }
+
         else if (origin) {
-            embed.addFields([ { name: '💥 Origin', value: String(origin), inline: true } ]);
+            embed.addFields([{ name: '💥 Origin', value: String(origin), inline: true }]);
         }
 
         await channel.send({ embeds: [embed] });

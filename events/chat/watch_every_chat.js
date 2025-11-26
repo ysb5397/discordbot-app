@@ -1,7 +1,7 @@
 const { Events } = require('discord.js');
-const { Interaction, Urls } = require('../../utils/database');
-const { generateAttachmentDescription, generateMentionReply } = require('../../utils/ai_helper');
-const config = require('../../config/manage_environments');
+const { Interaction, Urls } = require('../../utils/system/database.js');
+const { generateAttachmentDescription, generateMentionReply } = require('../../utils/ai/ai_helper.js');
+const config = require('../../config/manage_environments.js');
 
 // config에서 설정값 가져오기
 const excludeChannelId = config.channels.ignoreAiChat;

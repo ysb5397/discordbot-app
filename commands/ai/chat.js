@@ -1,8 +1,8 @@
 const { SlashCommandBuilder, InteractionContextType } = require('discord.js');
-const { Interaction } = require('../utils/database.js');
-const { getChatResponseStreamOrFallback, getEmbedding, searchWeb } = require('../utils/ai_helper.js');
-const { logToDiscord } = require('../utils/catch_log.js');
-const { createAiResponseEmbed } = require('../utils/embed_builder.js');
+const { Interaction } = require('../../utils/system/database.js');
+const { getChatResponseStreamOrFallback, getEmbedding, searchWeb } = require('../../utils/ai/ai_helper.js');
+const { logToDiscord } = require('../../utils/system/catch_log.js');
+const { createAiResponseEmbed } = require('../../utils/ui/embed_builder.js');
 
 /**
  * 유사한 기억을 검색하여 프롬프트에 추가할 텍스트를 생성하는 함수

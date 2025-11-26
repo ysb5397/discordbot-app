@@ -2,10 +2,10 @@
 
 const cron = require('node-cron');
 const { exec } = require('child_process');
-const { analyzeCode } = require('./ai_helper.js');
-const { createAiResponseEmbed } = require('./embed_builder.js');
+const { analyzeCode } = require('../ai/ai_helper.js');
+const { createAiResponseEmbed } = require('../ui/embed_builder.js');
 const { AttachmentBuilder } = require('discord.js');
-const config = require('../config/manage_environments.js');
+const config = require('../../config/manage_environments.js');
 
 // 리뷰 결과를 받을 채널 ID (환경변수 혹은 기존 로그 채널 사용)
 // 없으면 로그 채널로 쏘도록 설정

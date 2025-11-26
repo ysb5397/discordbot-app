@@ -3,10 +3,10 @@ const prism = require('prism-media');
 const { Readable } = require('stream');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegStatic = require('ffmpeg-static');
-const { Interaction } = require('./database');
-const { getTranscript, getLiveAiAudioResponse, generateMongoFilter } = require('./ai_helper');
+const { Interaction } = require('../system/database');
+const { getTranscript, getLiveAiAudioResponse, generateMongoFilter } = require('../ai/ai_helper');
 const { spawn } = require('child_process');
-const config = require('../config/manage_environments.js');
+const config = require('../../config/manage_environments.js');
 
 // [NEW] config에서 값 가져오기 (없으면 기본값 48000)
 const AUDIO_CONFIG = {
@@ -71,12 +71,12 @@ class GeminiVoiceManager {
             this.#endSession(true);
         });
     }
-    
+
     #startListening() {
         console.log('[디버그] 유저 발화 감지(speaking) 리스너를 활성화합니다.');
         if (!this.connection || !this.connection.receiver) {
-             console.warn('[디버그] connection 또는 receiver가 없어 리스닝을 시작할 수 없습니다.');
-             return;
+            console.warn('[디버그] connection 또는 receiver가 없어 리스닝을 시작할 수 없습니다.');
+            return;
         }
 
         this.connection.receiver.speaking.on('start', (userId) => {
@@ -84,10 +84,10 @@ class GeminiVoiceManager {
                 console.log(`[디버그] [${userId}]님이 말을 시작했지만, 이미 다른 세션이 진행 중이라 무시합니다.`);
                 return;
             }
-            this.activeSession = { 
-                userId, 
-                liveSession: null, 
-                streams: null, 
+            this.activeSession = {
+                userId,
+                liveSession: null,
+                streams: null,
                 smoothingBufferStream: null,
                 ffmpegProcess: null,
                 aiAudioStream: null,
@@ -97,7 +97,7 @@ class GeminiVoiceManager {
             this.#processUserSpeech(userId);
         });
     }
-    
+
     async #processUserSpeech(userId) {
         let ffmpegProcess = null;
         let smoothingBufferStream = null;
@@ -112,14 +112,14 @@ class GeminiVoiceManager {
                 this.#endSession(true);
                 return;
             }
-            
+
             if (this.activeSession) {
                 this.activeSession.streams = { opusStream, pcmStream };
             }
 
             outputStream.on('end', async () => {
                 console.log(`[디버그] (voice_helper) 녹음(FFmpeg) 스트림 종료 감지!`);
-                
+
                 if (!this.activeSession) {
                     console.warn('[디버그] 세션이 이미 종료되어 turnComplete를 보낼 수 없습니다.');
                     return;
@@ -127,28 +127,28 @@ class GeminiVoiceManager {
 
                 try {
                     if (this.activeSession.sessionReadyPromise) {
-                         console.log('[디버그] (end event) AI 세션 준비 대기 중...');
-                         await this.activeSession.sessionReadyPromise;
+                        console.log('[디버그] (end event) AI 세션 준비 대기 중...');
+                        await this.activeSession.sessionReadyPromise;
                     }
-                    
+
                     if (this.activeSession && this.activeSession.liveSession) {
                         console.log(`[디버그] ➡️ AI에게 'turnComplete: true' 신호를 전송합니다!`);
                         this.activeSession.liveSession.sendClientContent({ turnComplete: true });
                     } else {
-                         console.warn(`[디버그] ⚠️ AI 세션이 준비되지 않아 turnComplete를 보내지 못했습니다.`);
+                        console.warn(`[디버그] ⚠️ AI 세션이 준비되지 않아 turnComplete를 보내지 못했습니다.`);
                     }
                 } catch (err) {
-                     console.error('[디버그] (end event) 대기 중 오류:', err);
+                    console.error('[디버그] (end event) 대기 중 오류:', err);
                 }
             });
 
             console.log(`[디버그] 2. AI 응답 생성을 요청하고 "버퍼링"을 시작합니다...`);
-            
+
             const { aiTranscriptPromise, smoothingBufferStream: apiBuffer, sessionReadyPromise } = await this.#getAiResponse(userId, outputStream, this.activeSession);
 
-            if (this.activeSession) { 
-                 this.activeSession.sessionReadyPromise = sessionReadyPromise;
-                 this.activeSession.smoothingBufferStream = apiBuffer; 
+            if (this.activeSession) {
+                this.activeSession.sessionReadyPromise = sessionReadyPromise;
+                this.activeSession.smoothingBufferStream = apiBuffer;
             }
             smoothingBufferStream = apiBuffer;
 
@@ -156,16 +156,16 @@ class GeminiVoiceManager {
 
             ffmpegProcess = spawn(ffmpegStatic, [
                 '-hide_banner', '-loglevel', 'error', // 로그 레벨 조정 (verbose -> error)
-                '-f', 's16le', '-ac', '1', '-ar', '24000', 
+                '-f', 's16le', '-ac', '1', '-ar', '24000',
                 '-i', 'pipe:0',
                 '-af', 'aresample=48000',      // 1. 48kHz로 리샘플링
                 '-ac', '2',                     // 2. 2채널(스테레오)로
                 '-f', 's16le',                   // 3. 포맷을 Opus로 지정
                 'pipe:1'
-            ], { 
-                stdio: ['pipe', 'pipe', 'pipe'] 
+            ], {
+                stdio: ['pipe', 'pipe', 'pipe']
             });
-            
+
             if (this.activeSession) {
                 this.activeSession.ffmpegProcess = ffmpegProcess;
             }
@@ -177,34 +177,34 @@ class GeminiVoiceManager {
             ffmpegProcess.stdin.on('error', (err) => {
                 if (err.code !== 'EPIPE') console.error('[디버그 LOG] ❌ FFmpeg stdin 오류:', err.message);
             });
-            
+
             ffmpegProcess.stdout.on('error', (err) => {
-                 console.error('[디버그 LOG] ❌ FFmpeg stdout 오류:', err.message);
+                console.error('[디버그 LOG] ❌ FFmpeg stdout 오류:', err.message);
             });
 
             smoothingBufferStream.on('error', (err) => {
                 console.error('[디버그 LOG] ❌ smoothingBufferStream 오류:', err.message);
             });
-            
+
             smoothingBufferStream.pipe(ffmpegProcess.stdin);
-            
-            const resource = createAudioResource(ffmpegProcess.stdout, { 
+
+            const resource = createAudioResource(ffmpegProcess.stdout, {
                 inputType: StreamType.Raw
             });
 
             resource.playStream.on('error', (err) => {
                 console.error(`[디버그 LOG] ❌ AudioResource 오류: ${err.message}`);
             });
-            
+
             console.log('[디버그] -> 재생: Opus 리소스를 생성하여 플레이어에서 재생을 *시작*합니다.');
             this.player.play(resource);
 
             const aiTranscript = await aiTranscriptPromise;
 
             console.log(`[디버그] ✅ 4. AI 답변 텍스트 수신 완료 (전체 텍스트: "${aiTranscript}").`);
-            
+
             const botResponseToSave = aiTranscript.trim() || `(AI가 오디오로 응답함)`;
-            
+
             console.log(`[디버그] 5. 대화 내용을 DB에 저장합니다.`);
             await this.#saveInteraction(userId, "(User spoke)", botResponseToSave);
 
@@ -216,17 +216,17 @@ class GeminiVoiceManager {
 
     #recordUserAudio(userId) {
         console.log(`[디버그] -> 녹음: [${userId}]님의 오디오 스트림을 구독합니다.`);
-        const opusStream = this.connection.receiver.subscribe(userId, { 
-            end: { 
+        const opusStream = this.connection.receiver.subscribe(userId, {
+            end: {
                 behavior: EndBehaviorType.AfterSilence,
                 duration: 1000
             }
         });
-        
-        const pcmStream = new prism.opus.Decoder({ 
-            frameSize: AUDIO_CONFIG.FRAME_SIZE, 
-            channels: AUDIO_CONFIG.CHANNELS, 
-            rate: AUDIO_CONFIG.DISCORD_SAMPLE_RATE 
+
+        const pcmStream = new prism.opus.Decoder({
+            frameSize: AUDIO_CONFIG.FRAME_SIZE,
+            channels: AUDIO_CONFIG.CHANNELS,
+            rate: AUDIO_CONFIG.DISCORD_SAMPLE_RATE
         });
 
         opusStream.pipe(pcmStream);
@@ -243,14 +243,14 @@ class GeminiVoiceManager {
                     console.error('[디버그] ❌ -> 녹음: FFmpeg 오류 발생:', err);
                 }
             });
-        
+
         opusStream.on('end', () => {
             console.log(`[디버그] -> 녹음: Opus 스트림 종료. pcmStream 종료를 알립니다.`);
-            try { pcmStream.end(); } catch(e) {}
+            try { pcmStream.end(); } catch (e) { }
         });
 
-        return { 
-            opusStream, 
+        return {
+            opusStream,
             pcmStream,
             outputStream: ffmpegProcess.stream()
         };
@@ -262,7 +262,7 @@ class GeminiVoiceManager {
         console.log(`[디버그] -> AI 응답: 최종 프롬프트와 오디오 스트림으로 Gemini Live API를 호출합니다.`);
         return getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSession);
     }
-    
+
     async #saveInteraction(userId, userTranscript, aiTranscript) {
         if (!aiTranscript) return;
         try {
@@ -291,40 +291,40 @@ class GeminiVoiceManager {
 
         if (session.streams) {
             if (session.streams.opusStream) {
-                try { session.streams.opusStream.destroy(); } catch(e) {}
+                try { session.streams.opusStream.destroy(); } catch (e) { }
             }
             if (session.streams.pcmStream) {
-                try { session.streams.pcmStream.destroy(); } catch(e) {}
+                try { session.streams.pcmStream.destroy(); } catch (e) { }
             }
         }
 
         if (session.liveSession) {
-            try { 
+            try {
                 console.log('[디버그] -> 세션 종료: Gemini Live API 연결을 닫습니다.');
-                session.liveSession.close(); 
-            } catch(e) { 
-                console.error('[디버그] Live 세션 종료 중 오류:', e); 
+                session.liveSession.close();
+            } catch (e) {
+                console.error('[디버그] Live 세션 종료 중 오류:', e);
             }
         }
 
         if (session.smoothingBufferStream && !session.smoothingBufferStream.destroyed) {
-            try { session.smoothingBufferStream.destroy(); } catch(e) {}
+            try { session.smoothingBufferStream.destroy(); } catch (e) { }
         }
 
         if (session.ffmpegProcess) {
-             if (force) {
+            if (force) {
                 if (!session.ffmpegProcess.killed) {
                     console.log(`[디버그] -> 세션 종료 (강제): 재생용 FFmpeg(PID: ${session.ffmpegProcess.pid})를 확인 사살(SIGKILL)합니다.`);
-                    session.ffmpegProcess.kill('SIGKILL'); 
+                    session.ffmpegProcess.kill('SIGKILL');
                 }
-             } else {
-                 setTimeout(() => {
-                     if (!session.ffmpegProcess.killed) {
-                         console.log(`[디버그] -> 세션 종료 (타임아웃): 재생용 FFmpeg(PID: ${session.ffmpegProcess.pid})를 강제 종료합니다.`);
-                         session.ffmpegProcess.kill('SIGKILL');
-                     }
-                 }, 2000);
-             }
+            } else {
+                setTimeout(() => {
+                    if (!session.ffmpegProcess.killed) {
+                        console.log(`[디버그] -> 세션 종료 (타임아웃): 재생용 FFmpeg(PID: ${session.ffmpegProcess.pid})를 강제 종료합니다.`);
+                        session.ffmpegProcess.kill('SIGKILL');
+                    }
+                }, 2000);
+            }
         }
     }
 }

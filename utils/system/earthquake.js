@@ -1,7 +1,7 @@
-const { createEarthquakeEmbed } = require('./embed_builder.js');
+const { createEarthquakeEmbed } = require('../ui/embed_builder.js');
 const { JSDOM } = require('jsdom');
-const { Interaction, SchedulerConfig } = require('./database.js');
-const config = require('../config/manage_environments.js');
+const { Interaction, SchedulerConfig } = require('../system/database.js');
+const config = require('../../config/manage_environments.js');
 
 const EQK_AUTH_KEY = config.etc.earthquakeKey;
 
@@ -55,7 +55,7 @@ async function checkEarthquakeAndNotify(client) {
         }
         const xmlText = await response.text();
         const dom = new JSDOM(xmlText, { contentType: "application/xml" });
-        
+
         const eqInfo = dom.window.document.querySelector("info");
 
         if (!eqInfo) {
@@ -98,9 +98,9 @@ async function checkEarthquakeAndNotify(client) {
 
 async function scheduleCheck(client) {
     try {
-        if (client.amIActive === false) { 
+        if (client.amIActive === false) {
             console.log('[EQK] [Main Bot] 스탠바이 모드이므로 지진 확인을 건너뜁니다.');
-            setTimeout(() => scheduleCheck(client), currentDelay); 
+            setTimeout(() => scheduleCheck(client), currentDelay);
             return;
         }
 

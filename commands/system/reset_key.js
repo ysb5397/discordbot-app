@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
-const { ApiKey } = require('../utils/database');
+const { ApiKey } = require('../../utils/system/database');
 const crypto = require('crypto');
 
 const OWNER_ID = process.env.MY_DISCORD_USER_ID;
@@ -9,10 +9,10 @@ module.exports = {
         .setName('reset_key')
         .setDescription('Flutter 앱의 API 키를 재발급합니다. (관리자 전용)')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-    
+
     async execute(interaction) {
         if (interaction.user.id !== OWNER_ID) {
-            await interaction.reply({content: "이 명령어는 관리자만 사용가능합니다.", ephemeral: true});
+            await interaction.reply({ content: "이 명령어는 관리자만 사용가능합니다.", ephemeral: true });
             return;
         }
 

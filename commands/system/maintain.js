@@ -1,8 +1,8 @@
 // commands/maintain.js
 
 const { SlashCommandBuilder, AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { Interaction } = require('../utils/database.js');
-const config = require('../config/manage_environments.js');
+const { Interaction } = require('../../utils/system/database.js');
+const config = require('../../config/manage_environments.js');
 const fs = require('fs').promises;
 const path = require('path');
 
@@ -46,9 +46,9 @@ module.exports = {
         await interaction.deferReply();
 
         try {
-            const targetError = await Interaction.findOne({ 
-                type: 'ERROR', 
-                botResponse: 'Unresolved' 
+            const targetError = await Interaction.findOne({
+                type: 'ERROR',
+                botResponse: 'Unresolved'
             }).sort({ timestamp: -1 });
 
             if (!targetError) {
@@ -57,7 +57,7 @@ module.exports = {
 
             const errorData = targetError.content;
             const stackTrace = errorData.stack || '';
-            
+
             const fileInfo = parseStackTrace(stackTrace);
             let fileContext = "파일 위치를 특정할 수 없음 (라이브러리 내부 에러 등)";
             let fileName = "unknown";
@@ -70,7 +70,7 @@ module.exports = {
 
                     const startLine = Math.max(0, fileInfo.line - 16);
                     const endLine = Math.min(lines.length, fileInfo.line + 15);
-                    
+
                     fileContext = lines.slice(startLine, endLine)
                         .map((l, i) => {
                             const currentLine = startLine + i + 1;
@@ -133,7 +133,7 @@ module.exports = {
 
                 if (i.customId === `resolve_${targetError._id}`) {
                     await Interaction.updateOne(
-                        { _id: targetError._id }, 
+                        { _id: targetError._id },
                         { $set: { botResponse: 'Resolved' } }
                     );
 

@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, InteractionContextType, AttachmentBuilder } = require('discord.js');
-const { deepResearch } = require('../utils/ai_helper.js');
-const { createAiResponseEmbed } = require('../utils/embed_builder.js');
-const { logToDiscord } = require('../utils/catch_log.js');
+const { deepResearch } = require('../../utils/ai/ai_helper.js');
+const { createAiResponseEmbed } = require('../../utils/ui/embed_builder.js');
+const { logToDiscord } = require('../../utils/system/catch_log.js');
 
 module.exports = {
     data: new SlashCommandBuilder()

@@ -1,8 +1,8 @@
 // utils/memory_scheduler.js
 
 const cron = require('node-cron');
-const { Interaction, MemoryReport } = require('./database.js');
-const { consolidateMemories } = require('./ai_helper.js');
+const { Interaction, MemoryReport } = require('../system/database.js');
+const { consolidateMemories } = require('../ai/ai_helper.js');
 
 /**
  * 메모리 통합 스케줄러 시작
