@@ -4,7 +4,7 @@ const { DevProfile } = require('../../utils/system/database');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('train')
+        .setName('training')
         .setDescription('개발자 레벨업! 실무 역량 강화 퀴즈를 시작합니다.')
         .addStringOption(option =>
             option.setName('topic')
