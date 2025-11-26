@@ -89,6 +89,31 @@ const reportSchema = new mongoose.Schema({
 
 const MemoryReport = mongoose.model('MemoryReport', reportSchema);
 
+const devProfileSchema = new mongoose.Schema({
+    userId: { type: String, required: true, unique: true },
+    level: { type: Number, default: 1 },
+    xp: { type: Number, default: 0 },
+    skills: { type: Map, of: Number, default: {} },
+    weaknessTags: [String],
+    lastTrainedAt: { type: Date, default: Date.now }
+});
+
+const DevProfile = mongoose.model('DevProfile', devProfileSchema);
+
+const quizLogSchema = new mongoose.Schema({
+    userId: { type: String, required: true },
+    topic: String,
+    question: String,
+    userAnswer: String,
+    aiEvaluation: String,
+    isCorrect: Boolean,
+    difficulty: String,
+    embedding: { type: [Number], index: true },
+    timestamp: { type: Date, default: Date.now }
+});
+
+const QuizLog = mongoose.model('QuizLog', quizLogSchema);
+
 const connectDB = async () => {
     const mongoURI = MONGODB_URI;
     if (!mongoURI) {
@@ -132,5 +157,7 @@ module.exports = {
     BotStatus,
     WhiteList,
     SchedulerConfig,
-    MemoryReport
+    MemoryReport,
+    DevProfile,
+    QuizLog
 };
