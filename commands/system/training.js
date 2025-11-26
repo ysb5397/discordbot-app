@@ -13,64 +13,70 @@ module.exports = {
 
     async execute(interaction) {
         const topic = interaction.options.getString('topic');
+        const userId = interaction.user.id;
 
         // 1. 퀴즈 생성 중... (시간 걸림)
         await interaction.deferReply();
 
         try {
-            const quizData = await generateQuiz(interaction.user.id, topic);
+            const quizData = await generateQuiz(userId, topic);
 
             // 2. 문제 출제 (Embed)
             const quizEmbed = new EmbedBuilder()
-                .setTitle(`⚔️ [Lv.???] ${topic} 챌린지!`)
+                .setTitle(`⚔️ [${topic}] 챌린지!`)
                 .setDescription(`**난이도: ${quizData.difficulty}**\n\nQ. ${quizData.question}`)
                 .setColor(0x0099FF)
-                .setFooter({ text: '답변하려면 아래 버튼을 눌러!' });
+                .setFooter({ text: '준비되면 아래 버튼을 눌러서 답변을 제출해줘!' });
 
-            const answerBtn = new ActionRowBuilder().addComponents(
-                new (require('discord.js').ButtonBuilder)()
-                    .setCustomId('submit_answer')
-                    .setLabel('답변 제출하기')
-                    .setStyle(require('discord.js').ButtonStyle.Primary)
-            );
+            const answerBtn = new ButtonBuilder()
+                .setCustomId(`answer_btn_${interaction.id}`)
+                .setLabel('답변 제출하기')
+                .setStyle(ButtonStyle.Primary);
 
-            const msg = await interaction.editReply({
-                content: `<@${interaction.user.id}>, 준비됐어?`,
+            const row = new ActionRowBuilder().addComponents(answerBtn);
+
+            const responseMsg = await interaction.editReply({
+                content: `<@${userId}>, 면접관이 들어왔어. 긴장 풀어!`,
                 embeds: [quizEmbed],
-                components: [answerBtn]
+                components: [row]
             });
 
             // 3. 버튼 클릭 대기 및 모달 처리 (Collector 사용)
-            const collector = msg.createMessageComponentCollector({
-                filter: i => i.user.id === interaction.user.id,
-                time: 60000 // 1분 제한
+            const collector = responseMsg.createMessageComponentCollector({
+                filter: i => i.user.id === userId && i.customId === `answer_btn_${interaction.id}`,
+                time: 600000 // 10분 대기
             });
 
             collector.on('collect', async i => {
                 // 모달 띄우기
                 const modal = new ModalBuilder()
-                    .setCustomId('quiz_modal')
+                    .setCustomId(`quiz_modal_${interaction.id}`)
                     .setTitle('답변 작성');
 
                 const input = new TextInputBuilder()
                     .setCustomId('answer_input')
-                    .setLabel('여기에 답변을 적어줘 (서술형)')
-                    .setStyle(TextInputStyle.Paragraph);
+                    .setLabel('답변을 서술형으로 적어주세요.')
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setRequired(true);
 
                 modal.addComponents(new ActionRowBuilder().addComponents(input));
                 await i.showModal(modal);
 
                 // 모달 제출 대기
-                const submitted = await i.awaitModalSubmit({ time: 300000 }).catch(() => null);
+                const submitted = await i.awaitModalSubmit({ time: 600000 }).catch(() => null);
 
                 if (submitted) {
                     await submitted.deferUpdate();
+
+                    await interaction.editReply({
+                        content: '🤔 채점 중... 면접관이 안경을 고쳐 쓰고 있어...',
+                        embeds: [quizEmbed], // 문제는 계속 보여줌
+                        components: [] // 버튼 제거
+                    });
+
                     const userAnswer = submitted.fields.getTextInputValue('answer_input');
 
-                    // 4. 채점 진행
-                    await interaction.editReply({ content: '🤔 채점 중... AI 면접관이 안경을 고쳐 쓰고 있어...', components: [] });
-
-                    const result = await evaluateAnswer(interaction.user.id, quizData, userAnswer);
+                    const result = await evaluateAnswer(userId, topic, quizData, userAnswer);
 
                     // 5. 결과 발표
                     const resultEmbed = new EmbedBuilder()
@@ -79,16 +85,29 @@ module.exports = {
                         .setColor(result.isCorrect ? 0x00FA9A : 0xE74C3C);
 
                     // 프로필 갱신 후 레벨 표시
-                    const profile = await DevProfile.findOne({ userId: interaction.user.id });
+                    const profile = await DevProfile.findOne({ userId });
                     resultEmbed.addFields({ name: '📈 내 상태', value: `Lv.${profile.level} (XP: ${profile.xp})`, inline: true });
 
                     await interaction.followUp({ embeds: [resultEmbed] });
+
+                    collector.stop();
+                }
+            });
+
+            collector.on('end', (collected, reason) => {
+                if (reason === 'time' && collected.size === 0) {
+                    interaction.editReply({ content: '⏰ 시간이 초과되어서 면접관이 퇴근했어.', components: [] });
                 }
             });
 
         } catch (error) {
-            console.error(error);
-            await interaction.editReply('❌ 훈련 시스템 오류 발생! 다시 시도해줘.');
+            console.error('[Train Command Error]', error);
+            const errorMsg = '❌ 훈련 시스템 오류 발생! 다시 시도해줘.';
+            if (interaction.deferred || interaction.replied) {
+                await interaction.editReply({ content: errorMsg, components: [] });
+            } else {
+                await interaction.reply({ content: errorMsg, ephemeral: true });
+            }
         }
     },
 };

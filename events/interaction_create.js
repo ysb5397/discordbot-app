@@ -17,7 +17,17 @@ module.exports = {
 
         let foundUser = null;
         try {
-            foundUser = await WhiteList.findOne({ memberId: interaction.user.id });
+            if (interaction.user.id !== OWNER_ID) {
+                foundUser = await WhiteList.findOne({ memberId: interaction.user.id });
+
+                // 길드 외부이거나 화이트리스트가 아닌 경우 차단
+                if (interaction.guildId !== ALLOWED_GUILD_ID && (!foundUser || !foundUser.isWhite)) {
+                    return interaction.reply({
+                        content: '이 봇은 승인된 서버 내부 또는 화이트 리스트 유저만 사용할 수 있습니다. 🔒',
+                        ephemeral: true
+                    }).catch(() => { });
+                }
+            }
         } catch (dbErr) {
             console.error('화이트리스트 조회 실패:', dbErr);
             return interaction.reply({ content: '데이터베이스 오류로 권한을 확인할 수 없습니다.', ephemeral: true }).catch(() => { });
@@ -52,10 +62,12 @@ module.exports = {
                     return;
                 }
 
+                const errorMsg = { content: '명령어 실행 중 오류가 발생했습니다! 😢', ephemeral: true };
+
                 if (interaction.replied || interaction.deferred) {
-                    await interaction.followUp({ content: '명령어 실행 중 오류가 발생했습니다! 😢', ephemeral: true });
+                    await interaction.followUp(errorMsg);
                 } else {
-                    await interaction.reply({ content: '명령어 실행 중 오류가 발생했습니다! 😢', ephemeral: true });
+                    await interaction.reply(errorMsg);
                 }
             } catch (replyError) {
                 console.warn(`[Safety Catch] 유저에게 에러 알림 전송 실패 (무시됨): ${replyError.message}`);
