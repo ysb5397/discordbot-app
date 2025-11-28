@@ -124,7 +124,8 @@ module.exports = {
 
             try {
                 // 내 기억 중에서 해당 ID 찾기
-                const targetDoc = await Interaction.findOne({ interactionId: messageId, userId: userId });
+                const targetDoc = await Interaction.findOne({ interactionId: messageId, userId: userId })
+                    .sort({ timestamp: -1 });
 
                 if (!targetDoc) {
                     return interaction.editReply('❌ 해당 ID를 가진 기억을 찾을 수 없어. 내 기억이 아니거나 없는 ID야.');

@@ -4,7 +4,7 @@ const config = require('../../config/manage_environments');
 const MONGODB_URI = config.db.uri;
 
 const interactionSchema = new mongoose.Schema({
-    interactionId: { type: String, required: true, unique: true },
+    interactionId: { type: String, required: true },
     channelId: { type: String },
     userId: { type: String, required: true },
     userName: { type: String, required: true },

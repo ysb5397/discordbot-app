@@ -71,7 +71,8 @@ async function checkEarthquakeAndNotify(client) {
 
         const newEqData = parseEqInfoToObject(eqInfo);
 
-        const existingEq = await Interaction.findOne({ interactionId: eqTime, type: 'EARTHQUAKE' });
+        const existingEq = await Interaction.findOne({ interactionId: eqTime, type: 'EARTHQUAKE' })
+            .sort({ timestamp: -1 });
 
         if (existingEq && newEqData.ReFer === existingEq.content.ReFer) {
             console.log(`[EQK] 이미 처리된 지진 정보입니다 (시각: ${eqTime}). 건너뜁니다.`);
