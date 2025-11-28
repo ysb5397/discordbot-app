@@ -74,8 +74,8 @@ async function checkEarthquakeAndNotify(client) {
         const existingEq = await Interaction.findOne({ interactionId: eqTime, type: 'EARTHQUAKE' })
             .sort({ timestamp: -1 });
 
-        if (existingEq && newEqData.ReFer === existingEq.content.ReFer) {
-            console.log(`[EQK] 이미 처리된 지진 정보입니다 (시각: ${eqTime}). 건너뜁니다.`);
+        if (existingEq && newEqData.tmIssue === existingEq.content.tmIssue) {
+            console.log(`[EQK] 발표 시각(${newEqData.tmIssue})이 동일하여 중복 처리합니다. 건너뜁니다.`);
             return;
         }
 
