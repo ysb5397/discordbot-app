@@ -16,9 +16,9 @@ const REVIEW_CHANNEL_ID = config.channels.ignoreAiChat || config.discord.logChan
  */
 function getWeeklyGitDiff() {
     return new Promise((resolve, reject) => {
-        // 1주일 전 날짜 계산 (git log --since="1 week ago" 활용 가능)
-        // 여기서는 단순히 최근 변경 사항들을 diff로 뽑아냄
-        exec('git diff --stat --patch @{1.week.ago}', { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
+        // 1주일 전 날짜 계산 (git log --since="1 week ago" 활용)
+        // 최근 변경 사항들을 patch와 stat으로 뽑아냄
+        exec('git log --since="1 week ago" --patch --stat', { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
             if (error) {
                 // Git이 없거나 레포지토리가 아닐 경우 대비 (Docker 환경 주의)
                 console.warn('[CodeReview] Git diff 실패 (아마도 .git 폴더 부재?):', error.message);
@@ -35,8 +35,8 @@ function getWeeklyGitDiff() {
 }
 
 function startCodeReviewSchedule(client) {
-    // 매주 금요일 밤 9시 (0 21 * * 5)
-    cron.schedule('0 21 * * 5', async () => {
+    // 매주 금요일 밤 10시 (0 22 * * 5)
+    cron.schedule('0 22 * * 5', async () => {
         console.log('[Scheduler] 주간 코드 리뷰 시작...');
 
         const channel = await client.channels.fetch(REVIEW_CHANNEL_ID).catch(() => null);
@@ -99,7 +99,7 @@ function startCodeReviewSchedule(client) {
         timezone: "Asia/Seoul"
     });
 
-    console.log('✅ [Scheduler] 주간 코드 리뷰 스케줄러가 등록되었습니다. (매주 금 21:00)');
+    console.log('✅ [Scheduler] 주간 코드 리뷰 스케줄러가 등록되었습니다. (매주 금 22:00)');
 }
 
 module.exports = { startCodeReviewSchedule };
