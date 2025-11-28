@@ -83,7 +83,7 @@ function createAiResponseEmbed({ title, description, fields, footerPrefix = "Pow
         footerText += ` | ${durationString} 소요`;
     }
     if (searchQuery) {
-         footerText += ` | 검색어: "${searchQuery}"`;
+        footerText += ` | 검색어: "${searchQuery}"`;
     }
     if (user) {
         footerText += ` | 요청자: ${user.tag}`;
@@ -145,7 +145,7 @@ function createVideoGenEmbed({ prompt, duration, user }) {
  * @returns {EmbedBuilder}
  */
 function createEarthquakeEmbed(eqData) {
-    const msgTypeInfo = EQ_MSG_TYPES[eqData.msgCode] || { 
+    const msgTypeInfo = EQ_MSG_TYPES[eqData.msgCode] || {
         text: eqData.msgCode || '지진정보', // 모르는 코드가 오면 그냥 그 코드를 텍스트로 사용
         emoji: '📢' // 기본 이모지
     };
@@ -154,10 +154,19 @@ function createEarthquakeEmbed(eqData) {
     const rawIntensity = eqData.jdLoc || "정보 없음";
 
     const embedColor = getColorByIntensity(rawIntensity); // 기존 색상 함수 재활용
+
+    // 지진 발생 시각
     const rawTime = eqData.eqDate || "정보 없음";
     let formattedTime = "정보 없음";
     if (rawTime.length === 14) { // YYYYMMDDHHMMSS 형식 확인
-         formattedTime = `${rawTime.substring(0, 4)}년 ${rawTime.substring(4, 6)}월 ${rawTime.substring(6, 8)}일 ${rawTime.substring(8, 10)}시 ${rawTime.substring(10, 12)}분 ${rawTime.substring(12, 14)}초`;
+        formattedTime = `${rawTime.substring(0, 4)}년 ${rawTime.substring(4, 6)}월 ${rawTime.substring(6, 8)}일 ${rawTime.substring(8, 10)}시 ${rawTime.substring(10, 12)}분 ${rawTime.substring(12, 14)}초`;
+    }
+
+    // 발표 시간
+    const rawIssueTime = eqData.tmIssue || "정보 없음";
+    let formattedIssueTime = "정보 없음";
+    if (rawIssueTime.length === 14) { // YYYYMMDDHHMMSS 형식 확인
+        formattedIssueTime = `${rawIssueTime.substring(0, 4)}년 ${rawIssueTime.substring(4, 6)}월 ${rawIssueTime.substring(6, 8)}일 ${rawIssueTime.substring(8, 10)}시 ${rawIssueTime.substring(10, 12)}분 ${rawIssueTime.substring(12, 14)}초`;
     }
 
     const fields = [
@@ -169,12 +178,13 @@ function createEarthquakeEmbed(eqData) {
         { name: ' 깊이', value: `${eqData.eqDt || "?"}km`, inline: true }
     ];
 
+    // 오해가 발생하지 않도록 footer의 시간을 발표시간인 tmIssue로 변경
     return createBaseEmbed({
         title: title,
         description: eqData.ReFer || "상세 정보 없음",
         color: embedColor,
         fields: fields,
-        footerText: '출처: 기상청'
+        footerText: formattedIssueTime + ' | 출처: 기상청'
     });
 }
 

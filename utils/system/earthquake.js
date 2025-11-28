@@ -69,16 +69,17 @@ async function checkEarthquakeAndNotify(client) {
             return;
         }
 
+        const newEqData = parseEqInfoToObject(eqInfo);
+
         const existingEq = await Interaction.findOne({ interactionId: eqTime, type: 'EARTHQUAKE' });
 
-        if (existingEq) {
+        if (existingEq && newEqData.ReFer === existingEq.content.ReFer) {
             console.log(`[EQK] 이미 처리된 지진 정보입니다 (시각: ${eqTime}). 건너뜁니다.`);
             return;
         }
 
         await sendEarthquakeAlert(eqInfo, client);
 
-        const newEqData = parseEqInfoToObject(eqInfo);
         const newEqInteraction = new Interaction({
             interactionId: eqTime,
             userId: client.user.id,
@@ -131,6 +132,7 @@ async function sendEarthquakeAlert(info, client) {
     const embed = createEarthquakeEmbed({
         jdLoc: rawIntensity,
         eqDate: rawTime,
+        tmIssue: info.querySelector("tmIssue")?.textContent || "정보 없음",
         msgCode: info.querySelector("msgCode")?.textContent || "알 수 없음",
         magMl: info.querySelector("magMl")?.textContent || "정보 없음",
         eqPt: info.querySelector("eqPt")?.textContent || "정보 없음",
