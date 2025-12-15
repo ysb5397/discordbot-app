@@ -356,7 +356,7 @@ async function downloadVideoFromUri(videoUri) {
 
 async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSession) {
 
-    const liveApiModel = "gemini-2.5-flash";
+    const liveApiModel = "gemini-2.5-flash-native-audio-preview-12-2025";
     const responseQueue = [];
     const smoothingBufferStream = new PassThrough({
         highWaterMark: 48000
