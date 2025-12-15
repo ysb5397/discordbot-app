@@ -359,7 +359,7 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSessi
     const liveApiModel = "gemini-2.5-flash-native-audio-preview-12-2025";
     const responseQueue = [];
     const smoothingBufferStream = new PassThrough({
-        highWaterMark: 48000
+        highWaterMark: 96000
     });
     let connectionClosed = false;
     let closeReason = null;
@@ -367,6 +367,9 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSessi
     let fullTranscript = "";
     let resolveSessionReady;
     const sessionReadyPromise = new Promise(resolve => resolveSessionReady = resolve);
+
+    // 바이트 정렬을 위한 임시 저장소 (홀수 바이트 처리용)
+    let leftOverBuffer = Buffer.alloc(0);
 
     const processMessages = () => new Promise((resolve, reject) => {
         const check = () => {
@@ -377,17 +380,42 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSessi
             const msg = responseQueue.shift();
             if (msg) {
                 if (msg.data && !smoothingBufferStream.destroyed) {
-                    smoothingBufferStream.write(Buffer.from(msg.data, 'base64'));
+                    const rawChunk = Buffer.from(msg.data, 'base64');
+
+                    // 남겨둔 바이트가 있다면 합침
+                    const combinedChunk = Buffer.concat([leftOverBuffer, rawChunk]);
+
+                    // 짝수 바이트인지 확인 (16-bit PCM은 2바이트가 1샘플)
+                    const remainder = combinedChunk.length % 2;
+
+                    if (remainder !== 0) {
+                        // 홀수라면 마지막 1바이트를 잘라서 보관하고, 나머지만 전송
+                        const validLength = combinedChunk.length - 1;
+                        smoothingBufferStream.write(combinedChunk.subarray(0, validLength));
+                        leftOverBuffer = combinedChunk.subarray(validLength);
+                    } else {
+                        // 짝수라면 그대로 전송하고 버퍼 비움
+                        smoothingBufferStream.write(combinedChunk);
+                        leftOverBuffer = Buffer.alloc(0);
+                    }
                 }
                 if (msg.text) fullTranscript += msg.text + " ";
                 if (msg.serverContent && msg.serverContent.turnComplete) {
                     console.log('[디버그] Turn Complete 수신');
+
+                    // 남은 찌꺼기 바이트가 있다면 패딩해서 처리 (데이터 유실 방지)
+                    if (leftOverBuffer.length > 0 && !smoothingBufferStream.destroyed) {
+                        const padding = Buffer.concat([leftOverBuffer, Buffer.alloc(1)]);
+                        smoothingBufferStream.write(padding);
+                        leftOverBuffer = Buffer.alloc(0);
+                    }
+
                     if (!smoothingBufferStream.destroyed) smoothingBufferStream.push(null);
                     resolve(fullTranscript.trim());
                     return;
                 }
             }
-            setTimeout(check, 50);
+            setTimeout(check, 20);
         };
         check();
     });
@@ -396,9 +424,17 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSessi
         let session;
         try {
             console.log('[디버그] Live API 연결 시도...');
+            const tools = [{ googleSearch: {} }];
+
             session = await ai_live.live.connect({
                 model: liveApiModel,
-                config: { responseModalities: [Modality.AUDIO] },
+                config: {
+                    responseModalities: [Modality.AUDIO],
+                    tools: tools,
+                    systemInstruction: {
+                        parts: [{ text: systemPrompt }]
+                    }
+                },
                 callbacks: {
                     onmessage: (m) => responseQueue.push(m),
                     onerror: (e) => {
@@ -417,13 +453,6 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSessi
 
             if (activeSession) activeSession.liveSession = session;
             resolveSessionReady(session);
-
-            if (systemPrompt) {
-                session.sendClientContent({
-                    turns: [{ role: "user", parts: [{ text: systemPrompt }] }],
-                    turnComplete: false
-                });
-            }
 
             userAudioStream.on('data', (chunk) => {
                 if (connectionClosed) { userAudioStream.destroy(); return; }
