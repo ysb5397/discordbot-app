@@ -1,6 +1,6 @@
 const { Events } = require('discord.js');
 const { Interaction, Urls } = require('../../utils/system/database.js');
-const { generateAttachmentDescription, generateMentionReply } = require('../../utils/ai/ai_helper.js');
+const { generateAttachmentDescription, generateMentionReply, getEmbedding } = require('../../utils/ai/ai_helper.js');
 const config = require('../../config/manage_environments.js');
 
 // config에서 설정값 가져오기
@@ -325,6 +325,8 @@ module.exports = {
                     await message.react('✅');
                 }
 
+                const embedding = await getEmbedding(contentToSave);
+
                 if (contentToSave.trim() !== '') {
                     Interaction.create({
                         interactionId: message.id,
@@ -332,7 +334,8 @@ module.exports = {
                         userId: message.author.id,
                         userName: message.author.username,
                         type: 'MESSAGE',
-                        content: contentToSave
+                        content: contentToSave,
+                        embedding: embedding
                     }).catch(err => console.error('메시지 저장 실패:', err));
 
                     console.log(`[Chat Saved] ${message.author.username}: ${contentToSave.substring(0, 30)}...`);
