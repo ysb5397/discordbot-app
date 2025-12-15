@@ -359,7 +359,7 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSessi
     const liveApiModel = "gemini-2.5-flash-native-audio-preview-12-2025";
     const responseQueue = [];
     const smoothingBufferStream = new PassThrough({
-        highWaterMark: 96000
+        highWaterMark: 192000
     });
     let connectionClosed = false;
     let closeReason = null;
@@ -424,13 +424,13 @@ async function getLiveAiAudioResponse(systemPrompt, userAudioStream, activeSessi
         let session;
         try {
             console.log('[디버그] Live API 연결 시도...');
-            const tools = [{ googleSearch: {} }];
+            // const tools = [{ googleSearch: {} }];
 
             session = await ai_live.live.connect({
                 model: liveApiModel,
                 config: {
                     responseModalities: [Modality.AUDIO],
-                    tools: tools,
+                    // tools: tools,
                     systemInstruction: {
                         parts: [{ text: systemPrompt }]
                     }
