@@ -540,13 +540,11 @@ async function deepResearch(query) {
         hour12: false // 24시간제 사용 (AI가 헷갈리지 않게)
     }) + " (KST)";
 
-    const prompt = `**Current System Time (KST)**: ${currentKstTime} / **Query**: ${query}`;
-
     try {
         const response = await fetch(`${PYTHON_AI_SERVICE_URL}/deep-research`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: prompt }),
+            body: JSON.stringify({ query: query, current_kst_time: currentKstTime }),
             signal: controller.signal
         });
 
