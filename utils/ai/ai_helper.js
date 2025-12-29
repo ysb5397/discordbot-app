@@ -529,12 +529,24 @@ async function deepResearch(query) {
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 300000);
+    const currentKstTime = new Date().toLocaleString("ko-KR", {
+        timeZone: "Asia/Seoul",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false // 24시간제 사용 (AI가 헷갈리지 않게)
+    }) + " (KST)";
+
+    const prompt = `**Current System Time (KST)**: ${currentKstTime} / **Query**: ${query}`;
 
     try {
         const response = await fetch(`${PYTHON_AI_SERVICE_URL}/deep-research`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: query }),
+            body: JSON.stringify({ query: prompt }),
             signal: controller.signal
         });
 
