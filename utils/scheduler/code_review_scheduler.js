@@ -18,18 +18,34 @@ function getWeeklyGitDiff() {
     return new Promise((resolve, reject) => {
         // 1주일 전 날짜 계산 (git log --since="1 week ago" 활용)
         // 최근 변경 사항들을 patch와 stat으로 뽑아냄
-        exec('git log --since="1 week ago" --patch --stat', { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
+        exec('git rev-list -n 1 --before="1 week ago" HEAD', { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
             if (error) {
-                // Git이 없거나 레포지토리가 아닐 경우 대비 (Docker 환경 주의)
-                console.warn('[CodeReview] Git diff 실패 (아마도 .git 폴더 부재?):', error.message);
+                console.warn('[CodeReview] 기준 커밋 찾기 실패 (git rev-list):', error.message);
                 resolve(null);
-            } else {
-                if (!stdout || stdout.trim().length === 0) {
-                    resolve("변경 사항 없음");
-                } else {
-                    resolve(stdout);
-                }
+                return;
             }
+
+            const pastCommitHash = stdout ? stdout.trim() : null;
+
+            if (!pastCommitHash) {
+                console.log('[CodeReview] 1주일 전의 커밋을 찾을 수 없습니다. (모든 커밋이 최근이거나 기록 부족)');
+                resolve(null);
+                return;
+            }
+
+            console.log(`[CodeReview] 기준 커밋(${pastCommitHash})과 현재를 비교합니다.`);
+            exec(`git diff ${pastCommitHash}..HEAD --patch --stat`, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
+                if (error) {
+                    console.warn('[CodeReview] Git diff 실패:', error.message);
+                    resolve(null);
+                } else {
+                    if (!stdout || stdout.trim().length === 0) {
+                        resolve("변경 사항 없음");
+                    } else {
+                        resolve(stdout);
+                    }
+                }
+            });
         });
     });
 }
