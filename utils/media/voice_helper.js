@@ -7,6 +7,7 @@ const { Interaction } = require('../system/database');
 const { getTranscript, getLiveAiAudioResponse, generateMongoFilter } = require('../ai/ai_helper');
 const { spawn } = require('child_process');
 const config = require('../../config/manage_environments.js');
+const JitterBufferStream = require('./jitter_buffer.js');
 
 // [NEW] config에서 값 가져오기 (없으면 기본값 48000)
 const AUDIO_CONFIG = {
@@ -186,7 +187,14 @@ class GeminiVoiceManager {
                 console.error('[디버그 LOG] ❌ smoothingBufferStream 오류:', err.message);
             });
 
-            smoothingBufferStream.pipe(ffmpegProcess.stdin);
+            // Jitter Buffer 추가: 일정량 데이터가 쌓인 후 FFmpeg로 전달
+            const jitterBuffer = new JitterBufferStream({ bufferThreshold: 48000 }); // 약 1초 분량 (24kHz 16bit = 48k bytes/s)
+
+            jitterBuffer.on('error', (err) => {
+                console.error('[디버그 LOG] ❌ jitterBuffer 오류:', err.message);
+            });
+
+            smoothingBufferStream.pipe(jitterBuffer).pipe(ffmpegProcess.stdin);
 
             const resource = createAudioResource(ffmpegProcess.stdout, {
                 inputType: StreamType.Raw
